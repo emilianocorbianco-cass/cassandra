@@ -1,19 +1,9 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:cassandra/main.dart';
+import 'package:cassandra/app/cassandra_app.dart';
 
 void main() {
-  testWidgets('Splash screen shows Cassandra title',
-      (WidgetTester tester) async {
+  testWidgets('CassandraApp builds and shows title', (WidgetTester tester) async {
     await tester.pumpWidget(const CassandraApp());
-
     expect(find.text('Cassandra'), findsOneWidget);
   });
 }
