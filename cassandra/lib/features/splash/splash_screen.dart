@@ -1,8 +1,28 @@
 import 'package:flutter/material.dart';
+import '../../app/navigation/home_shell.dart';
 import '../../app/theme/cassandra_colors.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Per ora: dopo un breve delay vai alla Home.
+    // Più avanti qui decideremo: se loggato -> Home, altrimenti -> Login.
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeShell()),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,7 +30,6 @@ class SplashScreen extends StatelessWidget {
       backgroundColor: CassandraColors.bg,
       body: SafeArea(
         child: Align(
-          // 0 = centro; -0.15 sposta verso l’alto “leggermente”
           alignment: Alignment(0, -0.15),
           child: Text(
             'Cassandra',
@@ -18,8 +37,6 @@ class SplashScreen extends StatelessWidget {
               fontSize: 36,
               fontWeight: FontWeight.w600,
               color: CassandraColors.primary,
-              // fontFamily viene già dal Theme, ma qui puoi forzarlo se vuoi:
-              // fontFamily: 'Avenir',
             ),
           ),
         ),

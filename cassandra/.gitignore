@@ -47,4 +47,6 @@ app.*.map.json
 
 .DS_Store
 **/.DS_Store
+_backup/
 
+_backup/
