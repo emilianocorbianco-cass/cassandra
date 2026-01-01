@@ -1,0 +1,144 @@
+import 'dart:math';
+
+import '../predictions/models/pick_option.dart';
+import '../predictions/models/prediction_match.dart';
+import '../scoring/models/match_outcome.dart';
+import '../scoring/scoring_engine.dart';
+
+import 'models/group_leaderboard_entry.dart';
+import 'models/group_member.dart';
+
+List<GroupMember> mockGroupMembers() {
+  // Puoi cambiare nomi/teamName quando vuoi.
+  return const [
+    GroupMember(
+      id: 'u1',
+      displayName: 'Alessandro',
+      teamName: 'FC Oracolo',
+      avatarSeed: 11,
+    ),
+    GroupMember(
+      id: 'u2',
+      displayName: 'Andrea',
+      teamName: 'FC Gufatori',
+      avatarSeed: 22,
+    ),
+    GroupMember(
+      id: 'u3',
+      displayName: 'Eric',
+      teamName: 'FC Camado',
+      avatarSeed: 33,
+    ),
+    GroupMember(
+      id: 'u4',
+      displayName: 'Vincenzo',
+      teamName: 'FC Re della Quota',
+      avatarSeed: 44,
+    ),
+    GroupMember(
+      id: 'u5',
+      displayName: 'Davide',
+      teamName: 'FC Parziale',
+      avatarSeed: 55,
+    ),
+    GroupMember(
+      id: 'u6',
+      displayName: 'Emiliano',
+      teamName: 'FC Cassandra',
+      avatarSeed: 66,
+    ),
+  ];
+}
+
+/// Risultati mock (stessi per tutti).
+/// Deterministici: non cambiano a ogni run.
+Map<String, MatchOutcome> mockOutcomesForMatches(
+  List<PredictionMatch> matches,
+) {
+  final rnd = Random(777); // seed fisso
+  const outcomes = [MatchOutcome.home, MatchOutcome.draw, MatchOutcome.away];
+
+  final map = <String, MatchOutcome>{};
+  for (final m in matches) {
+    map[m.id] = outcomes[rnd.nextInt(outcomes.length)];
+  }
+  return map;
+}
+
+/// Picks mock per un utente (deterministici per utente).
+Map<String, PickOption> mockPicksForMember(
+  String memberId,
+  List<PredictionMatch> matches,
+) {
+  final rnd = Random(memberId.hashCode);
+
+  PickOption randomPick() {
+    final x = rnd.nextDouble();
+
+    // ~10% non giocata
+    if (x < 0.10) return PickOption.none;
+
+    // ~65% singole
+    if (x < 0.75) {
+      const singles = [PickOption.home, PickOption.draw, PickOption.away];
+      return singles[rnd.nextInt(singles.length)];
+    }
+
+    // ~25% doppie
+    const doubles = [
+      PickOption.homeDraw,
+      PickOption.drawAway,
+      PickOption.homeAway,
+    ];
+    return doubles[rnd.nextInt(doubles.length)];
+  }
+
+  final picks = <String, PickOption>{};
+  for (final m in matches) {
+    picks[m.id] = randomPick();
+  }
+  return picks;
+}
+
+/// Costruisce classifica gruppo (giornata) + ordinamento:
+/// 1) totale punti desc
+/// 2) quota media giocata desc (spareggio)
+List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
+  required List<PredictionMatch> matches,
+  required Map<String, MatchOutcome> outcomesByMatchId,
+}) {
+  final members = mockGroupMembers();
+
+  final entries = members.map((member) {
+    final picks = mockPicksForMember(member.id, matches);
+
+    final day = CassandraScoringEngine.computeDayScore(
+      matches: matches,
+      picksByMatchId: picks,
+      outcomesByMatchId: outcomesByMatchId,
+    );
+
+    return GroupLeaderboardEntry(
+      member: member,
+      picksByMatchId: picks,
+      day: day,
+    );
+  }).toList();
+
+  entries.sort((a, b) {
+    // totale punti desc
+    final t = b.day.total.compareTo(a.day.total);
+    if (t != 0) return t;
+
+    // spareggio: quota media desc (null = -1)
+    final aAvg = a.day.averageOddsPlayed ?? -1;
+    final bAvg = b.day.averageOddsPlayed ?? -1;
+    final avgCmp = bAvg.compareTo(aAvg);
+    if (avgCmp != 0) return avgCmp;
+
+    // stabilizzatore finale: teamName
+    return a.member.teamName.compareTo(b.member.teamName);
+  });
+
+  return entries;
+}

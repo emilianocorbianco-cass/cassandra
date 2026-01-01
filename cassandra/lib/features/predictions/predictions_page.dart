@@ -146,93 +146,100 @@ class _PredictionsPageState extends State<PredictionsPage> {
     );
   }
 
-Future<void> _showDebugScorePreview() async {
-  final rnd = Random();
+  Future<void> _showDebugScorePreview() async {
+    final rnd = Random();
 
-  const outcomesList = [
-    MatchOutcome.home,
-    MatchOutcome.draw,
-    MatchOutcome.away,
-  ];
+    const outcomesList = [
+      MatchOutcome.home,
+      MatchOutcome.draw,
+      MatchOutcome.away,
+    ];
 
-  final outcomes = <String, MatchOutcome>{};
-  for (final m in _matches) {
-    outcomes[m.id] = outcomesList[rnd.nextInt(outcomesList.length)];
-  }
+    final outcomes = <String, MatchOutcome>{};
+    for (final m in _matches) {
+      outcomes[m.id] = outcomesList[rnd.nextInt(outcomesList.length)];
+    }
 
-  final day = CassandraScoringEngine.computeDayScore(
-    matches: _matches,
-    picksByMatchId: _picks,
-    outcomesByMatchId: outcomes,
-  );
+    final day = CassandraScoringEngine.computeDayScore(
+      matches: _matches,
+      picksByMatchId: _picks,
+      outcomesByMatchId: outcomes,
+    );
 
-  if (!mounted) return;
+    if (!mounted) return;
 
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) {
-      final byId = {for (final b in day.matchBreakdowns) b.matchId: b};
-      final height = MediaQuery.of(context).size.height * 0.75;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        final byId = {for (final b in day.matchBreakdowns) b.matchId: b};
+        final height = MediaQuery.of(context).size.height * 0.75;
 
-      return SafeArea(
-        child: SizedBox(
-          height: height,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Debug: calcolo punteggio',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                Text('base: ${formatOdds(day.baseTotal)}'),
-                Text('bonus: ${day.bonusPoints}'),
-                Text('totale: ${formatOdds(day.total)}'),
-                const SizedBox(height: 6),
-                Text('esatti: ${day.correctCount}/10'),
-                Text(
-                  'quota media: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
-                ),
-                const Divider(height: 20),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _matches.length,
-                    itemBuilder: (context, i) {
-                      final m = _matches[i];
-                      final b = byId[m.id]!;
-                      final outcome = outcomes[m.id]!;
-                      final pick = _pickFor(m.id);
-                      final sign = b.basePoints >= 0 ? '+' : '';
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${m.homeTeam} - ${m.awayTeam}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            Text('pick ${pick.label}  •  res ${outcome.label}  •  $sign${formatOdds(b.basePoints)}'),
-                            if (b.note.isNotEmpty)
-                              Text(b.note, style: const TextStyle(fontSize: 12)),
-                          ],
-                        ),
-                      );
-                    },
+        return SafeArea(
+          child: SizedBox(
+            height: height,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Debug: calcolo punteggio',
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Text('base: ${formatOdds(day.baseTotal)}'),
+                  Text('bonus: ${day.bonusPoints}'),
+                  Text('totale: ${formatOdds(day.total)}'),
+                  const SizedBox(height: 6),
+                  Text('esatti: ${day.correctCount}/10'),
+                  Text(
+                    'quota media: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
+                  ),
+                  const Divider(height: 20),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _matches.length,
+                      itemBuilder: (context, i) {
+                        final m = _matches[i];
+                        final b = byId[m.id]!;
+                        final outcome = outcomes[m.id]!;
+                        final pick = _pickFor(m.id);
+                        final sign = b.basePoints >= 0 ? '+' : '';
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${m.homeTeam} - ${m.awayTeam}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                'pick ${pick.label}  •  res ${outcome.label}  •  $sign${formatOdds(b.basePoints)}',
+                              ),
+                              if (b.note.isNotEmpty)
+                                Text(
+                                  b.note,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,15 +252,15 @@ Future<void> _showDebugScorePreview() async {
 
     return Scaffold(
       appBar: AppBar(
-  title: const Text('Pronostici'),
-  actions: [
-    if (kDebugMode)
-      IconButton(
-        icon: const Icon(Icons.calculate),
-        onPressed: _showDebugScorePreview,
+        title: const Text('Pronostici'),
+        actions: [
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.calculate),
+              onPressed: _showDebugScorePreview,
+            ),
+        ],
       ),
-  ],
-),
 
       body: SafeArea(
         child: Column(
