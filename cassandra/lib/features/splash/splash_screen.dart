@@ -18,9 +18,9 @@ class _SplashScreenState extends State<SplashScreen> {
     // Più avanti qui decideremo: se loggato -> Home, altrimenti -> Login.
     Future.delayed(const Duration(milliseconds: 900), () {
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeShell()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
     });
   }
 

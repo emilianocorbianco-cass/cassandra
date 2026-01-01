@@ -5,7 +5,6 @@ enum PickOption {
   home, // "1"
   draw, // "X"
   away, // "2"
-
   // Doppie chance (1X / X2 / 12)
   homeDraw, // "1X"
   drawAway, // "X2"
@@ -16,7 +15,9 @@ extension PickOptionX on PickOption {
   bool get isNone => this == PickOption.none;
 
   bool get isSingle =>
-      this == PickOption.home || this == PickOption.draw || this == PickOption.away;
+      this == PickOption.home ||
+      this == PickOption.draw ||
+      this == PickOption.away;
 
   bool get isDouble =>
       this == PickOption.homeDraw ||

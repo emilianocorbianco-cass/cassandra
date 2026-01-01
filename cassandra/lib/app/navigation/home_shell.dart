@@ -30,10 +30,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
-      body: IndexedStack(
-        index: _index,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
@@ -42,10 +39,7 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.sports_soccer),
             label: 'Pronostici',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.groups),
-            label: 'Gruppo',
-          ),
+          NavigationDestination(icon: Icon(Icons.groups), label: 'Gruppo'),
           NavigationDestination(
             icon: Icon(Icons.emoji_events),
             label: 'Classifiche',
@@ -54,14 +48,8 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.format_list_bulleted),
             label: 'Serie A',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart),
-            label: 'Stats',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
+          NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
+          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
     );

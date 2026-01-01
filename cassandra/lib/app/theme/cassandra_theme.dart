@@ -20,15 +20,13 @@ class CassandraTheme {
         elevation: 0,
       ),
 
-      textTheme: const TextTheme(
-        headlineLarge: TextStyle(
-          fontSize: 36,
-          fontWeight: FontWeight.w600,
-        ),
-      ).apply(
-        bodyColor: CassandraColors.primary,
-        displayColor: CassandraColors.primary,
-      ),
+      textTheme:
+          const TextTheme(
+            headlineLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w600),
+          ).apply(
+            bodyColor: CassandraColors.primary,
+            displayColor: CassandraColors.primary,
+          ),
     );
   }
 }

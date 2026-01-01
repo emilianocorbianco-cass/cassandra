@@ -32,7 +32,10 @@ class PredictionMatchCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(match.homeTeam, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    match.homeTeam,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
                 const Text('vs'),
                 Expanded(
@@ -45,7 +48,10 @@ class PredictionMatchCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text('Kickoff: ${formatKickoff(match.kickoff)}', style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              'Kickoff: ${formatKickoff(match.kickoff)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 10),
 
             Row(
