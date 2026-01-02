@@ -1,3 +1,6 @@
+import '../badges/season_badge_engine.dart';
+import '../badges/widgets/avatar_with_badges.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../app/theme/cassandra_colors.dart';
@@ -159,6 +162,12 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                       itemCount: general.length,
                       itemBuilder: (context, i) {
                         final e = general[i];
+                        final badges =
+                            CassandraSeasonBadgeEngine.badgesForSeason(
+                              entry: e,
+                              rank: i + 1,
+                              totalPlayers: general.length,
+                            );
 
                         final value = _generalMode == 0
                             ? e.totalPoints
@@ -201,19 +210,15 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  CircleAvatar(
+                                  AvatarWithBadges(
                                     radius: 18,
                                     backgroundColor: _avatarColorFromSeed(
                                       e.member.avatarSeed,
                                     ),
-                                    child: Text(
-                                      e.member.displayName
-                                          .substring(0, 1)
-                                          .toUpperCase(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                    ),
+                                    text: e.member.displayName
+                                        .substring(0, 1)
+                                        .toUpperCase(),
+                                    badges: badges,
                                   ),
                                 ],
                               ),
