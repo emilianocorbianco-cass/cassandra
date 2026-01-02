@@ -9,53 +9,57 @@ import 'models/group_leaderboard_entry.dart';
 import 'models/group_member.dart';
 
 List<GroupMember> mockGroupMembers() {
-  // Puoi cambiare nomi/teamName quando vuoi.
   return const [
     GroupMember(
       id: 'u1',
       displayName: 'Alessandro',
       teamName: 'FC Oracolo',
       avatarSeed: 11,
+      favoriteTeam: 'Inter',
     ),
     GroupMember(
       id: 'u2',
       displayName: 'Andrea',
       teamName: 'FC Gufatori',
       avatarSeed: 22,
+      favoriteTeam: 'Roma',
     ),
     GroupMember(
       id: 'u3',
       displayName: 'Eric',
       teamName: 'FC Camado',
       avatarSeed: 33,
+      favoriteTeam: 'Juventus',
     ),
     GroupMember(
       id: 'u4',
       displayName: 'Vincenzo',
       teamName: 'FC Re della Quota',
       avatarSeed: 44,
+      favoriteTeam: 'Atalanta',
     ),
     GroupMember(
       id: 'u5',
       displayName: 'Davide',
       teamName: 'FC Parziale',
       avatarSeed: 55,
+      favoriteTeam: 'Bologna',
     ),
     GroupMember(
       id: 'u6',
       displayName: 'Emiliano',
       teamName: 'FC Cassandra',
       avatarSeed: 66,
+      favoriteTeam: 'Milan',
     ),
   ];
 }
 
-/// Risultati mock (stessi per tutti).
-/// Deterministici: non cambiano a ogni run.
+/// Risultati mock (deterministici: stessi a ogni run).
 Map<String, MatchOutcome> mockOutcomesForMatches(
   List<PredictionMatch> matches,
 ) {
-  final rnd = Random(777); // seed fisso
+  final rnd = Random(777);
   const outcomes = [MatchOutcome.home, MatchOutcome.draw, MatchOutcome.away];
 
   final map = <String, MatchOutcome>{};
@@ -65,12 +69,12 @@ Map<String, MatchOutcome> mockOutcomesForMatches(
   return map;
 }
 
-/// Picks mock per un utente (deterministici per utente).
+/// Picks mock per un utente (deterministici per utente+giornata se cambi la seed).
 Map<String, PickOption> mockPicksForMember(
-  String memberId,
+  String memberSeed,
   List<PredictionMatch> matches,
 ) {
-  final rnd = Random(memberId.hashCode);
+  final rnd = Random(memberSeed.hashCode);
 
   PickOption randomPick() {
     final x = rnd.nextDouble();
@@ -100,9 +104,9 @@ Map<String, PickOption> mockPicksForMember(
   return picks;
 }
 
-/// Costruisce classifica gruppo (giornata) + ordinamento:
+/// Classifica gruppo (giornata) + ordinamento:
 /// 1) totale punti desc
-/// 2) quota media giocata desc (spareggio)
+/// 2) quota media giocata desc
 List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   required List<PredictionMatch> matches,
   required Map<String, MatchOutcome> outcomesByMatchId,
@@ -126,17 +130,14 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   }).toList();
 
   entries.sort((a, b) {
-    // totale punti desc
     final t = b.day.total.compareTo(a.day.total);
     if (t != 0) return t;
 
-    // spareggio: quota media desc (null = -1)
     final aAvg = a.day.averageOddsPlayed ?? -1;
     final bAvg = b.day.averageOddsPlayed ?? -1;
     final avgCmp = bAvg.compareTo(aAvg);
     if (avgCmp != 0) return avgCmp;
 
-    // stabilizzatore finale: teamName
     return a.member.teamName.compareTo(b.member.teamName);
   });
 

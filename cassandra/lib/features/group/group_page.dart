@@ -1,3 +1,6 @@
+import '../badges/badge_engine.dart';
+import '../badges/widgets/avatar_with_badges.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../app/theme/cassandra_colors.dart';
@@ -91,6 +94,17 @@ class _GroupPageState extends State<GroupPage> {
                       itemCount: _entries.length,
                       itemBuilder: (context, i) {
                         final e = _entries[i];
+                        final badges =
+                            CassandraBadgeEngine.badgesForGroupMatchday(
+                              member: e.member,
+                              rank: i + 1,
+                              totalPlayers: _entries.length,
+                              matches: _matches,
+                              picksByMatchId: e.picksByMatchId,
+                              outcomesByMatchId: _outcomes,
+                              day: e.day,
+                            );
+
                         final pts = formatOdds(e.day.total);
 
                         return Card(
@@ -124,19 +138,15 @@ class _GroupPageState extends State<GroupPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  CircleAvatar(
-                                    radius: 18, // 36px di diametro
+                                  AvatarWithBadges(
+                                    radius: 18,
                                     backgroundColor: _avatarColorFromSeed(
                                       e.member.avatarSeed,
                                     ),
-                                    child: Text(
-                                      e.member.displayName
-                                          .substring(0, 1)
-                                          .toUpperCase(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                    ),
+                                    text: e.member.displayName
+                                        .substring(0, 1)
+                                        .toUpperCase(),
+                                    badges: badges,
                                   ),
                                 ],
                               ),

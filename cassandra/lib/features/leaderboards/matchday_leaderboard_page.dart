@@ -6,6 +6,8 @@ import '../group/user_picks_page.dart';
 import 'models/matchday_data.dart';
 import 'models/season_leaderboard_entry.dart';
 import 'models/member_matchday_score.dart';
+import '../badges/badge_engine.dart';
+import '../badges/widgets/avatar_with_badges.dart';
 
 class MatchdayLeaderboardPage extends StatelessWidget {
   final MatchdayData matchday;
@@ -84,6 +86,15 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final e = rows[i].entry;
                   final s = rows[i].score;
+                  final badges = CassandraBadgeEngine.badgesForGroupMatchday(
+                    member: e.member,
+                    rank: i + 1,
+                    totalPlayers: rows.length,
+                    matches: matchday.matches,
+                    picksByMatchId: s.picksByMatchId,
+                    outcomesByMatchId: matchday.outcomesByMatchId,
+                    day: s.day,
+                  );
 
                   final pts = s.day.total;
                   final ptsLabel = formatOdds(pts);
@@ -120,17 +131,15 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            CircleAvatar(
+                            AvatarWithBadges(
                               radius: 18,
                               backgroundColor: _avatarColorFromSeed(
                                 e.member.avatarSeed,
                               ),
-                              child: Text(
-                                e.member.displayName
-                                    .substring(0, 1)
-                                    .toUpperCase(),
-                                style: const TextStyle(color: Colors.white),
-                              ),
+                              text: e.member.displayName
+                                  .substring(0, 1)
+                                  .toUpperCase(),
+                              badges: badges,
                             ),
                           ],
                         ),
