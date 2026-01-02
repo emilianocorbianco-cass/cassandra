@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../predictions/models/formatters.dart';
-import '../group/user_picks_page.dart';
 import 'models/season_leaderboard_entry.dart';
+
+import '../profile/user_hub_page.dart';
 
 class MemberSeasonPage extends StatelessWidget {
   final SeasonLeaderboardEntry entry;
@@ -87,11 +88,11 @@ class MemberSeasonPage extends StatelessWidget {
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => UserPicksPage(
+                            builder: (_) => UserHubPage(
                               member: entry.member,
-                              matches: d.matchday.matches,
+                              matchday: d.matchday,
                               picksByMatchId: d.picksByMatchId,
-                              outcomesByMatchId: d.matchday.outcomesByMatchId,
+                              initialTabIndex: 0,
                             ),
                           ),
                         );

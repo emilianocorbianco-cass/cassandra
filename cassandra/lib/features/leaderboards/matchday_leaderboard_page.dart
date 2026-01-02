@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme/cassandra_colors.dart';
 import '../predictions/models/formatters.dart';
-import '../group/user_picks_page.dart';
 import 'models/matchday_data.dart';
 import 'models/season_leaderboard_entry.dart';
 import 'models/member_matchday_score.dart';
 import '../badges/badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
+import '../profile/user_hub_page.dart';
 
 class MatchdayLeaderboardPage extends StatelessWidget {
   final MatchdayData matchday;
@@ -105,11 +105,11 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => UserPicksPage(
+                            builder: (_) => UserHubPage(
                               member: e.member,
-                              matches: matchday.matches,
+                              matchday: matchday,
                               picksByMatchId: s.picksByMatchId,
-                              outcomesByMatchId: matchday.outcomesByMatchId,
+                              initialTabIndex: 0,
                             ),
                           ),
                         );

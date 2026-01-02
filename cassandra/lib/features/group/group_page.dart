@@ -11,7 +11,8 @@ import '../scoring/models/match_outcome.dart';
 
 import 'mock_group_data.dart';
 import 'models/group_leaderboard_entry.dart';
-import 'user_picks_page.dart';
+import '../leaderboards/models/matchday_data.dart';
+import '../profile/user_hub_page.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -110,17 +111,24 @@ class _GroupPageState extends State<GroupPage> {
                         return Card(
                           child: ListTile(
                             onTap: () {
+                              final md = MatchdayData(
+                                dayNumber: _matchdayNumber,
+                                matches: _matches,
+                                outcomesByMatchId: _outcomes,
+                              );
+
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => UserPicksPage(
+                                  builder: (_) => UserHubPage(
                                     member: e.member,
-                                    matches: _matches,
+                                    matchday: md,
                                     picksByMatchId: e.picksByMatchId,
-                                    outcomesByMatchId: _outcomes,
+                                    initialTabIndex: 0,
                                   ),
                                 ),
                               );
                             },
+
                             leading: SizedBox(
                               width: 64,
                               child: Row(
