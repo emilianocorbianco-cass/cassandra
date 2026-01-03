@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../app/state/cassandra_scope.dart';
 import '../badges/models/badge_counts.dart';
 import '../badges/trophy_engine.dart';
+import '../group/mock_group_data.dart';
 import '../group/models/group_member.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
@@ -41,13 +43,34 @@ class _UserHubPageState extends State<UserHubPage> {
   late final SeasonLeaderboardEntry _seasonEntry;
   late final BadgeCounts _trophies;
 
+  bool _initialized = false;
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
 
     // Coerente con Classifiche/Stats: stagione demo 16–20
     final matchdays = mockSeasonMatchdays(startDay: 16, count: 5);
-    _seasonEntries = buildMockSeasonLeaderboardEntries(matchdays: matchdays);
+
+    // Leggiamo il profilo (nome squadra + squadra del cuore) dai Settings
+    final appState = CassandraScope.of(context);
+
+    final overrideMember = GroupMember(
+      id: appState.profile.id,
+      displayName: appState.profile.displayName,
+      teamName: appState.profile.teamName,
+      avatarSeed: appState.currentUserAvatarSeed,
+      favoriteTeam: appState.profile.favoriteTeam,
+    );
+
+    final members = mockGroupMembers(overrideMember: overrideMember);
+
+    _seasonEntries = buildMockSeasonLeaderboardEntries(
+      matchdays: matchdays,
+      members: members,
+    );
 
     _seasonEntry = _seasonEntries.firstWhere(
       (e) => e.member.id == widget.member.id,

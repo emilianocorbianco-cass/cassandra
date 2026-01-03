@@ -1,7 +1,8 @@
 import 'dart:math';
 
-import '../group/mock_group_data.dart'
-    show mockGroupMembers, mockPicksForMember;
+import '../group/mock_group_data.dart';
+import '../group/models/group_member.dart';
+
 import '../predictions/models/mock_prediction_data.dart';
 import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
@@ -90,11 +91,12 @@ List<MatchdayData> mockSeasonMatchdays({
 /// - alcuni membri iniziano a giocare dopo 0/1/2 giornate (joinOffset).
 List<SeasonLeaderboardEntry> buildMockSeasonLeaderboardEntries({
   required List<MatchdayData> matchdays,
+  List<GroupMember>? members,
 }) {
-  final members = mockGroupMembers();
+  final membersList = members ?? mockGroupMembers();
   final entries = <SeasonLeaderboardEntry>[];
 
-  for (final member in members) {
+  for (final member in membersList) {
     final joinOffset = member.avatarSeed % 3; // 0..2
     final playedMatchdays = matchdays.skip(joinOffset).toList();
 

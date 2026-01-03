@@ -8,44 +8,44 @@ import '../scoring/scoring_engine.dart';
 import 'models/group_leaderboard_entry.dart';
 import 'models/group_member.dart';
 
-List<GroupMember> mockGroupMembers() {
-  return const [
-    GroupMember(
+List<GroupMember> mockGroupMembers({GroupMember? overrideMember}) {
+  final members = <GroupMember>[
+    const GroupMember(
       id: 'u1',
       displayName: 'Alessandro',
       teamName: 'FC Oracolo',
       avatarSeed: 11,
       favoriteTeam: 'Inter',
     ),
-    GroupMember(
+    const GroupMember(
       id: 'u2',
       displayName: 'Andrea',
       teamName: 'FC Gufatori',
       avatarSeed: 22,
       favoriteTeam: 'Roma',
     ),
-    GroupMember(
+    const GroupMember(
       id: 'u3',
       displayName: 'Eric',
       teamName: 'FC Camado',
       avatarSeed: 33,
       favoriteTeam: 'Juventus',
     ),
-    GroupMember(
+    const GroupMember(
       id: 'u4',
       displayName: 'Vincenzo',
       teamName: 'FC Re della Quota',
       avatarSeed: 44,
       favoriteTeam: 'Atalanta',
     ),
-    GroupMember(
+    const GroupMember(
       id: 'u5',
       displayName: 'Davide',
       teamName: 'FC Parziale',
       avatarSeed: 55,
       favoriteTeam: 'Bologna',
     ),
-    GroupMember(
+    const GroupMember(
       id: 'u6',
       displayName: 'Emiliano',
       teamName: 'FC Cassandra',
@@ -53,6 +53,15 @@ List<GroupMember> mockGroupMembers() {
       favoriteTeam: 'Milan',
     ),
   ];
+
+  if (overrideMember != null) {
+    final idx = members.indexWhere((m) => m.id == overrideMember.id);
+    if (idx != -1) {
+      members[idx] = overrideMember;
+    }
+  }
+
+  return members;
 }
 
 /// Risultati mock (deterministici: stessi a ogni run).
@@ -69,7 +78,7 @@ Map<String, MatchOutcome> mockOutcomesForMatches(
   return map;
 }
 
-/// Picks mock per un utente (deterministici per utente+giornata se cambi la seed).
+/// Picks mock per un utente (deterministici per seed+giornata).
 Map<String, PickOption> mockPicksForMember(
   String memberSeed,
   List<PredictionMatch> matches,
@@ -110,10 +119,11 @@ Map<String, PickOption> mockPicksForMember(
 List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   required List<PredictionMatch> matches,
   required Map<String, MatchOutcome> outcomesByMatchId,
+  List<GroupMember>? members,
 }) {
-  final members = mockGroupMembers();
+  final membersList = members ?? mockGroupMembers();
 
-  final entries = members.map((member) {
+  final entries = membersList.map((member) {
     final picks = mockPicksForMember(member.id, matches);
 
     final day = CassandraScoringEngine.computeDayScore(

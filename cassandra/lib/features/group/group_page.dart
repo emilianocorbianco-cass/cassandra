@@ -10,9 +10,10 @@ import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
 
 import 'mock_group_data.dart';
-import 'models/group_leaderboard_entry.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../profile/user_hub_page.dart';
+import '../../app/state/cassandra_scope.dart';
+import 'models/group_member.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -27,7 +28,6 @@ class _GroupPageState extends State<GroupPage> {
 
   late final List<PredictionMatch> _matches;
   late final Map<String, MatchOutcome> _outcomes;
-  late final List<GroupLeaderboardEntry> _entries;
 
   int _segment = 0; // 0 = classifica, 1 = giornate (placeholder)
 
@@ -36,10 +36,6 @@ class _GroupPageState extends State<GroupPage> {
     super.initState();
     _matches = mockPredictionMatches();
     _outcomes = mockOutcomesForMatches(_matches);
-    _entries = buildSortedMockGroupLeaderboard(
-      matches: _matches,
-      outcomesByMatchId: _outcomes,
-    );
   }
 
   String get _matchdayLabel {
@@ -54,6 +50,24 @@ class _GroupPageState extends State<GroupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = CassandraScope.of(context);
+
+    final overrideMember = GroupMember(
+      id: appState.profile.id,
+      displayName: appState.profile.displayName,
+      teamName: appState.profile.teamName,
+      avatarSeed: appState.currentUserAvatarSeed,
+      favoriteTeam: appState.profile.favoriteTeam,
+    );
+
+    final members = mockGroupMembers(overrideMember: overrideMember);
+
+    final entries = buildSortedMockGroupLeaderboard(
+      matches: _matches,
+      outcomesByMatchId: _outcomes,
+      members: members,
+    );
+
     return Scaffold(
       appBar: AppBar(title: const Text('Il mio gruppo')),
       body: SafeArea(
@@ -92,14 +106,14 @@ class _GroupPageState extends State<GroupPage> {
                   ? const Center(child: Text('Storico giornate (in arrivo)'))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      itemCount: _entries.length,
+                      itemCount: entries.length,
                       itemBuilder: (context, i) {
-                        final e = _entries[i];
+                        final e = entries[i];
                         final badges =
                             CassandraBadgeEngine.badgesForGroupMatchday(
                               member: e.member,
                               rank: i + 1,
-                              totalPlayers: _entries.length,
+                              totalPlayers: entries.length,
                               matches: _matches,
                               picksByMatchId: e.picksByMatchId,
                               outcomesByMatchId: _outcomes,
