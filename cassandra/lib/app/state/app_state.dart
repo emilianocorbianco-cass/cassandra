@@ -1,15 +1,23 @@
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_settings.dart';
 import 'user_profile.dart';
 
 class AppState extends ChangeNotifier {
-  // Chiavi SharedPreferences
-  static const _kTeamName = 'profile.teamName';
-  static const _kFavoriteTeam = 'profile.favoriteTeam';
+  // Chiavi "nuove" (più pulite)
+  static const _kProfileTeamName = 'profile.teamName';
+  static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
 
-  // Per ora fissiamo “chi sei” (senza auth): u6 = Emiliano
-  // Quando faremo autenticazione, questo verrà dal backend/auth.
+  // Chiavi legacy (macro-step 1 precedente)
+  static const _kTeamNameLegacy = 'teamName';
+  static const _kFavoriteTeamLegacy = 'favoriteTeam';
+
+  static const _kLanguage = 'language';
+  static const _kDefaultVisibility = 'defaultVisibility';
+
   static const UserProfile _defaultProfile = UserProfile(
     id: 'u6',
     displayName: 'Emiliano',
@@ -18,48 +26,106 @@ class AppState extends ChangeNotifier {
   );
 
   final SharedPreferences? _prefs;
+
   UserProfile _profile;
+  CassandraLanguage _language;
+  PredictionVisibility _defaultVisibility;
 
-  AppState._(this._prefs, this._profile);
+  AppState._(
+    this._prefs, {
+    required UserProfile profile,
+    required CassandraLanguage language,
+    required PredictionVisibility defaultVisibility,
+  }) : _profile = profile,
+       _language = language,
+       _defaultVisibility = defaultVisibility;
 
+  /// --- getters usati dal resto dell'app ---
   UserProfile get profile => _profile;
 
-  /// In UI usiamo sempre lo stesso seed, così il colore/avatar resta coerente.
+  /// comodo per alcune UI (compatibilità)
+  String get teamName => _profile.teamName;
+  String get favoriteTeam => _profile.favoriteTeam ?? '';
+
+  CassandraLanguage get language => _language;
+  PredictionVisibility get defaultVisibility => _defaultVisibility;
+
+  Locale? get localeOverride => localeForLanguage(_language);
+
+  /// coerente con i mock: Emiliano ha seed 66
   int get currentUserAvatarSeed => 66;
 
+  /// Caricamento persistente
   static Future<AppState> load() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final storedTeamName = prefs.getString(_kTeamName);
-    final storedFavorite = prefs.getString(_kFavoriteTeam);
+    // teamName: prova chiave nuova, poi legacy
+    final storedTeamName =
+        (prefs.getString(_kProfileTeamName) ??
+                prefs.getString(_kTeamNameLegacy))
+            ?.trim();
+
+    // favoriteTeam: prova chiave nuova, poi legacy
+    final storedFavorite =
+        (prefs.getString(_kProfileFavoriteTeam) ??
+                prefs.getString(_kFavoriteTeamLegacy))
+            ?.trim();
 
     final profile = _defaultProfile.copyWith(
-      teamName: storedTeamName ?? _defaultProfile.teamName,
-      favoriteTeam: storedFavorite ?? _defaultProfile.favoriteTeam,
-      clearFavoriteTeam: false,
+      teamName: (storedTeamName == null || storedTeamName.isEmpty)
+          ? _defaultProfile.teamName
+          : storedTeamName,
+      favoriteTeam: (storedFavorite == null || storedFavorite.isEmpty)
+          ? null
+          : storedFavorite,
+      clearFavoriteTeam: (storedFavorite == null || storedFavorite.isEmpty),
     );
 
-    return AppState._(prefs, profile);
+    final language = cassandraLanguageFromStorage(prefs.getString(_kLanguage));
+    final visibility = predictionVisibilityFromStorage(
+      prefs.getString(_kDefaultVisibility),
+    );
+
+    return AppState._(
+      prefs,
+      profile: profile,
+      language: language,
+      defaultVisibility: visibility,
+    );
   }
 
-  /// Per test (niente SharedPreferences)
-  factory AppState.inMemory({UserProfile? profile}) {
-    return AppState._(null, profile ?? _defaultProfile);
+  /// In-memory (per i test)
+  factory AppState.inMemory({
+    UserProfile? profile,
+    CassandraLanguage language = CassandraLanguage.system,
+    PredictionVisibility defaultVisibility = PredictionVisibility.friends,
+  }) {
+    return AppState._(
+      null,
+      profile: profile ?? _defaultProfile,
+      language: language,
+      defaultVisibility: defaultVisibility,
+    );
   }
 
   Future<void> updateTeamName(String value) async {
     final cleaned = value.trim();
     if (cleaned.isEmpty) return;
+    if (cleaned == _profile.teamName) return;
 
     _profile = _profile.copyWith(teamName: cleaned);
     notifyListeners();
 
-    await _prefs?.setString(_kTeamName, cleaned);
+    await _prefs?.setString(_kProfileTeamName, cleaned);
+    // scrivo anche la legacy per compatibilità
+    await _prefs?.setString(_kTeamNameLegacy, cleaned);
   }
 
-  Future<void> updateFavoriteTeam(String? value) async {
-    final cleaned = value?.trim();
-    final stored = (cleaned == null || cleaned.isEmpty) ? null : cleaned;
+  Future<void> updateFavoriteTeam(String value) async {
+    final cleaned = value.trim();
+    final stored = cleaned.isEmpty ? null : cleaned;
+
+    if (stored == _profile.favoriteTeam) return;
 
     _profile = _profile.copyWith(
       favoriteTeam: stored,
@@ -67,24 +133,49 @@ class AppState extends ChangeNotifier {
     );
     notifyListeners();
 
-    final prefs = _prefs;
-    if (prefs == null) return;
+    if (_prefs == null) return;
 
     if (stored == null) {
-      await prefs.remove(_kFavoriteTeam);
+      await _prefs.remove(_kProfileFavoriteTeam);
+      await _prefs.remove(_kFavoriteTeamLegacy);
     } else {
-      await prefs.setString(_kFavoriteTeam, stored);
+      await _prefs.setString(_kProfileFavoriteTeam, stored);
+      await _prefs.setString(_kFavoriteTeamLegacy, stored);
     }
   }
 
-  Future<void> resetProfileToDefault() async {
+  Future<void> updateLanguage(CassandraLanguage value) async {
+    if (value == _language) return;
+    _language = value;
+    notifyListeners();
+    await _prefs?.setString(_kLanguage, cassandraLanguageToStorage(value));
+  }
+
+  Future<void> updateDefaultVisibility(PredictionVisibility value) async {
+    if (value == _defaultVisibility) return;
+    _defaultVisibility = value;
+    notifyListeners();
+    await _prefs?.setString(
+      _kDefaultVisibility,
+      predictionVisibilityToStorage(value),
+    );
+  }
+
+  Future<void> resetAll() async {
     _profile = _defaultProfile;
+    _language = CassandraLanguage.system;
+    _defaultVisibility = PredictionVisibility.friends;
     notifyListeners();
 
-    final prefs = _prefs;
-    if (prefs == null) return;
+    if (_prefs == null) return;
 
-    await prefs.remove(_kTeamName);
-    await prefs.remove(_kFavoriteTeam);
+    await _prefs.remove(_kProfileTeamName);
+    await _prefs.remove(_kProfileFavoriteTeam);
+
+    await _prefs.remove(_kTeamNameLegacy);
+    await _prefs.remove(_kFavoriteTeamLegacy);
+
+    await _prefs.remove(_kLanguage);
+    await _prefs.remove(_kDefaultVisibility);
   }
 }

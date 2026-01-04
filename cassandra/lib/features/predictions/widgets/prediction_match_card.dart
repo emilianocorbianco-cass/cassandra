@@ -54,6 +54,7 @@ class PredictionMatchCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
 
+            // Singole
             Row(
               children: [
                 OddsButton(
@@ -84,6 +85,7 @@ class PredictionMatchCard extends StatelessWidget {
             Text('Doppia chance', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 6),
 
+            // Doppie
             Row(
               children: [
                 OddsButton(

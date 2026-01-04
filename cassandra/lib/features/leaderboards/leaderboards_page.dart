@@ -1,9 +1,11 @@
-import '../badges/season_badge_engine.dart';
-import '../badges/widgets/avatar_with_badges.dart';
-
 import 'package:flutter/material.dart';
 
+import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../badges/season_badge_engine.dart';
+import '../badges/widgets/avatar_with_badges.dart';
+import '../group/mock_group_data.dart';
+import '../group/models/group_member.dart';
 import '../predictions/models/formatters.dart';
 import 'matchday_leaderboard_page.dart';
 import 'member_season_page.dart';
@@ -18,18 +20,18 @@ class LeaderboardsPage extends StatefulWidget {
   State<LeaderboardsPage> createState() => _LeaderboardsPageState();
 }
 
+enum _GeneralMode { points, average }
+
 class _LeaderboardsPageState extends State<LeaderboardsPage> {
-  int _segment = 0; // 0 = generale, 1 = giornate
-  int _generalMode = 0; // 0 = punti, 1 = media
+  int _segment = 0; // 0=generale, 1=giornate
+  _GeneralMode _generalMode = _GeneralMode.points;
 
   late final List<MatchdayData> _matchdays;
-  late final List<SeasonLeaderboardEntry> _entries;
 
   @override
   void initState() {
     super.initState();
-    _matchdays = mockSeasonMatchdays(startDay: 16, count: 5); // 16–20
-    _entries = buildMockSeasonLeaderboardEntries(matchdays: _matchdays);
+    _matchdays = mockSeasonMatchdays(startDay: 16, count: 5);
   }
 
   Color _avatarColorFromSeed(int seed) {
@@ -37,52 +39,56 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     return HSLColor.fromAHSL(1, hue, 0.45, 0.65).toColor();
   }
 
-  String get _seasonLabel {
-    if (_matchdays.isEmpty) return '';
-    return 'stagione demo • giornate ${_matchdays.first.dayNumber}–${_matchdays.last.dayNumber}';
-  }
+  List<SeasonLeaderboardEntry> _sortedGeneral(
+    List<SeasonLeaderboardEntry> input,
+  ) {
+    final list = List<SeasonLeaderboardEntry>.of(input);
 
-  List<SeasonLeaderboardEntry> _sortedGeneral() {
-    final list = List.of(_entries);
-
-    if (_generalMode == 0) {
-      // GENERALE per PUNTI
-      list.sort((a, b) {
+    list.sort((a, b) {
+      if (_generalMode == _GeneralMode.points) {
         final t = b.totalPoints.compareTo(a.totalPoints);
         if (t != 0) return t;
 
-        final aOdds = a.averageOddsPlayed ?? -1;
-        final bOdds = b.averageOddsPlayed ?? -1;
-        final oddsCmp = bOdds.compareTo(aOdds);
-        if (oddsCmp != 0) return oddsCmp;
+        final ao = a.averageOddsPlayed ?? -1;
+        final bo = b.averageOddsPlayed ?? -1;
+        final o = bo.compareTo(ao);
+        if (o != 0) return o;
 
         return a.member.teamName.compareTo(b.member.teamName);
-      });
-    } else {
-      // GENERALE per MEDIA punti/giornata
-      list.sort((a, b) {
+      } else {
         final t = b.averagePerMatchday.compareTo(a.averagePerMatchday);
         if (t != 0) return t;
 
-        final aOdds = a.averageOddsPlayed ?? -1;
-        final bOdds = b.averageOddsPlayed ?? -1;
-        final oddsCmp = bOdds.compareTo(aOdds);
-        if (oddsCmp != 0) return oddsCmp;
-
-        // se media uguale, chi ha giocato più giornate è “più affidabile”
-        final d = b.daysPlayed.compareTo(a.daysPlayed);
-        if (d != 0) return d;
+        final p = b.totalPoints.compareTo(a.totalPoints);
+        if (p != 0) return p;
 
         return a.member.teamName.compareTo(b.member.teamName);
-      });
-    }
+      }
+    });
 
     return list;
   }
 
   @override
   Widget build(BuildContext context) {
-    final general = _sortedGeneral();
+    final appState = CassandraScope.of(context);
+
+    final overrideMember = GroupMember(
+      id: appState.profile.id,
+      displayName: appState.profile.displayName,
+      teamName: appState.profile.teamName,
+      avatarSeed: appState.currentUserAvatarSeed,
+      favoriteTeam: appState.profile.favoriteTeam,
+    );
+
+    final members = mockGroupMembers(overrideMember: overrideMember);
+
+    final entries = buildMockSeasonLeaderboardEntries(
+      matchdays: _matchdays,
+      members: members,
+    );
+
+    final sorted = _sortedGeneral(entries);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Classifiche')),
@@ -94,11 +100,6 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    _seasonLabel,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 10),
                   SegmentedButton<int>(
                     segments: const [
                       ButtonSegment(value: 0, label: Text('generale')),
@@ -108,18 +109,23 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                     onSelectionChanged: (s) =>
                         setState(() => _segment = s.first),
                   ),
-                  if (_segment == 0) ...[
-                    const SizedBox(height: 10),
-                    SegmentedButton<int>(
+                  const SizedBox(height: 10),
+                  if (_segment == 0)
+                    SegmentedButton<_GeneralMode>(
                       segments: const [
-                        ButtonSegment(value: 0, label: Text('punti')),
-                        ButtonSegment(value: 1, label: Text('media')),
+                        ButtonSegment(
+                          value: _GeneralMode.points,
+                          label: Text('punti'),
+                        ),
+                        ButtonSegment(
+                          value: _GeneralMode.average,
+                          label: Text('media'),
+                        ),
                       ],
                       selected: {_generalMode},
                       onSelectionChanged: (s) =>
                           setState(() => _generalMode = s.first),
                     ),
-                  ],
                 ],
               ),
             ),
@@ -130,16 +136,24 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                       itemCount: _matchdays.length,
                       itemBuilder: (context, i) {
-                        final md =
-                            _matchdays[_matchdays.length -
-                                1 -
-                                i]; // latest first
+                        final md = _matchdays[_matchdays.length - 1 - i];
                         final daysLabel = formatMatchdayDaysItalian(
                           md.matches.map((m) => m.kickoff),
                         );
 
                         return Card(
                           child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: CassandraColors.primary
+                                  .withAlpha(31),
+                              child: Text(
+                                '${md.dayNumber}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: CassandraColors.primary,
+                                ),
+                              ),
+                            ),
                             title: Text('Giornata ${md.dayNumber}'),
                             subtitle: Text(daysLabel),
                             trailing: const Icon(Icons.chevron_right),
@@ -148,7 +162,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                 MaterialPageRoute(
                                   builder: (_) => MatchdayLeaderboardPage(
                                     matchday: md,
-                                    seasonEntries: _entries,
+                                    seasonEntries: entries,
                                   ),
                                 ),
                               );
@@ -159,29 +173,20 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      itemCount: general.length,
+                      itemCount: sorted.length,
                       itemBuilder: (context, i) {
-                        final e = general[i];
+                        final e = sorted[i];
+
                         final badges =
                             CassandraSeasonBadgeEngine.badgesForSeason(
                               entry: e,
                               rank: i + 1,
-                              totalPlayers: general.length,
+                              totalPlayers: sorted.length,
                             );
 
-                        final value = _generalMode == 0
-                            ? e.totalPoints
-                            : e.averagePerMatchday;
-                        final valueLabel = formatOdds(value);
-                        final sign = value >= 0 ? '+' : '';
-
-                        final avgOddsLabel = e.averageOddsPlayed == null
-                            ? '-'
-                            : formatOdds(e.averageOddsPlayed!);
-
-                        final subtitle = _generalMode == 0
-                            ? '${e.member.teamName}\nmedia/giornata: ${formatOdds(e.averagePerMatchday)} • giornate: ${e.daysPlayed} • quota: $avgOddsLabel'
-                            : '${e.member.teamName}\ntotale: ${formatOdds(e.totalPoints)} • giornate: ${e.daysPlayed} • quota: $avgOddsLabel';
+                        final metricLabel = _generalMode == _GeneralMode.points
+                            ? formatOdds(e.totalPoints)
+                            : formatOdds(e.averagePerMatchday);
 
                         return Card(
                           child: ListTile(
@@ -192,7 +197,6 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                 ),
                               );
                             },
-                            isThreeLine: true,
                             leading: SizedBox(
                               width: 64,
                               child: Row(
@@ -224,11 +228,11 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                               ),
                             ),
                             title: Text(e.member.displayName),
-                            subtitle: Text(subtitle),
+                            subtitle: Text(e.member.teamName),
                             trailing: Text(
-                              '$sign$valueLabel',
+                              metricLabel,
                               style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),

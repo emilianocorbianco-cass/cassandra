@@ -2,6 +2,8 @@ import 'prediction_match.dart';
 
 List<PredictionMatch> mockPredictionMatches() {
   final now = DateTime.now();
+
+  // Base: tra 2 giorni alle 18:00 (solo per testare facilmente)
   final base = DateTime(
     now.year,
     now.month,

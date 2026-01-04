@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../app/navigation/home_shell.dart';
 import '../../app/theme/cassandra_colors.dart';
@@ -10,18 +11,26 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  Timer? _timer;
+
   @override
   void initState() {
     super.initState();
 
-    // Per ora: dopo un breve delay vai alla Home.
-    // Più avanti qui decideremo: se loggato -> Home, altrimenti -> Login.
-    Future.delayed(const Duration(milliseconds: 900), () {
+    // Splash più lunga: 900ms + 500ms = 1400ms
+    _timer = Timer(const Duration(milliseconds: 1400), () {
       if (!mounted) return;
       Navigator.of(
         context,
       ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
     });
+  }
+
+  @override
+  void dispose() {
+    // IMPORTANTISSIMO: annulla il timer se il widget viene distrutto
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override

@@ -2,10 +2,10 @@ class UserProfile {
   final String id;
   final String displayName;
 
-  /// Nome della squadra (handle)
+  /// Nome squadra/handle
   final String teamName;
 
-  /// Squadra del cuore (per badge 🦉)
+  /// Squadra del cuore (opzionale)
   final String? favoriteTeam;
 
   const UserProfile({
