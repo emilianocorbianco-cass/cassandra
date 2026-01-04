@@ -50,3 +50,7 @@ app.*.map.json
 _backup/
 
 _backup/
+
+# env files
+.env
+.env.*
