@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
 import '../../features/leaderboards/leaderboards_page.dart';
-import '../../features/seriea/seriea_page.dart';
 import '../../features/stats/stats_page.dart';
 import '../../features/settings/settings_page.dart';
+import 'package:cassandra/features/serie_a/serie_a_page.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -17,7 +17,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _pages = <Widget>[
+  static final _pages = <Widget>[
     PredictionsPage(),
     GroupPage(),
     LeaderboardsPage(),
