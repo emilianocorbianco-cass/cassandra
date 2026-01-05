@@ -10,6 +10,10 @@ import 'package:flutter/foundation.dart';
 
 import '../scoring/models/match_outcome.dart';
 import '../scoring/scoring_engine.dart';
+import 'package:cassandra/app/config/env.dart';
+import 'package:cassandra/services/api_football/api_football_client.dart';
+import 'package:cassandra/services/api_football/api_football_service.dart';
+import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -23,7 +27,7 @@ class PredictionsPage extends StatefulWidget {
 class _PredictionsPageState extends State<PredictionsPage> {
   static const int _matchdayNumber = 20;
 
-  late final List<PredictionMatch> _matches;
+  late List<PredictionMatch> _matches;
   final Map<String, PickOption> _picks = {};
 
   int _segment = 0; // 0 = futuri, 1 = passati
@@ -35,6 +39,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
   void initState() {
     super.initState();
     _matches = mockPredictionMatches();
+    _tryLoadRealFixtures();
   }
 
   PickOption _pickFor(String matchId) => _picks[matchId] ?? PickOption.none;
@@ -239,6 +244,34 @@ class _PredictionsPageState extends State<PredictionsPage> {
         );
       },
     );
+  }
+
+  Future<void> _tryLoadRealFixtures() async {
+    final key = Env.apiFootballKey;
+    if (key == null) return; // in test o senza .env restiamo sui mock
+
+    final client = ApiFootballClient(
+      apiKey: key,
+      baseUrl: Env.baseUrl,
+      useRapidApi: Env.useRapidApi,
+      rapidApiHost: Env.rapidApiHost,
+    );
+
+    try {
+      final service = ApiFootballService(client);
+      final fixtures = await service.getNextSerieAFixtures(count: 10);
+      final matches = predictionMatchesFromFixtures(fixtures);
+      if (matches.isEmpty) return;
+
+      if (!mounted) return;
+      setState(() {
+        _matches = matches;
+      });
+    } catch (_) {
+      // Se fallisce la rete o la key, restiamo sui mock.
+    } finally {
+      client.close();
+    }
   }
 
   @override
