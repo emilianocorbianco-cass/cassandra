@@ -28,6 +28,10 @@ class _PredictionsPageState extends State<PredictionsPage> {
   static const int _matchdayNumber = 20;
 
   late List<PredictionMatch> _matches;
+  bool _usingRealFixtures = false;
+  bool _loadingFixtures = false;
+  DateTime? _fixturesUpdatedAt;
+
   final Map<String, PickOption> _picks = {};
 
   int _segment = 0; // 0 = futuri, 1 = passati
@@ -246,9 +250,13 @@ class _PredictionsPageState extends State<PredictionsPage> {
     );
   }
 
-  Future<void> _tryLoadRealFixtures() async {
+  Future<void> _tryLoadRealFixtures({bool showLoader = false}) async {
     final key = Env.apiFootballKey;
     if (key == null) return; // in test o senza .env restiamo sui mock
+
+    if (showLoader && mounted) {
+      setState(() => _loadingFixtures = true);
+    }
 
     final client = ApiFootballClient(
       apiKey: key,
@@ -266,11 +274,16 @@ class _PredictionsPageState extends State<PredictionsPage> {
       if (!mounted) return;
       setState(() {
         _matches = matches;
+        _usingRealFixtures = true;
+        _fixturesUpdatedAt = DateTime.now();
       });
     } catch (_) {
       // Se fallisce la rete o la key, restiamo sui mock.
     } finally {
       client.close();
+      if (showLoader && mounted) {
+        setState(() => _loadingFixtures = false);
+      }
     }
   }
 
@@ -283,10 +296,29 @@ class _PredictionsPageState extends State<PredictionsPage> {
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
 
+    final dataLabel = _usingRealFixtures ? 'dati: reali (API)' : 'dati: demo';
+    final updatedLabel = (_usingRealFixtures && _fixturesUpdatedAt != null)
+        ? ' • agg. ${formatKickoff(_fixturesUpdatedAt!)}'
+        : '';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pronostici'),
         actions: [
+          IconButton(
+            tooltip: 'Aggiorna match',
+            onPressed: _loadingFixtures
+                ? null
+                : () => _tryLoadRealFixtures(showLoader: true),
+            icon: _loadingFixtures
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
+
           if (kDebugMode)
             IconButton(
               icon: const Icon(Icons.calculate),
@@ -326,6 +358,13 @@ class _PredictionsPageState extends State<PredictionsPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(lockLabel, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 6),
+                  Text(
+                    '$dataLabel$updatedLabel',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: CassandraColors.slate,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     'scelte: $_pickedCount/${_matches.length}  •  quota media: $avgLabel',
