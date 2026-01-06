@@ -14,6 +14,7 @@ import 'package:cassandra/app/config/env.dart';
 import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
+import '../../app/state/cassandra_scope.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -277,6 +278,13 @@ class _PredictionsPageState extends State<PredictionsPage> {
         _usingRealFixtures = true;
         _fixturesUpdatedAt = DateTime.now();
       });
+
+      // Salviamo le fixture reali in cache runtime (per Gruppo / User pages)
+      CassandraScope.of(context).setCachedPredictionMatches(
+        matches,
+        isReal: true,
+        updatedAt: _fixturesUpdatedAt,
+      );
     } catch (_) {
       // Se fallisce la rete o la key, restiamo sui mock.
     } finally {

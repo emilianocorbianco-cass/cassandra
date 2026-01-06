@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
 import 'user_profile.dart';
+import 'package:cassandra/features/predictions/models/prediction_match.dart';
 
 class AppState extends ChangeNotifier {
   // Chiavi "nuove" (più pulite)
@@ -177,5 +178,37 @@ class AppState extends ChangeNotifier {
 
     await _prefs.remove(_kLanguage);
     await _prefs.remove(_kDefaultVisibility);
+  }
+
+  // ===== Runtime cache (NON persistita) =====
+  // Usata per condividere le fixture reali tra pagine (Pronostici, Gruppo, ecc.)
+  // senza rifare fetch e senza scriverle su storage.
+
+  List<PredictionMatch>? _cachedPredictionMatches;
+  bool _cachedPredictionMatchesAreReal = false;
+  DateTime? _cachedPredictionMatchesUpdatedAt;
+
+  List<PredictionMatch>? get cachedPredictionMatches =>
+      _cachedPredictionMatches;
+  bool get cachedPredictionMatchesAreReal => _cachedPredictionMatchesAreReal;
+  DateTime? get cachedPredictionMatchesUpdatedAt =>
+      _cachedPredictionMatchesUpdatedAt;
+
+  void setCachedPredictionMatches(
+    List<PredictionMatch> matches, {
+    required bool isReal,
+    DateTime? updatedAt,
+  }) {
+    _cachedPredictionMatches = List.unmodifiable(matches);
+    _cachedPredictionMatchesAreReal = isReal;
+    _cachedPredictionMatchesUpdatedAt = updatedAt ?? DateTime.now();
+    notifyListeners();
+  }
+
+  void clearCachedPredictionMatches() {
+    _cachedPredictionMatches = null;
+    _cachedPredictionMatchesAreReal = false;
+    _cachedPredictionMatchesUpdatedAt = null;
+    notifyListeners();
   }
 }

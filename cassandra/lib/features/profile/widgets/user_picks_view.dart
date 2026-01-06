@@ -6,6 +6,7 @@ import '../../predictions/models/formatters.dart';
 import '../../predictions/models/pick_option.dart';
 import '../../scoring/models/match_outcome.dart';
 import '../../scoring/scoring_engine.dart';
+import 'package:cassandra/app/state/cassandra_scope.dart';
 
 class UserPicksView extends StatelessWidget {
   final GroupMember member;
@@ -21,8 +22,9 @@ class UserPicksView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cachedMatches = CassandraScope.of(context).cachedPredictionMatches;
     final day = CassandraScoringEngine.computeDayScore(
-      matches: matchday.matches,
+      matches: (cachedMatches ?? matchday.matches),
       picksByMatchId: picksByMatchId,
       outcomesByMatchId: matchday.outcomesByMatchId,
     );
@@ -30,7 +32,7 @@ class UserPicksView extends StatelessWidget {
     final breakdownById = {for (final b in day.matchBreakdowns) b.matchId: b};
 
     final daysLabel = formatMatchdayDaysItalian(
-      matchday.matches.map((m) => m.kickoff),
+      (cachedMatches ?? matchday.matches).map((m) => m.kickoff),
     );
     final avgOddsLabel = day.averageOddsPlayed == null
         ? '-'
@@ -76,9 +78,9 @@ class UserPicksView extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-              itemCount: matchday.matches.length,
+              itemCount: (cachedMatches ?? matchday.matches).length,
               itemBuilder: (context, i) {
-                final m = matchday.matches[i];
+                final m = (cachedMatches ?? matchday.matches)[i];
                 final pick = picksByMatchId[m.id] ?? PickOption.none;
                 final outcome =
                     matchday.outcomesByMatchId[m.id] ?? MatchOutcome.voided;
