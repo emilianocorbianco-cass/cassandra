@@ -13,6 +13,7 @@ import '../predictions/models/pick_option.dart';
 import 'widgets/user_picks_view.dart';
 import 'widgets/user_stats_view.dart';
 import 'widgets/user_trophies_view.dart';
+import 'package:cassandra/features/predictions/models/formatters.dart';
 
 class UserHubPage extends StatefulWidget {
   final GroupMember member;
@@ -91,6 +92,16 @@ class _UserHubPageState extends State<UserHubPage> {
 
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+    final dataLabel = app.cachedPredictionMatchesAreReal
+        ? 'dati: reali (API)'
+        : 'dati: demo';
+    final updatedLabel =
+        (app.cachedPredictionMatchesAreReal &&
+            app.cachedPredictionMatchesUpdatedAt != null)
+        ? ' • agg. ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
+        : '';
+
     final initial = widget.initialTabIndex.clamp(0, 2);
 
     return DefaultTabController(
@@ -108,12 +119,29 @@ class _UserHubPageState extends State<UserHubPage> {
               ),
             ],
           ),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Pronostici'),
-              Tab(text: 'Stats'),
-              Tab(text: 'Trofei'),
-            ],
+          bottom: PreferredSize(
+            preferredSize: Size.fromHeight(kTextTabBarHeight + 24),
+            child: Column(
+              children: [
+                const TabBar(
+                  tabs: [
+                    Tab(text: 'Pronostici'),
+                    Tab(text: 'Stats'),
+                    Tab(text: 'Trofei'),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '$dataLabel$updatedLabel',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         body: TabBarView(
