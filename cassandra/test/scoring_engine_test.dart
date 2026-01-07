@@ -84,6 +84,65 @@ void main() {
     expect(s.playedOdds, isNull);
   });
 
+  test('pending outcome yields zero (no penalty yet) and no bonus', () {
+    final day = CassandraScoringEngine.computeDayScore(
+      matches: [match],
+      picksByMatchId: {'m1': PickOption.home},
+      outcomesByMatchId: {},
+    );
+
+    expect(day.baseTotal, closeTo(0.0, 0.0001));
+    expect(day.bonusPoints, 0);
+    expect(day.total, closeTo(0.0, 0.0001));
+    expect(day.correctCount, 0);
+    expect(day.averageOddsPlayed, closeTo(1.98, 0.0001));
+    expect(day.matchBreakdowns, hasLength(1));
+    expect(day.matchBreakdowns.first.basePoints, closeTo(0.0, 0.0001));
+    expect(day.matchBreakdowns.first.playedOdds, closeTo(1.98, 0.0001));
+  });
+
+  test('pending outcome does not apply not-played penalty yet', () {
+    final day = CassandraScoringEngine.computeDayScore(
+      matches: [match],
+      picksByMatchId: {},
+      outcomesByMatchId: {},
+    );
+
+    expect(day.matchBreakdowns.first.basePoints, closeTo(0.0, 0.0001));
+    expect(day.matchBreakdowns.first.playedOdds, isNull);
+  });
+
+  test('bonus is applied only when all matches are graded', () {
+    final match2 = PredictionMatch(
+      id: 'm2',
+      homeTeam: 'C',
+      awayTeam: 'D',
+      kickoff: DateTime(2026, 1, 1, 20, 0),
+      odds: odds,
+    );
+
+    final partial = CassandraScoringEngine.computeDayScore(
+      matches: [match, match2],
+      picksByMatchId: {'m1': PickOption.home, 'm2': PickOption.home},
+      outcomesByMatchId: {'m1': MatchOutcome.home},
+    );
+
+    expect(partial.baseTotal, closeTo(1.98, 0.0001));
+    expect(partial.correctCount, 1);
+    expect(partial.bonusPoints, 0);
+
+    final complete = CassandraScoringEngine.computeDayScore(
+      matches: [match, match2],
+      picksByMatchId: {'m1': PickOption.home, 'm2': PickOption.home},
+      outcomesByMatchId: {'m1': MatchOutcome.home, 'm2': MatchOutcome.away},
+    );
+
+    // base = +1.98 + (-1.98) = 0
+    expect(complete.baseTotal, closeTo(0.0, 0.0001));
+    expect(complete.correctCount, 1);
+    expect(complete.bonusPoints, -10);
+    expect(complete.total, closeTo(-10.0, 0.0001));
+  });
   test('bonus table sanity checks', () {
     expect(CassandraScoringEngine.bonusForCorrectCount(0), -20);
     expect(CassandraScoringEngine.bonusForCorrectCount(5), 0);

@@ -93,7 +93,20 @@ class CassandraScoringEngine {
     required PickOption pick,
     required MatchOutcome outcome,
   }) {
-    // Partita non giocata / annullata: 0 per tutti
+    // 0) OUTCOME NON ANCORA DISPONIBILE -> 0 punti per ora (nessuna penalità).
+    // Questo evita di penalizzare "non giocata" prima che la partita sia finita.
+    if (outcome.isPending) {
+      final played = pick.isNone ? null : _oddsPlayedForPick(match, pick);
+      return MatchScoreBreakdown(
+        matchId: match.id,
+        basePoints: 0,
+        correct: false,
+        playedOdds: played,
+        note: 'Outcome pending: 0 per ora',
+      );
+    }
+
+    // 1) Partita annullata/voided: 0 per tutti e non conta quota media
     if (outcome.isVoided) {
       return MatchScoreBreakdown(
         matchId: match.id,
@@ -104,7 +117,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // Partita non giocata dall’utente: -quota più alta (tra 1/X/2)
+    // 2) Partita non giocata dall’utente: -quota più alta (tra 1/X/2)
     if (pick.isNone) {
       final penalty = _max1X2(match.odds);
       return MatchScoreBreakdown(
@@ -116,7 +129,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // Singole
+    // 3) Singole
     if (pick.isSingle) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectSingle(pick, outcome);
@@ -126,12 +139,12 @@ class CassandraScoringEngine {
         matchId: match.id,
         basePoints: base,
         correct: correct,
-        playedOdds: played, // quota media conta sempre se hai giocato
+        playedOdds: played,
         note: correct ? 'Singola corretta' : 'Singola sbagliata',
       );
     }
 
-    // Doppie chance
+    // 4) Doppie chance
     if (pick.isDouble) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectDouble(pick, outcome);
@@ -141,7 +154,7 @@ class CassandraScoringEngine {
           matchId: match.id,
           basePoints: played,
           correct: true,
-          playedOdds: played, // quota media conta sempre se hai giocato
+          playedOdds: played,
           note: 'Doppia corretta',
         );
       } else {
@@ -150,13 +163,13 @@ class CassandraScoringEngine {
           matchId: match.id,
           basePoints: -sumSingles,
           correct: false,
-          playedOdds: played, // hai “rischiato” quella quota doppia
+          playedOdds: played,
           note: 'Doppia sbagliata: -somma quote singole',
         );
       }
     }
 
-    // Fallback (non dovrebbe mai succedere)
+    // 5) Fallback (non dovrebbe mai succedere)
     return MatchScoreBreakdown(
       matchId: match.id,
       basePoints: 0,
@@ -168,6 +181,10 @@ class CassandraScoringEngine {
 
   /// Calcolo completo della giornata:
   /// somma punti match + bonus in base ai corretti.
+  ///
+  /// Regola importante:
+  /// - il bonus si applica SOLO quando TUTTE le partite hanno un outcome "graded"
+  ///   (cioè nessuna è pending).
   static DayScoreBreakdown computeDayScore({
     required List<PredictionMatch> matches,
     required Map<String, PickOption> picksByMatchId,
@@ -177,7 +194,9 @@ class CassandraScoringEngine {
 
     for (final match in matches) {
       final pick = picksByMatchId[match.id] ?? PickOption.none;
-      final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.voided;
+
+      // Se manca outcome per quel match -> pending (non voided!)
+      final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.pending;
 
       breakdowns.add(scoreMatch(match: match, pick: pick, outcome: outcome));
     }
@@ -188,7 +207,13 @@ class CassandraScoringEngine {
     );
     final correctCount = breakdowns.where((b) => b.correct).length;
 
-    final bonus = bonusForCorrectCount(correctCount);
+    // Bonus solo se tutte le partite sono graded (nessun pending).
+    final allGraded = matches.every((m) {
+      final o = outcomesByMatchId[m.id];
+      return o != null && o != MatchOutcome.pending;
+    });
+
+    final bonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
     final total = baseTotal + bonus;
 
     final playedOddsValues = breakdowns

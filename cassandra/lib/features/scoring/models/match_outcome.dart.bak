@@ -19,17 +19,17 @@ extension MatchOutcomeX on MatchOutcome {
   bool get isPending => this == MatchOutcome.pending;
   bool get isVoided => this == MatchOutcome.voided;
 
-  /// “Graded” = abbiamo un outcome definitivo (anche voided).
-  bool get isGraded => !isPending;
 
   /// Etichetta breve per UI (coerente con PickOption.label)
-  String get label =>
-      const {
+  String get label => const {
         MatchOutcome.home: '1',
         MatchOutcome.draw: 'X',
         MatchOutcome.away: '2',
         MatchOutcome.pending: '-',
         MatchOutcome.voided: 'ann.',
-      }[this] ??
-      name; // fallback se un domani aggiungi valori all'enum
+      }[this] ?? name; // fallback se un domani aggiungi valori all'enum
+}
+
+  /// “Graded” = abbiamo un outcome definitivo (anche voided).
+  bool get isGraded => !isPending;
 }
