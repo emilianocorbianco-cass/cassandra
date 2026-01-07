@@ -52,6 +52,15 @@ class _GroupPageState extends State<GroupPage> {
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
 
+    final dataLabel = appState.cachedPredictionMatchesAreReal
+        ? 'dati: reali (API)'
+        : 'dati: demo';
+    final updatedLabel =
+        (appState.cachedPredictionMatchesAreReal &&
+            appState.cachedPredictionMatchesUpdatedAt != null)
+        ? ' • agg. ${formatKickoff(appState.cachedPredictionMatchesUpdatedAt!)}'
+        : '';
+
     final overrideMember = GroupMember(
       id: appState.profile.id,
       displayName: appState.profile.displayName,
@@ -69,7 +78,22 @@ class _GroupPageState extends State<GroupPage> {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Il mio gruppo')),
+      appBar: AppBar(
+        title: const Text('Il mio gruppo'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '$dataLabel$updatedLabel',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
