@@ -69,4 +69,29 @@ class ApiFootballService {
         .map((e) => ApiFootballFixture.fromJson(e.cast<String, dynamic>()))
         .toList();
   }
+
+  Future<List<ApiFootballFixture>> getLastSerieAFixtures({
+    int count = 10,
+  }) async {
+    final season = _seasonStartYear(DateTime.now());
+    final leagueId = await _resolveSerieALeagueId(season: season);
+
+    final json = await _client.getJson(
+      'fixtures',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+        'last': '$count',
+        'timezone': 'Europe/Rome',
+      },
+    );
+
+    final response = json['response'];
+    if (response is! List) return [];
+
+    return response
+        .whereType<Map>()
+        .map((e) => ApiFootballFixture.fromJson(e.cast<String, dynamic>()))
+        .toList();
+  }
 }
