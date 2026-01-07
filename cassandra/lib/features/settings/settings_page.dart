@@ -4,6 +4,11 @@ import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:flutter/material.dart';
 
 import 'api_football_diagnostics_page.dart';
+import 'package:cassandra/app/config/env.dart';
+import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
+import 'package:cassandra/features/predictions/models/formatters.dart';
+import 'package:cassandra/services/api_football/api_football_client.dart';
+import 'package:cassandra/services/api_football/api_football_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -13,6 +18,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  bool _fixturesRefreshing = false;
+
   final _teamNameCtrl = TextEditingController();
   final _favoriteTeamCtrl = TextEditingController();
 
@@ -83,9 +90,79 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _refreshFixturesCache() async {
+    if (_fixturesRefreshing) return;
+
+    final app = CassandraScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() => _fixturesRefreshing = true);
+
+    String? key;
+    try {
+      key = Env.apiFootballKey;
+    } catch (_) {
+      key = null;
+    }
+
+    if (key == null || key.trim().isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(_t(app, 'API key mancante', 'Missing API key'))),
+      );
+      if (mounted) setState(() => _fixturesRefreshing = false);
+      return;
+    }
+
+    final client = ApiFootballClient(
+      apiKey: key,
+      baseUrl: Env.baseUrl,
+      useRapidApi: Env.useRapidApi,
+      rapidApiHost: Env.rapidApiHost,
+    );
+
+    try {
+      final service = ApiFootballService(client);
+      final fixtures = await service.getNextSerieAFixtures(count: 10);
+      final matches = predictionMatchesFromFixtures(fixtures);
+
+      app.setCachedPredictionMatches(
+        matches,
+        isReal: true,
+        updatedAt: DateTime.now(),
+      );
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(_t(app, 'Fixtures aggiornate', 'Fixtures updated')),
+        ),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(app, 'Errore aggiornando fixtures', 'Error refreshing fixtures'),
+          ),
+        ),
+      );
+    } finally {
+      client.close();
+      if (mounted) setState(() => _fixturesRefreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    final hasFixturesCache = app.cachedPredictionMatches != null;
+    final dataLabel = !hasFixturesCache
+        ? _t(app, 'cache: vuota', 'cache: empty')
+        : (app.cachedPredictionMatchesAreReal
+              ? _t(app, 'dati: reali (API)', 'data: real (API)')
+              : _t(app, 'dati: demo', 'data: demo'));
+    final updatedLabel = app.cachedPredictionMatchesUpdatedAt != null
+        ? ' • ${_t(app, 'agg.', 'upd.')} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
+        : '';
+
     final isEn = _isEnglish(app);
 
     return Scaffold(
@@ -193,6 +270,65 @@ class _SettingsPageState extends State<SettingsPage> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
+          // Fixtures cache (runtime)
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.storage),
+                  title: Text(_t(app, 'Fixtures cache', 'Fixtures cache')),
+                  subtitle: Text('$dataLabel$updatedLabel'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.refresh),
+                  title: Text(
+                    _t(app, 'Aggiorna fixtures ora', 'Refresh fixtures now'),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      app,
+                      'Scarica i prossimi 10 match di Serie A e aggiorna la cache.',
+                      'Fetch next 10 Serie A matches and update cache.',
+                    ),
+                  ),
+                  trailing: _fixturesRefreshing
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  onTap: _fixturesRefreshing ? null : _refreshFixturesCache,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: Text(
+                    _t(app, 'Svuota cache fixtures', 'Clear fixtures cache'),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      app,
+                      'Torna ai dati demo fino al prossimo refresh.',
+                      'Fallback to demo data until next refresh.',
+                    ),
+                  ),
+                  onTap: () {
+                    app.clearCachedPredictionMatches();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          _t(app, 'Cache svuotata', 'Cache cleared'),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+
           Card(
             child: ListTile(
               title: Text(_t(app, 'Test API-FOOTBALL', 'Test API-FOOTBALL')),
