@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'user_profile.dart';
 import 'package:cassandra/features/predictions/models/prediction_match.dart';
+import '../../features/scoring/models/match_outcome.dart';
 
 class AppState extends ChangeNotifier {
+  Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
@@ -209,6 +211,13 @@ class AppState extends ChangeNotifier {
     _cachedPredictionMatches = null;
     _cachedPredictionMatchesAreReal = false;
     _cachedPredictionMatchesUpdatedAt = null;
+    notifyListeners();
+  }
+
+  void setCachedPredictionOutcomesByMatchId(
+    Map<String, MatchOutcome> outcomes,
+  ) {
+    cachedPredictionOutcomesByMatchId = Map.unmodifiable(outcomes);
     notifyListeners();
   }
 }

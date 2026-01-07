@@ -15,6 +15,7 @@ import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 import '../../app/state/cassandra_scope.dart';
+import '../scoring/adapters/api_football_fixture_outcome_adapter.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -269,6 +270,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
     try {
       final service = ApiFootballService(client);
       final fixtures = await service.getNextSerieAFixtures(count: 10);
+      final outcomes = outcomesByMatchIdFromFixtures(fixtures);
       final matches = predictionMatchesFromFixtures(fixtures);
       if (matches.isEmpty) return;
 
@@ -285,6 +287,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
         isReal: true,
         updatedAt: _fixturesUpdatedAt,
       );
+      CassandraScope.of(context).setCachedPredictionOutcomesByMatchId(outcomes);
     } catch (_) {
       // Se fallisce la rete o la key, restiamo sui mock.
     } finally {

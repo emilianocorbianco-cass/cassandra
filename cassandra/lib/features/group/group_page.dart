@@ -92,6 +92,14 @@ class _GroupPageState extends State<GroupPage> {
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
 
+    final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
+        ? <String, MatchOutcome>{
+            for (final m in _matches)
+              if (appState.cachedPredictionOutcomesByMatchId[m.id] != null)
+                m.id: appState.cachedPredictionOutcomesByMatchId[m.id]!,
+          }
+        : _outcomes;
+
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
 
@@ -117,7 +125,7 @@ class _GroupPageState extends State<GroupPage> {
 
     final entries = buildSortedMockGroupLeaderboard(
       matches: _matches,
-      outcomesByMatchId: _outcomes,
+      outcomesByMatchId: outcomesByMatchId,
       members: members,
     );
 
@@ -185,7 +193,7 @@ class _GroupPageState extends State<GroupPage> {
                               totalPlayers: entries.length,
                               matches: _matches,
                               picksByMatchId: e.picksByMatchId,
-                              outcomesByMatchId: _outcomes,
+                              outcomesByMatchId: outcomesByMatchId,
                               day: e.day,
                             );
 
@@ -197,7 +205,7 @@ class _GroupPageState extends State<GroupPage> {
                               final md = MatchdayData(
                                 dayNumber: _matchdayNumber,
                                 matches: _matches,
-                                outcomesByMatchId: _outcomes,
+                                outcomesByMatchId: outcomesByMatchId,
                               );
 
                               Navigator.of(context).push(
