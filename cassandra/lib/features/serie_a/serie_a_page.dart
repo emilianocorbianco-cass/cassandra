@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../app/config/env.dart';
-import '../predictions/models/formatters.dart';
 import '../../services/api_football/api_football_client.dart';
 import '../../services/api_football/api_football_service.dart';
 import '../../services/api_football/models/api_football_fixture.dart';
+import '../predictions/models/formatters.dart';
 import 'adapters/fixture_result_adapter.dart';
 
 class SerieAPage extends StatefulWidget {
@@ -27,12 +27,13 @@ class _SerieAPageState extends State<SerieAPage> {
   }
 
   String? _safeApiKey() {
+    // In test env dotEnv può non essere inizializzato → non dobbiamo crashare.
     try {
-      final k = Env.apiFootballKey?.trim();
+      final raw = Env.apiFootballKey;
+      final k = raw?.trim();
       if (k == null || k.isEmpty) return null;
       return k;
     } catch (_) {
-      // In test env dotEnv può non essere inizializzato → non dobbiamo crashare.
       return null;
     }
   }
@@ -57,7 +58,6 @@ class _SerieAPageState extends State<SerieAPage> {
     try {
       final service = ApiFootballService(client);
 
-      // 10 ultimi e 10 prossimi
       final last = await service.getLastSerieAFixtures(count: 10);
       final next = await service.getNextSerieAFixtures(count: 10);
 
@@ -141,7 +141,7 @@ class _SerieAPageState extends State<SerieAPage> {
   Widget _buildList(BuildContext context, AsyncSnapshot<_SerieAData> snap) {
     if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
       return ListView(
-        children: [
+        children: const [
           SizedBox(height: 240),
           Center(child: CircularProgressIndicator()),
         ],
@@ -166,7 +166,7 @@ class _SerieAPageState extends State<SerieAPage> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       itemCount: fixtures.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final f = fixtures[i];
 
@@ -174,17 +174,24 @@ class _SerieAPageState extends State<SerieAPage> {
         final out = fixtureOutcomeLabel(f); // 1/X/2 oppure ""
         final trailing = out.isEmpty ? score : '$score\n$out';
 
-        // Nomi squadra: supporta sia "homeTeam/awayTeam" che "homeName/awayName" via dynamic.
-        final home = _teamName(f, isHome: true);
-        final away = _teamName(f, isHome: false);
+        final kickoffLocal = f.kickoffUtc.toLocal();
 
-        final kickoff = _kickoff(f);
+        final extra = <String>[];
+        if (f.round != null && f.round!.trim().isNotEmpty) {
+          extra.add(f.round!.trim());
+        }
+        // Nei "risultati" è utile vedere lo status (FT, AET, ecc.)
+        if (_segment == 0 && f.statusShort.trim().isNotEmpty) {
+          extra.add(f.statusShort.trim());
+        }
+
+        final extraLabel = extra.isEmpty ? '' : ' • ${extra.join(' • ')}';
 
         return Card(
           child: ListTile(
-            title: Text('$home  vs  $away'),
+            title: Text('${f.homeName}  vs  ${f.awayName}'),
             subtitle: Text(
-              'Kickoff: ${kickoff != null ? formatKickoff(kickoff) : '-'}',
+              'Kickoff: ${formatKickoff(kickoffLocal)}$extraLabel',
             ),
             trailing: Text(
               trailing,
@@ -195,45 +202,6 @@ class _SerieAPageState extends State<SerieAPage> {
         );
       },
     );
-  }
-
-  DateTime? _kickoff(ApiFootballFixture f) {
-    try {
-      // ignore: avoid_dynamic_calls
-      return (f as dynamic).kickoff as DateTime?;
-    } catch (_) {
-      try {
-        // ignore: avoid_dynamic_calls
-        return (f as dynamic).date as DateTime?;
-      } catch (_) {
-        return null;
-      }
-    }
-  }
-
-  String _teamName(ApiFootballFixture f, {required bool isHome}) {
-    try {
-      // ignore: avoid_dynamic_calls
-      return (isHome ? (f as dynamic).homeTeam : (f as dynamic).awayTeam)
-          as String;
-    } catch (_) {}
-
-    try {
-      // ignore: avoid_dynamic_calls
-      return (isHome ? (f as dynamic).homeName : (f as dynamic).awayName)
-          as String;
-    } catch (_) {}
-
-    try {
-      // ignore: avoid_dynamic_calls
-      final teams = (f as dynamic).teams;
-      // ignore: avoid_dynamic_calls
-      final team = isHome ? teams.home : teams.away;
-      // ignore: avoid_dynamic_calls
-      return (team.name as String?) ?? (isHome ? 'Home' : 'Away');
-    } catch (_) {
-      return isHome ? 'Home' : 'Away';
-    }
   }
 }
 
