@@ -1,18 +1,17 @@
-import '../badges/badge_engine.dart';
-import '../badges/widgets/avatar_with_badges.dart';
-
 import 'package:flutter/material.dart';
 
+import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../badges/badge_engine.dart';
+import '../badges/widgets/avatar_with_badges.dart';
+import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/mock_prediction_data.dart';
 import '../predictions/models/prediction_match.dart';
+import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
 
 import 'mock_group_data.dart';
-import '../leaderboards/models/matchday_data.dart';
-import '../profile/user_hub_page.dart';
-import '../../app/state/cassandra_scope.dart';
 import 'models/group_member.dart';
 
 class GroupPage extends StatefulWidget {
@@ -26,20 +25,61 @@ class _GroupPageState extends State<GroupPage> {
   static const int _matchdayNumber = 20;
   static const String _groupName = 'Cassandra Crew';
 
-  late final List<PredictionMatch> _matches;
-  late final Map<String, MatchOutcome> _outcomes;
+  // Fallback demo: stabile, creato una volta.
+  late final List<PredictionMatch> _fallbackMatches;
+
+  // Lista match effettiva (cache se c'è, altrimenti demo)
+  List<PredictionMatch> _matches = [];
+
+  // Esiti demo per calcolare classifica/punti (finché non useremo risultati reali).
+  Map<String, MatchOutcome> _outcomes = {};
+
+  // Firma per capire quando i match sono cambiati (es: refresh API).
+  String _matchesSignature = '';
+  String _pendingSignature = '';
 
   int _segment = 0; // 0 = classifica, 1 = giornate (placeholder)
 
   @override
   void initState() {
     super.initState();
-    _matches = mockPredictionMatches();
-    _outcomes = mockOutcomesForMatches(_matches);
+    _fallbackMatches = mockPredictionMatches();
+    _applyMatches(_fallbackMatches);
   }
 
-  String get _matchdayLabel {
-    final days = formatMatchdayDaysItalian(_matches.map((m) => m.kickoff));
+  String _signatureFor(List<PredictionMatch> matches) {
+    final ids = matches.map((m) => m.id).toList()..sort();
+    return ids.join('|');
+  }
+
+  void _applyMatches(List<PredictionMatch> matches) {
+    _matches = matches;
+    _outcomes = mockOutcomesForMatches(matches);
+    _matchesSignature = _signatureFor(matches);
+    _pendingSignature = '';
+  }
+
+  void _syncFromCacheIfNeeded(dynamic appState) {
+    final cached = appState.cachedPredictionMatches as List<PredictionMatch>?;
+    final desired = cached ?? _fallbackMatches;
+    final sig = _signatureFor(desired);
+
+    // Già allineati o sync già pianificata.
+    if (sig == _matchesSignature || sig == _pendingSignature) return;
+
+    _pendingSignature = sig;
+
+    // Non chiamiamo setState dentro build: lo pianifichiamo post-frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _applyMatches(desired);
+      });
+    });
+  }
+
+  String _matchdayLabelFor(List<PredictionMatch> matches) {
+    final days = formatMatchdayDaysItalian(matches.map((m) => m.kickoff));
     return 'giornata $_matchdayNumber - $days';
   }
 
@@ -52,9 +92,13 @@ class _GroupPageState extends State<GroupPage> {
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
 
+    // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
+    _syncFromCacheIfNeeded(appState);
+
     final dataLabel = appState.cachedPredictionMatchesAreReal
         ? 'dati: reali (API)'
         : 'dati: demo';
+
     final updatedLabel =
         (appState.cachedPredictionMatchesAreReal &&
             appState.cachedPredictionMatchesUpdatedAt != null)
@@ -108,7 +152,7 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    _matchdayLabel,
+                    _matchdayLabelFor(_matches),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 10),
@@ -133,6 +177,7 @@ class _GroupPageState extends State<GroupPage> {
                       itemCount: entries.length,
                       itemBuilder: (context, i) {
                         final e = entries[i];
+
                         final badges =
                             CassandraBadgeEngine.badgesForGroupMatchday(
                               member: e.member,
@@ -166,7 +211,6 @@ class _GroupPageState extends State<GroupPage> {
                                 ),
                               );
                             },
-
                             leading: SizedBox(
                               width: 64,
                               child: Row(
@@ -197,7 +241,6 @@ class _GroupPageState extends State<GroupPage> {
                                 ],
                               ),
                             ),
-
                             title: Text(e.member.displayName),
                             subtitle: Text(e.member.teamName),
                             trailing: Text(
