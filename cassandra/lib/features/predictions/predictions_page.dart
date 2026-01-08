@@ -15,7 +15,7 @@ import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 import '../../app/state/cassandra_scope.dart';
-import '../scoring/adapters/api_football_fixture_outcome_adapter.dart';
+import '../scoring/adapters/api_football_outcome_adapter.dart';
 
 enum VisibilityChoice { private, public }
 

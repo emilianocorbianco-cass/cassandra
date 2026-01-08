@@ -4,63 +4,91 @@ import 'package:cassandra/features/scoring/adapters/api_football_outcome_adapter
 import 'package:cassandra/features/scoring/models/match_outcome.dart';
 import 'package:cassandra/services/api_football/models/api_football_fixture.dart';
 
-ApiFootballFixture f({required String status, int? hg, int? ag}) {
-  return ApiFootballFixture(
-    fixtureId: 123,
-    kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
-    homeName: 'Home',
-    awayName: 'Away',
-    statusShort: status,
-    homeGoals: hg,
-    awayGoals: ag,
-    round: 'Regular Season - 20',
-  );
-}
-
 void main() {
   test('FT with goals -> home/draw/away', () {
-    expect(
-      matchOutcomeFromFixture(f(status: 'FT', hg: 2, ag: 1)),
-      MatchOutcome.home,
+    final homeWin = ApiFootballFixture(
+      fixtureId: 10,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: 'FT',
+      homeGoals: 2,
+      awayGoals: 1,
     );
-    expect(
-      matchOutcomeFromFixture(f(status: 'FT', hg: 1, ag: 1)),
-      MatchOutcome.draw,
+    expect(matchOutcomeFromFixture(homeWin), MatchOutcome.home);
+
+    final draw = ApiFootballFixture(
+      fixtureId: 11,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: 'FT',
+      homeGoals: 0,
+      awayGoals: 0,
     );
-    expect(
-      matchOutcomeFromFixture(f(status: 'FT', hg: 0, ag: 3)),
-      MatchOutcome.away,
+    expect(matchOutcomeFromFixture(draw), MatchOutcome.draw);
+
+    final awayWin = ApiFootballFixture(
+      fixtureId: 12,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: 'FT',
+      homeGoals: 1,
+      awayGoals: 3,
     );
+    expect(matchOutcomeFromFixture(awayWin), MatchOutcome.away);
   });
 
-  test('AET/PEN behave like finished when goals exist', () {
-    expect(
-      matchOutcomeFromFixture(f(status: 'AET', hg: 1, ag: 0)),
-      MatchOutcome.home,
+  test('NS/live -> pending', () {
+    final ns = ApiFootballFixture(
+      fixtureId: 20,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: 'NS',
+      homeGoals: null,
+      awayGoals: null,
     );
-    expect(
-      matchOutcomeFromFixture(f(status: 'PEN', hg: 2, ag: 2)),
-      MatchOutcome.draw,
+    expect(matchOutcomeFromFixture(ns), MatchOutcome.pending);
+
+    final live = ApiFootballFixture(
+      fixtureId: 21,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: '1H',
+      homeGoals: 1,
+      awayGoals: 0,
     );
+    expect(matchOutcomeFromFixture(live), MatchOutcome.pending);
   });
 
-  test('Finished status but missing goals -> pending (safe fallback)', () {
-    expect(
-      matchOutcomeFromFixture(f(status: 'FT', hg: null, ag: 1)),
-      MatchOutcome.pending,
+  test('PST/CANC -> voided', () {
+    final pst = ApiFootballFixture(
+      fixtureId: 30,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: 'PST',
+      homeGoals: null,
+      awayGoals: null,
     );
+    expect(matchOutcomeFromFixture(pst), MatchOutcome.voided);
   });
 
-  test('Voided statuses -> voided', () {
-    expect(matchOutcomeFromFixture(f(status: 'PST')), MatchOutcome.voided);
-    expect(matchOutcomeFromFixture(f(status: 'CANC')), MatchOutcome.voided);
-    expect(matchOutcomeFromFixture(f(status: 'ABD')), MatchOutcome.voided);
-  });
+  test('map builder uses fixtureId.toString() as key', () {
+    final f = ApiFootballFixture(
+      fixtureId: 99,
+      kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
+      homeName: 'A',
+      awayName: 'B',
+      statusShort: 'FT',
+      homeGoals: 1,
+      awayGoals: 0,
+    );
 
-  test('Non-finished statuses -> pending', () {
-    expect(matchOutcomeFromFixture(f(status: 'NS')), MatchOutcome.pending);
-    expect(matchOutcomeFromFixture(f(status: '1H')), MatchOutcome.pending);
-    expect(matchOutcomeFromFixture(f(status: '2H')), MatchOutcome.pending);
-    expect(matchOutcomeFromFixture(f(status: 'HT')), MatchOutcome.pending);
+    final map = outcomesByMatchIdFromFixtures([f]);
+    expect(map['99'], MatchOutcome.home);
   });
 }

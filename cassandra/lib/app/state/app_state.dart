@@ -202,6 +202,7 @@ class AppState extends ChangeNotifier {
     DateTime? updatedAt,
   }) {
     _cachedPredictionMatches = List.unmodifiable(matches);
+    cachedPredictionOutcomesByMatchId = {};
     _cachedPredictionMatchesAreReal = isReal;
     _cachedPredictionMatchesUpdatedAt = updatedAt ?? DateTime.now();
     notifyListeners();
@@ -209,6 +210,7 @@ class AppState extends ChangeNotifier {
 
   void clearCachedPredictionMatches() {
     _cachedPredictionMatches = null;
+    cachedPredictionOutcomesByMatchId = {};
     _cachedPredictionMatchesAreReal = false;
     _cachedPredictionMatchesUpdatedAt = null;
     notifyListeners();
