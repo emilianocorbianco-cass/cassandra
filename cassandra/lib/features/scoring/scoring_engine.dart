@@ -210,7 +210,7 @@ class CassandraScoringEngine {
     // Bonus solo se tutte le partite sono graded (nessun pending).
     final allGraded = matches.every((m) {
       final o = outcomesByMatchId[m.id];
-      return o != null && o != MatchOutcome.pending;
+      return o != null && !o.isPending;
     });
 
     final bonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
