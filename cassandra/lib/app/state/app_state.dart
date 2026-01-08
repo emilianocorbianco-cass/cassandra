@@ -216,6 +216,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearCachedPredictionOutcomes() {
+    cachedPredictionOutcomesByMatchId = {};
+    notifyListeners();
+  }
+
+  void clearAllPredictionCache() {
+    _cachedPredictionMatches = null;
+    _cachedPredictionMatchesAreReal = false;
+    _cachedPredictionMatchesUpdatedAt = null;
+    cachedPredictionOutcomesByMatchId = {};
+    notifyListeners();
+  }
+
   void setCachedPredictionOutcomesByMatchId(
     Map<String, MatchOutcome> outcomes,
   ) {

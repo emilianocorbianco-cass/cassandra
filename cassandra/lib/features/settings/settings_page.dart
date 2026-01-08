@@ -170,6 +170,82 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Builder(
+                builder: (context) {
+                  final app = CassandraScope.of(context);
+                  final matchCount = app.cachedPredictionMatches?.length ?? 0;
+                  final outcomesCount =
+                      app.cachedPredictionOutcomesByMatchId.length;
+                  final kind = app.cachedPredictionMatchesAreReal
+                      ? 'reali (API)'
+                      : (matchCount > 0 ? 'demo' : 'vuota');
+                  final updated = app.cachedPredictionMatchesUpdatedAt;
+                  String fmt(DateTime dt) {
+                    final dd = dt.day.toString().padLeft(2, '0');
+                    final mm = dt.month.toString().padLeft(2, '0');
+                    final hh = dt.hour.toString().padLeft(2, '0');
+                    final mi = dt.minute.toString().padLeft(2, '0');
+                    return '$dd/$mm $hh:$mi';
+                  }
+
+                  final updatedLabel = (updated == null) ? 'mai' : fmt(updated);
+
+                  void snack(String msg) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(msg)));
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Debug cache',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text('fixtures: $kind'),
+                      Text('match in cache: $matchCount'),
+                      Text('outcomes in cache: $outcomesCount'),
+                      Text('aggiornamento: $updatedLabel'),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.tonal(
+                            onPressed: () {
+                              app.clearCachedPredictionMatches();
+                              snack('Cache fixtures svuotata');
+                            },
+                            child: const Text('Svuota fixtures'),
+                          ),
+                          FilledButton.tonal(
+                            onPressed: () {
+                              app.clearCachedPredictionOutcomes();
+                              snack('Cache outcomes svuotata');
+                            },
+                            child: const Text('Svuota outcomes'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              app.clearAllPredictionCache();
+                              snack('Cache pronostici svuotata');
+                            },
+                            child: const Text('Svuota tutto'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             _t(app, 'Profilo', 'Profile'),
             style: Theme.of(context).textTheme.titleMedium,
