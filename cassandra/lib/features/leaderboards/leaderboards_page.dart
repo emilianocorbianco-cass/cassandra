@@ -74,6 +74,40 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
 
+    final cachedMatches = appState.cachedPredictionMatches;
+    final liveDayNumber = _matchdays.isNotEmpty
+        ? _matchdays.last.dayNumber
+        : 20;
+    final useLive =
+        appState.cachedPredictionMatchesAreReal &&
+        cachedMatches != null &&
+        cachedMatches.isNotEmpty;
+
+    final liveOutcomes = <String, MatchOutcome>{};
+    if (cachedMatches != null) {
+      for (final m in cachedMatches) {
+        liveOutcomes[m.id] =
+            appState.cachedPredictionOutcomesByMatchId[m.id] ??
+            MatchOutcome.pending;
+      }
+    }
+
+    final liveMatchday = useLive
+        ? MatchdayData(
+            dayNumber: liveDayNumber,
+            matches: cachedMatches,
+            outcomesByMatchId: liveOutcomes,
+          )
+        : null;
+
+    final matchdays = useLive
+        ? [
+            for (final md in _matchdays)
+              if (md.dayNumber != liveDayNumber) md,
+            liveMatchday!,
+          ]
+        : _matchdays;
+
     final overrideMember = GroupMember(
       id: appState.profile.id,
       displayName: appState.profile.displayName,
@@ -85,7 +119,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     final members = mockGroupMembers(overrideMember: overrideMember);
 
     final entries = buildMockSeasonLeaderboardEntries(
-      matchdays: _matchdays,
+      matchdays: matchdays,
       members: members,
     );
 
@@ -193,9 +227,10 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
               child: _segment == 1
                   ? ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      itemCount: _matchdays.length,
+                      itemCount: matchdays.length,
                       itemBuilder: (context, i) {
-                        final md = _matchdays[_matchdays.length - 1 - i];
+                        final md = matchdays[matchdays.length - 1 - i];
+                        final isLive = useLive && md.dayNumber == liveDayNumber;
                         final daysLabel = formatMatchdayDaysItalian(
                           md.matches.map((m) => m.kickoff),
                         );
@@ -213,8 +248,25 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                 ),
                               ),
                             ),
-                            title: Text('Giornata ${md.dayNumber}'),
-                            subtitle: Text(daysLabel),
+                            title: Text(
+                              isLive
+                                  ? 'Giornata ${md.dayNumber} (LIVE)'
+                                  : 'Giornata ${md.dayNumber}',
+                            ),
+                            subtitle: Text(() {
+                              final total = md.matches.length;
+                              final graded = md.matches.where((m) {
+                                final o =
+                                    md.outcomesByMatchId[m.id] ??
+                                    MatchOutcome.pending;
+                                return !o.isPending;
+                              }).length;
+                              final rl = (graded == total)
+                                  ? 'risultati: $graded/$total'
+                                  : 'risultati: $graded/$total (parziale)';
+                              return '$daysLabel\n$rl';
+                            }()),
+                            isThreeLine: true,
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               Navigator.of(context).push(
