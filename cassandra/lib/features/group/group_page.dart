@@ -13,6 +13,8 @@ import '../scoring/models/match_outcome.dart';
 
 import 'mock_group_data.dart';
 import 'models/group_member.dart';
+import '../leaderboards/mock_season_data.dart';
+import '../leaderboards/matchday_leaderboard_page.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -139,6 +141,15 @@ class _GroupPageState extends State<GroupPage> {
       members: members,
     );
 
+    // Storico (DEMO) per ora: giornate 16–19 (evitiamo mismatch con la giornata corrente reale).
+    final seasonMatchdays = mockSeasonMatchdays(startDay: 16, count: 4);
+    final seasonEntries = buildMockSeasonLeaderboardEntries(
+      matchdays: seasonMatchdays,
+      members: members,
+    );
+    final seasonMatchdaysDesc = seasonMatchdays.toList()
+      ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Il mio gruppo'),
@@ -196,7 +207,60 @@ class _GroupPageState extends State<GroupPage> {
             const Divider(height: 1),
             Expanded(
               child: _segment == 1
-                  ? const Center(child: Text('Storico giornate (in arrivo)'))
+                  ? ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                      itemCount: seasonMatchdaysDesc.length + 1,
+                      itemBuilder: (context, i) {
+                        if (i == 0) {
+                          return const Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Text(
+                                'Storico giornate (DEMO)'
+                                'Qui mostriamo 16–19 dai mock. Appena abbiamo storico reale via API, lo rendiamo “vero”.',
+                              ),
+                            ),
+                          );
+                        }
+
+                        final md = seasonMatchdaysDesc[i - 1];
+
+                        final daysLabel = formatMatchdayDaysItalian(
+                          md.matches.map((m) => m.kickoff),
+                        );
+
+                        final graded = md.matches.where((m) {
+                          final o = md.outcomesByMatchId[m.id];
+                          return o != null && o != MatchOutcome.pending;
+                        }).length;
+
+                        final total = md.matches.length;
+                        final resultsLabel = graded == total
+                            ? '$graded/$total'
+                            : '$graded/$total (parziale)';
+
+                        return Card(
+                          child: ListTile(
+                            title: Text('Giornata ${md.dayNumber}'),
+                            subtitle: Text(
+                              '$daysLabel\nrisultati: $resultsLabel',
+                            ),
+                            isThreeLine: true,
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => MatchdayLeaderboardPage(
+                                    matchday: md,
+                                    seasonEntries: seasonEntries,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                       itemCount: entries.length,
