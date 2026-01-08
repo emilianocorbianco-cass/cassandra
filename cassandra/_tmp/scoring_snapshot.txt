@@ -1,0 +1,341 @@
+===== SCORING FILES =====
+total 32
+drwxr-xr-x   6 emilianoc  staff   192 Jan  7 22:00 .
+drwxr-xr-x  13 emilianoc  staff   416 Jan  5 12:02 ..
+-rw-r--r--   1 emilianoc  staff  6148 Jan  7 22:54 .DS_Store
+drwxr-xr-x   4 emilianoc  staff   128 Jan  7 22:36 adapters
+drwxr-xr-x   5 emilianoc  staff   160 Jan  7 22:12 models
+-rw-r--r--@  1 emilianoc  staff  6874 Jan  7 21:29 scoring_engine.dart
+
+===== scoring_engine.dart (prime ~320 righe) =====
+     1	import '../predictions/models/pick_option.dart';
+     2	import '../predictions/models/prediction_match.dart';
+     3	import 'models/match_outcome.dart';
+     4	import 'models/score_breakdown.dart';
+     5	
+     6	class CassandraScoringEngine {
+     7	  // Tabella bonus/malus (come da regole Cassandra)
+     8	  static const Map<int, int> _bonusByCorrect = {
+     9	    0: -20,
+    10	    1: -10,
+    11	    2: -5,
+    12	    3: -2,
+    13	    4: -1,
+    14	    5: 0,
+    15	    6: 1,
+    16	    7: 2,
+    17	    8: 5,
+    18	    9: 10,
+    19	    10: 20,
+    20	  };
+    21	
+    22	  static int bonusForCorrectCount(int correctCount) {
+    23	    final int c = correctCount.clamp(0, 10);
+    24	    return _bonusByCorrect[c] ?? 0;
+    25	  }
+    26	
+    27	  static double _max1X2(Odds o) {
+    28	    var m = o.home;
+    29	    if (o.draw > m) m = o.draw;
+    30	    if (o.away > m) m = o.away;
+    31	    return m;
+    32	  }
+    33	
+    34	  static double? _oddsPlayedForPick(PredictionMatch match, PickOption pick) {
+    35	    switch (pick) {
+    36	      case PickOption.none:
+    37	        return null;
+    38	
+    39	      case PickOption.home:
+    40	        return match.odds.home;
+    41	      case PickOption.draw:
+    42	        return match.odds.draw;
+    43	      case PickOption.away:
+    44	        return match.odds.away;
+    45	
+    46	      case PickOption.homeDraw:
+    47	        return match.odds.homeDraw;
+    48	      case PickOption.drawAway:
+    49	        return match.odds.drawAway;
+    50	      case PickOption.homeAway:
+    51	        return match.odds.homeAway;
+    52	    }
+    53	  }
+    54	
+    55	  static bool _isCorrectSingle(PickOption pick, MatchOutcome outcome) {
+    56	    return (pick == PickOption.home && outcome == MatchOutcome.home) ||
+    57	        (pick == PickOption.draw && outcome == MatchOutcome.draw) ||
+    58	        (pick == PickOption.away && outcome == MatchOutcome.away);
+    59	  }
+    60	
+    61	  static bool _isCorrectDouble(PickOption pick, MatchOutcome outcome) {
+    62	    switch (pick) {
+    63	      case PickOption.homeDraw:
+    64	        return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;
+    65	      case PickOption.drawAway:
+    66	        return outcome == MatchOutcome.draw || outcome == MatchOutcome.away;
+    67	      case PickOption.homeAway:
+    68	        return outcome == MatchOutcome.home || outcome == MatchOutcome.away;
+    69	      default:
+    70	        return false;
+    71	    }
+    72	  }
+    73	
+    74	  static double _wrongDoublePenaltySumSingles(
+    75	    PredictionMatch match,
+    76	    PickOption pick,
+    77	  ) {
+    78	    switch (pick) {
+    79	      case PickOption.homeDraw:
+    80	        return match.odds.home + match.odds.draw;
+    81	      case PickOption.drawAway:
+    82	        return match.odds.draw + match.odds.away;
+    83	      case PickOption.homeAway:
+    84	        return match.odds.home + match.odds.away;
+    85	      default:
+    86	        return 0;
+    87	    }
+    88	  }
+    89	
+    90	  /// Calcola punteggio per singola partita (senza bonus giornata).
+    91	  static MatchScoreBreakdown scoreMatch({
+    92	    required PredictionMatch match,
+    93	    required PickOption pick,
+    94	    required MatchOutcome outcome,
+    95	  }) {
+    96	    // 0) OUTCOME NON ANCORA DISPONIBILE -> 0 punti per ora (nessuna penalità).
+    97	    // Questo evita di penalizzare "non giocata" prima che la partita sia finita.
+    98	    if (outcome.isPending) {
+    99	      final played = pick.isNone ? null : _oddsPlayedForPick(match, pick);
+   100	      return MatchScoreBreakdown(
+   101	        matchId: match.id,
+   102	        basePoints: 0,
+   103	        correct: false,
+   104	        playedOdds: played,
+   105	        note: 'Outcome pending: 0 per ora',
+   106	      );
+   107	    }
+   108	
+   109	    // 1) Partita annullata/voided: 0 per tutti e non conta quota media
+   110	    if (outcome.isVoided) {
+   111	      return MatchScoreBreakdown(
+   112	        matchId: match.id,
+   113	        basePoints: 0,
+   114	        correct: false,
+   115	        playedOdds: null,
+   116	        note: 'Match voided: 0 per tutti',
+   117	      );
+   118	    }
+   119	
+   120	    // 2) Partita non giocata dall’utente: -quota più alta (tra 1/X/2)
+   121	    if (pick.isNone) {
+   122	      final penalty = _max1X2(match.odds);
+   123	      return MatchScoreBreakdown(
+   124	        matchId: match.id,
+   125	        basePoints: -penalty,
+   126	        correct: false,
+   127	        playedOdds: null,
+   128	        note: 'Non giocata: -max(1,X,2)',
+   129	      );
+   130	    }
+   131	
+   132	    // 3) Singole
+   133	    if (pick.isSingle) {
+   134	      final played = _oddsPlayedForPick(match, pick)!;
+   135	      final correct = _isCorrectSingle(pick, outcome);
+   136	      final base = correct ? played : -played;
+   137	
+   138	      return MatchScoreBreakdown(
+   139	        matchId: match.id,
+   140	        basePoints: base,
+   141	        correct: correct,
+   142	        playedOdds: played,
+   143	        note: correct ? 'Singola corretta' : 'Singola sbagliata',
+   144	      );
+   145	    }
+   146	
+   147	    // 4) Doppie chance
+   148	    if (pick.isDouble) {
+   149	      final played = _oddsPlayedForPick(match, pick)!;
+   150	      final correct = _isCorrectDouble(pick, outcome);
+   151	
+   152	      if (correct) {
+   153	        return MatchScoreBreakdown(
+   154	          matchId: match.id,
+   155	          basePoints: played,
+   156	          correct: true,
+   157	          playedOdds: played,
+   158	          note: 'Doppia corretta',
+   159	        );
+   160	      } else {
+   161	        final sumSingles = _wrongDoublePenaltySumSingles(match, pick);
+   162	        return MatchScoreBreakdown(
+   163	          matchId: match.id,
+   164	          basePoints: -sumSingles,
+   165	          correct: false,
+   166	          playedOdds: played,
+   167	          note: 'Doppia sbagliata: -somma quote singole',
+   168	        );
+   169	      }
+   170	    }
+   171	
+   172	    // 5) Fallback (non dovrebbe mai succedere)
+   173	    return MatchScoreBreakdown(
+   174	      matchId: match.id,
+   175	      basePoints: 0,
+   176	      correct: false,
+   177	      playedOdds: null,
+   178	      note: 'Caso non gestito',
+   179	    );
+   180	  }
+   181	
+   182	  /// Calcolo completo della giornata:
+   183	  /// somma punti match + bonus in base ai corretti.
+   184	  ///
+   185	  /// Regola importante:
+   186	  /// - il bonus si applica SOLO quando TUTTE le partite hanno un outcome "graded"
+   187	  ///   (cioè nessuna è pending).
+   188	  static DayScoreBreakdown computeDayScore({
+   189	    required List<PredictionMatch> matches,
+   190	    required Map<String, PickOption> picksByMatchId,
+   191	    required Map<String, MatchOutcome> outcomesByMatchId,
+   192	  }) {
+   193	    final breakdowns = <MatchScoreBreakdown>[];
+   194	
+   195	    for (final match in matches) {
+   196	      final pick = picksByMatchId[match.id] ?? PickOption.none;
+   197	
+   198	      // Se manca outcome per quel match -> pending (non voided!)
+   199	      final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.pending;
+   200	
+   201	      breakdowns.add(scoreMatch(match: match, pick: pick, outcome: outcome));
+   202	    }
+   203	
+   204	    final baseTotal = breakdowns.fold<double>(
+   205	      0,
+   206	      (sum, b) => sum + b.basePoints,
+   207	    );
+   208	    final correctCount = breakdowns.where((b) => b.correct).length;
+   209	
+   210	    // Bonus solo se tutte le partite sono graded (nessun pending).
+   211	    final allGraded = matches.every((m) {
+   212	      final o = outcomesByMatchId[m.id];
+   213	      return o != null && o != MatchOutcome.pending;
+   214	    });
+   215	
+   216	    final bonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
+   217	    final total = baseTotal + bonus;
+   218	
+   219	    final playedOddsValues = breakdowns
+   220	        .map((b) => b.playedOdds)
+   221	        .whereType<double>()
+   222	        .toList();
+   223	
+   224	    final avgOdds = playedOddsValues.isEmpty
+   225	        ? null
+   226	        : playedOddsValues.reduce((a, b) => a + b) / playedOddsValues.length;
+   227	
+   228	    return DayScoreBreakdown(
+   229	      matchBreakdowns: breakdowns,
+   230	      baseTotal: baseTotal,
+   231	      bonusPoints: bonus,
+   232	      total: total,
+   233	      correctCount: correctCount,
+   234	      averageOddsPlayed: avgOdds,
+   235	    );
+   236	  }
+   237	}
+
+===== SCORE MODELS / KEY SYMBOLS (grep) =====
+lib/features/scoring/models/match_outcome.dart.bak:3:  pending,
+lib/features/scoring/models/match_outcome.dart.bak:19:  bool get isPending => this == MatchOutcome.pending;
+lib/features/scoring/models/match_outcome.dart.bak:28:        MatchOutcome.pending: '-',
+lib/features/scoring/models/score_breakdown.dart:1:class MatchScoreBreakdown {
+lib/features/scoring/models/score_breakdown.dart:4:  /// Punti base della singola partita (senza bonus giornata)
+lib/features/scoring/models/score_breakdown.dart:7:  /// True se il pronostico è corretto (conta per il bonus)
+lib/features/scoring/models/score_breakdown.dart:8:  final bool correct;
+lib/features/scoring/models/score_breakdown.dart:21:    required this.correct,
+lib/features/scoring/models/score_breakdown.dart:27:class DayScoreBreakdown {
+lib/features/scoring/models/score_breakdown.dart:31:  final int bonusPoints;
+lib/features/scoring/models/score_breakdown.dart:34:  final int correctCount;
+lib/features/scoring/models/score_breakdown.dart:37:  const DayScoreBreakdown({
+lib/features/scoring/models/score_breakdown.dart:40:    required this.bonusPoints,
+lib/features/scoring/models/score_breakdown.dart:42:    required this.correctCount,
+lib/features/scoring/models/match_outcome.dart:3:  pending,
+lib/features/scoring/models/match_outcome.dart:19:  bool get isPending => this == MatchOutcome.pending;
+lib/features/scoring/models/match_outcome.dart:31:        MatchOutcome.pending: '-',
+lib/features/scoring/adapters/api_football_outcome_adapter.dart:9:/// - tutto il resto -> pending
+lib/features/scoring/adapters/api_football_outcome_adapter.dart:21:  if (!finished) return MatchOutcome.pending;
+lib/features/scoring/adapters/api_football_outcome_adapter.dart:26:  if (hg == null || ag == null) return MatchOutcome.pending;
+lib/features/scoring/scoring_engine.dart:7:  // Tabella bonus/malus (come da regole Cassandra)
+lib/features/scoring/scoring_engine.dart:8:  static const Map<int, int> _bonusByCorrect = {
+lib/features/scoring/scoring_engine.dart:22:  static int bonusForCorrectCount(int correctCount) {
+lib/features/scoring/scoring_engine.dart:23:    final int c = correctCount.clamp(0, 10);
+lib/features/scoring/scoring_engine.dart:24:    return _bonusByCorrect[c] ?? 0;
+lib/features/scoring/scoring_engine.dart:90:  /// Calcola punteggio per singola partita (senza bonus giornata).
+lib/features/scoring/scoring_engine.dart:103:        correct: false,
+lib/features/scoring/scoring_engine.dart:105:        note: 'Outcome pending: 0 per ora',
+lib/features/scoring/scoring_engine.dart:114:        correct: false,
+lib/features/scoring/scoring_engine.dart:126:        correct: false,
+lib/features/scoring/scoring_engine.dart:135:      final correct = _isCorrectSingle(pick, outcome);
+lib/features/scoring/scoring_engine.dart:136:      final base = correct ? played : -played;
+lib/features/scoring/scoring_engine.dart:141:        correct: correct,
+lib/features/scoring/scoring_engine.dart:143:        note: correct ? 'Singola corretta' : 'Singola sbagliata',
+lib/features/scoring/scoring_engine.dart:150:      final correct = _isCorrectDouble(pick, outcome);
+lib/features/scoring/scoring_engine.dart:152:      if (correct) {
+lib/features/scoring/scoring_engine.dart:156:          correct: true,
+lib/features/scoring/scoring_engine.dart:165:          correct: false,
+lib/features/scoring/scoring_engine.dart:176:      correct: false,
+lib/features/scoring/scoring_engine.dart:183:  /// somma punti match + bonus in base ai corretti.
+lib/features/scoring/scoring_engine.dart:186:  /// - il bonus si applica SOLO quando TUTTE le partite hanno un outcome "graded"
+lib/features/scoring/scoring_engine.dart:187:  ///   (cioè nessuna è pending).
+lib/features/scoring/scoring_engine.dart:188:  static DayScoreBreakdown computeDayScore({
+lib/features/scoring/scoring_engine.dart:198:      // Se manca outcome per quel match -> pending (non voided!)
+lib/features/scoring/scoring_engine.dart:199:      final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.pending;
+lib/features/scoring/scoring_engine.dart:208:    final correctCount = breakdowns.where((b) => b.correct).length;
+lib/features/scoring/scoring_engine.dart:210:    // Bonus solo se tutte le partite sono graded (nessun pending).
+lib/features/scoring/scoring_engine.dart:213:      return o != null && o != MatchOutcome.pending;
+lib/features/scoring/scoring_engine.dart:216:    final bonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
+lib/features/scoring/scoring_engine.dart:217:    final total = baseTotal + bonus;
+lib/features/scoring/scoring_engine.dart:228:    return DayScoreBreakdown(
+lib/features/scoring/scoring_engine.dart:231:      bonusPoints: bonus,
+lib/features/scoring/scoring_engine.dart:233:      correctCount: correctCount,
+
+===== WHERE SCORING IS USED (leaderboards/group/profile) =====
+lib/features/group/group_page.dart:95:    final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
+lib/features/group/group_page.dart:128:      outcomesByMatchId: outcomesByMatchId,
+lib/features/group/group_page.dart:196:                              outcomesByMatchId: outcomesByMatchId,
+lib/features/group/group_page.dart:208:                                outcomesByMatchId: outcomesByMatchId,
+lib/features/group/models/group_leaderboard_entry.dart:12:  final DayScoreBreakdown day;
+lib/features/group/mock_group_data.dart:121:  required Map<String, MatchOutcome> outcomesByMatchId,
+lib/features/group/mock_group_data.dart:129:    final day = CassandraScoringEngine.computeDayScore(
+lib/features/group/mock_group_data.dart:132:      outcomesByMatchId: outcomesByMatchId,
+lib/features/profile/widgets/user_picks_view.dart:26:    final day = CassandraScoringEngine.computeDayScore(
+lib/features/profile/widgets/user_picks_view.dart:29:      outcomesByMatchId: matchday.outcomesByMatchId,
+lib/features/profile/widgets/user_picks_view.dart:86:                    matchday.outcomesByMatchId[m.id] ?? MatchOutcome.voided;
+lib/features/scoring/models/score_breakdown.dart:27:class DayScoreBreakdown {
+lib/features/scoring/models/score_breakdown.dart:37:  const DayScoreBreakdown({
+lib/features/scoring/adapters/api_football_outcome_adapter.dart:34:Map<String, MatchOutcome> outcomesByMatchIdFromFixtures(
+lib/features/scoring/adapters/api_football_fixture_outcome_adapter.dart:26:Map<String, MatchOutcome> outcomesByMatchIdFromFixtures(
+lib/features/scoring/scoring_engine.dart:6:class CassandraScoringEngine {
+lib/features/scoring/scoring_engine.dart:188:  static DayScoreBreakdown computeDayScore({
+lib/features/scoring/scoring_engine.dart:191:    required Map<String, MatchOutcome> outcomesByMatchId,
+lib/features/scoring/scoring_engine.dart:199:      final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.pending;
+lib/features/scoring/scoring_engine.dart:212:      final o = outcomesByMatchId[m.id];
+lib/features/scoring/scoring_engine.dart:228:    return DayScoreBreakdown(
+lib/features/leaderboards/models/member_matchday_score.dart:8:  final DayScoreBreakdown day;
+lib/features/leaderboards/models/matchday_data.dart:7:  final Map<String, MatchOutcome> outcomesByMatchId;
+lib/features/leaderboards/models/matchday_data.dart:12:    required this.outcomesByMatchId,
+lib/features/leaderboards/mock_season_data.dart:81:        outcomesByMatchId: outcomes,
+lib/features/leaderboards/mock_season_data.dart:112:      final day = CassandraScoringEngine.computeDayScore(
+lib/features/leaderboards/mock_season_data.dart:115:        outcomesByMatchId: md.outcomesByMatchId,
+lib/features/leaderboards/matchday_leaderboard_page.dart:95:                    outcomesByMatchId: matchday.outcomesByMatchId,
+lib/features/badges/badge_engine.dart:15:    required Map<String, MatchOutcome> outcomesByMatchId,
+lib/features/badges/badge_engine.dart:16:    required DayScoreBreakdown day,
+lib/features/badges/badge_engine.dart:30:    if (_isOwl(member, matches, picksByMatchId, outcomesByMatchId)) {
+lib/features/badges/badge_engine.dart:42:    Map<String, MatchOutcome> outcomesByMatchId,
+lib/features/badges/badge_engine.dart:56:      final outcome = outcomesByMatchId[m.id] ?? MatchOutcome.voided;
+lib/features/badges/trophy_engine.dart:72:          outcomesByMatchId: md.outcomesByMatchId,
+lib/features/predictions/predictions_page.dart:174:    final day = CassandraScoringEngine.computeDayScore(
+lib/features/predictions/predictions_page.dart:177:      outcomesByMatchId: outcomes,
+lib/features/predictions/predictions_page.dart:273:      final outcomes = outcomesByMatchIdFromFixtures(fixtures);
