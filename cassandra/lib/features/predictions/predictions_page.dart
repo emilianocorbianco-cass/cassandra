@@ -48,7 +48,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
     _tryLoadRealFixtures();
   }
 
-  PickOption _pickFor(String matchId) => _picks[matchId] ?? PickOption.none;
+  PickOption _pickFor(String matchId) {
+    final appState = CassandraScope.of(context);
+    appState.ensureCurrentUserPicksLoaded();
+    return appState.currentUserPicksByMatchId[matchId] ?? PickOption.none;
+  }
 
   int get _pickedCount => _matches.where((m) => !_pickFor(m.id).isNone).length;
 
@@ -99,10 +103,12 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   void _setPick(String matchId, PickOption pick) {
     setState(() => _picks[matchId] = pick);
+    CassandraScope.of(context).setCurrentUserPick(matchId, pick);
   }
 
   void _clearPick(String matchId) {
     setState(() => _picks.remove(matchId));
+    CassandraScope.of(context).setCurrentUserPick(matchId, PickOption.none);
   }
 
   Future<bool> _confirmSubmitIfMissing(int missing) async {
