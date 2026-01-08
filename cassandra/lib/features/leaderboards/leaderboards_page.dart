@@ -12,6 +12,7 @@ import 'member_season_page.dart';
 import 'mock_season_data.dart';
 import 'models/matchday_data.dart';
 import 'models/season_leaderboard_entry.dart';
+import 'package:cassandra/features/scoring/models/match_outcome.dart';
 
 class LeaderboardsPage extends StatefulWidget {
   const LeaderboardsPage({super.key});
@@ -95,6 +96,64 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       body: SafeArea(
         child: Column(
           children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Builder(
+                  builder: (context) {
+                    // Debug: dati/pronostici cache (coerente con Gruppo/Utente)
+                    final app = CassandraScope.of(context);
+                    final matches = app.cachedPredictionMatches;
+                    final total = matches?.length ?? 0;
+                    final outcomes = app.cachedPredictionOutcomesByMatchId;
+                    final graded = (matches == null)
+                        ? 0
+                        : matches.where((m) {
+                            final o = outcomes[m.id] ?? MatchOutcome.pending;
+                            return !o.isPending;
+                          }).length;
+
+                    final kind = app.cachedPredictionMatchesAreReal
+                        ? 'reali (API)'
+                        : (total > 0 ? 'demo' : 'vuota');
+
+                    final updated = app.cachedPredictionMatchesUpdatedAt;
+                    String fmt(DateTime dt) {
+                      final dd = dt.day.toString().padLeft(2, '0');
+                      final mm = dt.month.toString().padLeft(2, '0');
+                      final hh = dt.hour.toString().padLeft(2, '0');
+                      final mi = dt.minute.toString().padLeft(2, '0');
+                      return '$dd/$mm $hh:$mi';
+                    }
+
+                    final updatedLabel = (updated == null)
+                        ? 'mai'
+                        : fmt(updated);
+
+                    final resultsLabel = (total == 0)
+                        ? null
+                        : (graded == total
+                              ? 'risultati: $graded/$total'
+                              : 'risultati: $graded/$total (parziale)');
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('dati: $kind • agg. $updatedLabel'),
+                        if (resultsLabel != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            resultsLabel,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
