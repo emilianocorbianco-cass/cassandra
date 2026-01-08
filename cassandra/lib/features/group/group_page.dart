@@ -103,6 +103,16 @@ class _GroupPageState extends State<GroupPage> {
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
 
+    final totalMatches = _matches.length;
+    final gradedCount = _matches.where((m) {
+      final o = outcomesByMatchId[m.id] ?? MatchOutcome.pending;
+      return !o.isPending;
+    }).length;
+
+    final resultsLabel = gradedCount == totalMatches
+        ? 'risultati: $gradedCount/$totalMatches'
+        : 'risultati: $gradedCount/$totalMatches (parziale)';
+
     final dataLabel = appState.cachedPredictionMatchesAreReal
         ? 'dati: reali (API)'
         : 'dati: demo';
@@ -162,6 +172,13 @@ class _GroupPageState extends State<GroupPage> {
                   Text(
                     _matchdayLabelFor(_matches),
                     style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    resultsLabel,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: CassandraColors.slate,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   SegmentedButton<int>(
