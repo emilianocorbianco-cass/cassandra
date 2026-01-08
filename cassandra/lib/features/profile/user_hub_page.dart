@@ -14,6 +14,7 @@ import 'widgets/user_picks_view.dart';
 import 'widgets/user_stats_view.dart';
 import 'widgets/user_trophies_view.dart';
 import 'package:cassandra/features/predictions/models/formatters.dart';
+import 'package:cassandra/features/scoring/models/match_outcome.dart';
 
 class UserHubPage extends StatefulWidget {
   final GroupMember member;
@@ -92,6 +93,16 @@ class _UserHubPageState extends State<UserHubPage> {
 
   @override
   Widget build(BuildContext context) {
+    final totalMatches = widget.matchday.matches.length;
+    final gradedCount = widget.matchday.matches.where((m) {
+      final o = widget.matchday.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
+      return !o.isPending;
+    }).length;
+
+    final resultsLabel = (gradedCount == totalMatches)
+        ? 'risultati: $gradedCount/$totalMatches'
+        : 'risultati: $gradedCount/$totalMatches (parziale)';
+
     final app = CassandraScope.of(context);
     final dataLabel = app.cachedPredictionMatchesAreReal
         ? 'dati: reali (API)'
@@ -120,7 +131,7 @@ class _UserHubPageState extends State<UserHubPage> {
             ],
           ),
           bottom: PreferredSize(
-            preferredSize: Size.fromHeight(kTextTabBarHeight + 24),
+            preferredSize: Size.fromHeight(kTextTabBarHeight + 44),
             child: Column(
               children: [
                 const TabBar(
@@ -135,7 +146,7 @@ class _UserHubPageState extends State<UserHubPage> {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      '$dataLabel$updatedLabel',
+                      '$dataLabel$updatedLabel\n$resultsLabel',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
