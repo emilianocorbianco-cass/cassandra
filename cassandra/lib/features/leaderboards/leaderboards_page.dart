@@ -199,7 +199,49 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('dati: $kind • agg. $updatedLabel'),
+                        Row(
+                          children: [
+                            Text('dati: $kind • agg. $updatedLabel'),
+                            const SizedBox(width: 8),
+                            Builder(
+                              builder: (context) {
+                                final app = CassandraScope.of(context);
+                                final on =
+                                    app.useSimulatedOutcomes &&
+                                    (app
+                                            .simulatedOutcomesByMatchId
+                                            ?.isNotEmpty ??
+                                        false);
+                                if (!on) return const SizedBox.shrink();
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: CassandraColors.primary.withAlpha(
+                                      31,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: CassandraColors.primary.withAlpha(
+                                        90,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'OUTCOMES: SIM',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: CassandraColors.primary,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                         if (resultsLabel != null) ...[
                           const SizedBox(height: 4),
                           Text(
