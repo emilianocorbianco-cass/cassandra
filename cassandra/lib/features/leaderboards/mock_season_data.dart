@@ -11,6 +11,7 @@ import '../scoring/scoring_engine.dart';
 import 'models/matchday_data.dart';
 import 'models/member_matchday_score.dart';
 import 'models/season_leaderboard_entry.dart';
+import '../predictions/models/pick_option.dart';
 
 Map<String, MatchOutcome> _mockOutcomesForMatchesSeeded(
   List<PredictionMatch> matches, {
@@ -145,4 +146,60 @@ List<SeasonLeaderboardEntry> buildMockSeasonLeaderboardEntries({
   }
 
   return entries;
+}
+
+SeasonLeaderboardEntry buildSeasonEntryForMemberFromPicks({
+  required GroupMember member,
+  required List<MatchdayData> matchdays,
+  required Map<String, PickOption> picksByMatchId,
+}) {
+  // Coerente con i mock: alcuni utenti “iniziano dopo” 0..2 giornate.
+  final joinOffset = member.avatarSeed % 3; // 0..2
+  final playedMatchdays = matchdays.skip(joinOffset).toList();
+
+  final overrideKeys = picksByMatchId.keys.toSet();
+
+  final perDay = <MemberMatchdayScore>[];
+
+  for (final md in playedMatchdays) {
+    // Usa i pick reali SOLO se i matchId combaciano con questa giornata.
+    final hasOverride =
+        overrideKeys.isNotEmpty &&
+        md.matches.any((m) => overrideKeys.contains(m.id));
+
+    final picks = hasOverride
+        ? picksByMatchId
+        : mockPicksForMember('${member.id}_${md.dayNumber}', md.matches);
+
+    final day = CassandraScoringEngine.computeDayScore(
+      matches: md.matches,
+      picksByMatchId: picks,
+      outcomesByMatchId: md.outcomesByMatchId,
+    );
+
+    perDay.add(
+      MemberMatchdayScore(matchday: md, picksByMatchId: picks, day: day),
+    );
+  }
+
+  final total = perDay.fold<double>(0, (sum, d) => sum + d.day.total);
+  final avg = perDay.isEmpty ? 0.0 : total / perDay.length;
+
+  final oddsValues = perDay
+      .expand((d) => d.day.matchBreakdowns)
+      .map((b) => b.playedOdds)
+      .whereType<double>()
+      .toList();
+
+  final avgOdds = oddsValues.isEmpty
+      ? null
+      : oddsValues.reduce((a, b) => a + b) / oddsValues.length;
+
+  return SeasonLeaderboardEntry(
+    member: member,
+    matchdays: perDay,
+    totalPoints: total,
+    averagePerMatchday: avg,
+    averageOddsPlayed: avgOdds,
+  );
 }

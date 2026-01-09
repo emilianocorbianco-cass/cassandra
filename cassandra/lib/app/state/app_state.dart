@@ -7,6 +7,9 @@ import 'app_settings.dart';
 import 'user_profile.dart';
 import 'package:cassandra/features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
+import 'dart:async';
+import 'dart:convert';
+import '../../features/predictions/models/pick_option.dart';
 
 class AppState extends ChangeNotifier {
   Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
@@ -234,5 +237,83 @@ class AppState extends ChangeNotifier {
   ) {
     cachedPredictionOutcomesByMatchId = Map.unmodifiable(outcomes);
     notifyListeners();
+  }
+
+  // ===== Pronostici utente (persistiti) =====
+  static const String _kCurrentUserPicksByMatchIdV1 =
+      'cassandra.current_user_picks_by_match_id_v1';
+
+  bool _currentUserPicksLoaded = false;
+  Map<String, PickOption> currentUserPicksByMatchId =
+      const <String, PickOption>{};
+
+  void ensureCurrentUserPicksLoaded() {
+    if (_currentUserPicksLoaded) return;
+    _currentUserPicksLoaded = true;
+
+    final raw = _prefs?.getString(_kCurrentUserPicksByMatchIdV1);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+
+      final map = <String, PickOption>{};
+      for (final entry in decoded.entries) {
+        final k = entry.key;
+        final v = entry.value;
+        if (k is! String || v is! String) continue;
+
+        try {
+          final pick = PickOption.values.byName(v);
+          if (pick != PickOption.none) {
+            map[k] = pick;
+          }
+        } catch (_) {
+          // ignore valori sconosciuti
+        }
+      }
+
+      currentUserPicksByMatchId = Map.unmodifiable(map);
+    } catch (_) {
+      // ignore JSON rotto
+    }
+  }
+
+  void setCurrentUserPick(String matchId, PickOption pick) {
+    ensureCurrentUserPicksLoaded();
+
+    final next = Map<String, PickOption>.of(currentUserPicksByMatchId);
+    if (pick == PickOption.none) {
+      next.remove(matchId);
+    } else {
+      next[matchId] = pick;
+    }
+
+    currentUserPicksByMatchId = Map.unmodifiable(next);
+    notifyListeners();
+
+    unawaited(_persistCurrentUserPicks());
+  }
+
+  void clearCurrentUserPicks() {
+    _currentUserPicksLoaded = true;
+    currentUserPicksByMatchId = const <String, PickOption>{};
+    notifyListeners();
+
+    final prefs = _prefs;
+    if (prefs == null) return;
+    unawaited(prefs.remove(_kCurrentUserPicksByMatchIdV1));
+  }
+
+  Future<void> _persistCurrentUserPicks() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    final map = <String, String>{
+      for (final e in currentUserPicksByMatchId.entries) e.key: e.value.name,
+    };
+
+    await prefs.setString(_kCurrentUserPicksByMatchIdV1, jsonEncode(map));
   }
 }

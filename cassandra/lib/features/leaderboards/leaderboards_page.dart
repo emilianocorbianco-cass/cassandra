@@ -123,7 +123,20 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       members: members,
     );
 
-    final sorted = _sortedGeneral(entries);
+    // Override: l'utente corrente usa i pick reali persistiti (quando presenti).
+    appState.ensureCurrentUserPicksLoaded();
+    final currentUserEntry = buildSeasonEntryForMemberFromPicks(
+      member: overrideMember,
+      matchdays: matchdays,
+      picksByMatchId: appState.currentUserPicksByMatchId,
+    );
+    final entriesWithCurrent = [
+      for (final e in entries)
+        if (e.member.id != overrideMember.id) e,
+      currentUserEntry,
+    ];
+
+    final sorted = _sortedGeneral(entriesWithCurrent);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Classifiche')),
@@ -273,7 +286,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                 MaterialPageRoute(
                                   builder: (_) => MatchdayLeaderboardPage(
                                     matchday: md,
-                                    seasonEntries: entries,
+                                    seasonEntries: entriesWithCurrent,
                                   ),
                                 ),
                               );
