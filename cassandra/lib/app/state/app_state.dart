@@ -18,6 +18,7 @@ class AppState extends ChangeNotifier {
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
   static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
+  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -366,6 +367,94 @@ class AppState extends ChangeNotifier {
     _currentUserPicksByMatchday.clear();
     try {
       _prefs?.remove(_kCurrentUserPicksByMatchday);
+    } catch (_) {
+      // ignore
+    }
+
+    notifyListeners();
+  }
+
+  // ===== OUTCOMES STORICO (per matchday) =====
+  bool _outcomesHistoryLoaded = false;
+  final Map<int, Map<String, MatchOutcome>> _outcomesByMatchday = {};
+
+  Map<int, Map<String, MatchOutcome>> get outcomesByMatchday =>
+      _outcomesByMatchday;
+
+  bool hasSavedOutcomesForMatchday(int dayNumber) {
+    final m = _outcomesByMatchday[dayNumber];
+    return m != null && m.isNotEmpty;
+  }
+
+  Map<String, MatchOutcome> outcomesForMatchday(int dayNumber) {
+    return _outcomesByMatchday[dayNumber] ?? const {};
+  }
+
+  void ensureOutcomesHistoryLoaded() {
+    if (_outcomesHistoryLoaded) return;
+    _outcomesHistoryLoaded = true;
+
+    final raw = _prefs?.getString(_kPredictionOutcomesByMatchday);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+
+      for (final entry in decoded.entries) {
+        final day = int.tryParse(entry.key.toString());
+        if (day == null) continue;
+
+        final v = entry.value;
+        if (v is! Map) continue;
+
+        final outcomes = <String, MatchOutcome>{};
+        for (final e2 in v.entries) {
+          final matchId = e2.key.toString();
+          final s = e2.value;
+          if (s is! String) continue;
+          try {
+            outcomes[matchId] = MatchOutcome.values.byName(s);
+          } catch (_) {
+            // ignore unknown
+          }
+        }
+        if (outcomes.isNotEmpty) _outcomesByMatchday[day] = outcomes;
+      }
+    } catch (_) {
+      // ignore corrupted prefs
+    }
+  }
+
+  void saveOutcomesHistory({
+    required int dayNumber,
+    required Map<String, MatchOutcome> outcomesByMatchId,
+  }) {
+    ensureOutcomesHistoryLoaded();
+    _outcomesByMatchday[dayNumber] = Map<String, MatchOutcome>.from(
+      outcomesByMatchId,
+    );
+
+    final out = <String, Object?>{};
+    for (final e in _outcomesByMatchday.entries) {
+      out[e.key.toString()] = {
+        for (final o in e.value.entries) o.key: o.value.name,
+      };
+    }
+
+    try {
+      _prefs?.setString(_kPredictionOutcomesByMatchday, jsonEncode(out));
+    } catch (_) {
+      // ignore
+    }
+
+    notifyListeners();
+  }
+
+  void clearOutcomesHistory() {
+    _outcomesByMatchday.clear();
+    try {
+      _prefs?.remove(_kPredictionOutcomesByMatchday);
     } catch (_) {
       // ignore
     }
