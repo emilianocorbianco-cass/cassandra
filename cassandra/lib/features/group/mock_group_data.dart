@@ -120,6 +120,8 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   required List<PredictionMatch> matches,
   required Map<String, MatchOutcome> outcomesByMatchId,
   List<GroupMember>? members,
+  String? overrideMemberId,
+  Map<String, PickOption>? overridePicksByMatchId,
 }) {
   final membersList = members ?? mockGroupMembers();
 
