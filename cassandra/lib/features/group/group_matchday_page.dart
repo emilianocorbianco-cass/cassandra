@@ -10,6 +10,7 @@ import '../scoring/models/match_outcome.dart';
 import '../scoring/scoring_engine.dart';
 import '../scoring/models/score_breakdown.dart';
 import 'mock_group_data.dart';
+import 'group_matchday_member_page.dart';
 import 'models/group_member.dart';
 
 class GroupMatchdayPage extends StatelessWidget {
@@ -168,6 +169,16 @@ class GroupMatchdayPage extends StatelessWidget {
 
                   return Card(
                     child: ListTile(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => GroupMatchdayMemberPage(
+                              matchday: matchday,
+                              member: r.member,
+                            ),
+                          ),
+                        );
+                      },
                       leading: CircleAvatar(
                         backgroundColor: _avatarColorFromSeed(
                           r.member.avatarSeed,
