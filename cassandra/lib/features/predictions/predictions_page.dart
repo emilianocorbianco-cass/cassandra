@@ -16,6 +16,9 @@ import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../scoring/adapters/api_football_outcome_adapter.dart';
+import '../leaderboards/mock_season_data.dart';
+import '../leaderboards/models/matchday_data.dart';
+import 'predictions_matchday_page.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -304,6 +307,134 @@ class _PredictionsPageState extends State<PredictionsPage> {
     }
   }
 
+  Map<String, PickOption> _demoPicksForMatchday(
+    String seed,
+    List<PredictionMatch> matches,
+  ) {
+    final rnd = Random(seed.hashCode);
+
+    PickOption randomPick() {
+      final x = rnd.nextDouble();
+
+      if (x < 0.10) return PickOption.none;
+
+      if (x < 0.75) {
+        const singles = [PickOption.home, PickOption.draw, PickOption.away];
+        return singles[rnd.nextInt(singles.length)];
+      }
+
+      const doubles = [
+        PickOption.homeDraw,
+        PickOption.drawAway,
+        PickOption.homeAway,
+      ];
+      return doubles[rnd.nextInt(doubles.length)];
+    }
+
+    final picks = <String, PickOption>{};
+    for (final m in matches) {
+      picks[m.id] = randomPick();
+    }
+    return picks;
+  }
+
+  Widget _buildHistory(BuildContext context) {
+    final appState = CassandraScope.of(context);
+    appState.ensureCurrentUserPicksLoaded();
+
+    final uid = appState.profile.id;
+
+    final liveMatches = appState.cachedPredictionMatches ?? _matches;
+
+    final liveOutcomes = <String, MatchOutcome>{
+      for (final m in liveMatches)
+        if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+          m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+    };
+
+    final livePicks = appState.currentUserPicksByMatchId.isNotEmpty
+        ? appState.currentUserPicksByMatchId
+        : _picks;
+
+    final liveMatchday = MatchdayData(
+      dayNumber: _matchdayNumber,
+      matches: liveMatches,
+      outcomesByMatchId: liveOutcomes,
+    );
+
+    final demoHistory = mockSeasonMatchdays(startDay: 16, count: 4)
+      ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
+
+    Widget tileFor(
+      MatchdayData md,
+      Map<String, PickOption> picks, {
+      String? tag,
+    }) {
+      final daysLabel = formatMatchdayDaysItalian(
+        md.matches.map((m) => m.kickoff),
+      );
+      final total = md.matches.length;
+      final graded = md.matches.where((m) {
+        final o = md.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
+        return !o.isPending;
+      }).length;
+
+      final resultsLabel = graded == total
+          ? 'risultati: $graded/$total'
+          : 'risultati: $graded/$total (parziale)';
+
+      final title = tag == null
+          ? 'Giornata ${md.dayNumber}'
+          : 'Giornata ${md.dayNumber} ($tag)';
+
+      return Card(
+        child: ListTile(
+          title: Text(title),
+          subtitle: Text('$daysLabel\n$resultsLabel'),
+          isThreeLine: true,
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PredictionsMatchdayPage(
+                  matchday: md,
+                  picksByMatchId: picks,
+                  tag: tag,
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    final liveTag = appState.cachedPredictionMatchesAreReal ? 'LIVE' : 'DEMO';
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              'Storico pronostici (DEMO)\n'
+              'Qui mostriamo 16–19 dai mock. La giornata corrente è visibile sopra (LIVE/DEMO).',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        tileFor(liveMatchday, livePicks, tag: liveTag),
+        const SizedBox(height: 12),
+        for (final md in demoHistory)
+          tileFor(
+            md,
+            _demoPicksForMatchday('${uid}_${md.dayNumber}', md.matches),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lockLabel = _locked
@@ -405,9 +536,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
             const Divider(height: 1),
             Expanded(
               child: _segment == 1
-                  ? const Center(
-                      child: Text('Qui compariranno i pronostici passati'),
-                    )
+                  ? _buildHistory(context)
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
                       itemCount: _matches.length,
@@ -428,42 +557,46 @@ class _PredictionsPageState extends State<PredictionsPage> {
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _locked
-                      ? null
-                      : () => _submit(VisibilityChoice.private),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: CassandraColors.primary),
-                    foregroundColor: CassandraColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('invia senza mostrare'),
+      bottomNavigationBar: _segment == 1
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _locked
+                            ? null
+                            : () => _submit(VisibilityChoice.private),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(
+                            color: CassandraColors.primary,
+                          ),
+                          foregroundColor: CassandraColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('invia senza mostrare'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _locked
+                            ? null
+                            : () => _submit(VisibilityChoice.public),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: CassandraColors.primary,
+                          foregroundColor: CassandraColors.bg,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('invia e mostra'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _locked
-                      ? null
-                      : () => _submit(VisibilityChoice.public),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: CassandraColors.primary,
-                    foregroundColor: CassandraColors.bg,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('invia e mostra'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }
