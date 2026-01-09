@@ -136,7 +136,6 @@ class _GroupPageState extends State<GroupPage> {
     final members = mockGroupMembers(overrideMember: overrideMember);
 
     appState.ensureCurrentUserPicksLoaded();
-    appState.ensureCurrentUserPicksLoaded();
     appState.ensureMemberPicksLoaded();
     final overridePicksByMemberId = {
       ...appState.memberPicksByMemberId,
