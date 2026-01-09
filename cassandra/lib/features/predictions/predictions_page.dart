@@ -164,6 +164,28 @@ class _PredictionsPageState extends State<PredictionsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Schedina inviata (visibilità: $label)')),
     );
+
+    // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
+    final appState = CassandraScope.of(context);
+    appState.ensureCurrentUserPicksHistoryLoaded();
+    appState.ensureOutcomesHistoryLoaded();
+    appState.saveCurrentUserPicksHistory(
+      dayNumber: _matchdayNumber,
+      picksByMatchId: _picks,
+    );
+
+    // Se abbiamo outcomes disponibili, salvali anche nello storico (per punteggi stabili)
+    final outcomesNow = <String, MatchOutcome>{
+      for (final e in appState.effectivePredictionOutcomesByMatchId.entries)
+        e.key: e.value,
+    };
+    if (outcomesNow.isNotEmpty) {
+      appState.ensureOutcomesHistoryLoaded();
+      appState.saveOutcomesHistory(
+        dayNumber: _matchdayNumber,
+        outcomesByMatchId: outcomesNow,
+      );
+    }
   }
 
   Future<void> _showDebugScorePreview() async {
@@ -346,11 +368,13 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     final liveMatches = appState.cachedPredictionMatches ?? _matches;
 
-    final liveOutcomes = <String, MatchOutcome>{
-      for (final m in liveMatches)
-        if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
-          m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
-    };
+    final liveOutcomes = appState.hasSavedOutcomesForMatchday(_matchdayNumber)
+        ? appState.outcomesForMatchday(_matchdayNumber)
+        : <String, MatchOutcome>{
+            for (final m in liveMatches)
+              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+          };
 
     final livePicks = appState.currentUserPicksByMatchId.isNotEmpty
         ? appState.currentUserPicksByMatchId
@@ -362,6 +386,20 @@ class _PredictionsPageState extends State<PredictionsPage> {
       outcomesByMatchId: liveOutcomes,
     );
 
+    // Autosave outcomes (post-frame): appena abbiamo outcomes per la giornata corrente,
+    // persistiamoli così lo storico diventa stabile senza dipendere dal submit.
+    if (!appState.hasSavedOutcomesForMatchday(_matchdayNumber) &&
+        liveOutcomes.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // ricontrolla (potrebbe essere già stato salvato)
+        if (!appState.hasSavedOutcomesForMatchday(_matchdayNumber)) {
+          appState.saveOutcomesHistory(
+            dayNumber: _matchdayNumber,
+            outcomesByMatchId: liveOutcomes,
+          );
+        }
+      });
+    }
     final demoHistory = mockSeasonMatchdays(startDay: 16, count: 4)
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
@@ -410,6 +448,14 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     final liveTag = appState.cachedPredictionMatchesAreReal ? 'LIVE' : 'DEMO';
 
+    appState.ensureCurrentUserPicksHistoryLoaded();
+
+    final hasSavedLive = appState.hasSavedPicksForMatchday(_matchdayNumber);
+    final livePicksEffective = hasSavedLive
+        ? appState.currentUserPicksForMatchday(_matchdayNumber)
+        : livePicks;
+    final liveTagEffective = hasSavedLive ? 'SALVATI' : liveTag;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
@@ -424,12 +470,25 @@ class _PredictionsPageState extends State<PredictionsPage> {
           ),
         ),
         const SizedBox(height: 8),
-        tileFor(liveMatchday, livePicks, tag: liveTag),
+        tileFor(liveMatchday, livePicksEffective, tag: liveTagEffective),
         const SizedBox(height: 12),
         for (final md in demoHistory)
           tileFor(
-            md,
-            _demoPicksForMatchday('${uid}_${md.dayNumber}', md.matches),
+            appState.hasSavedOutcomesForMatchday(md.dayNumber)
+                ? MatchdayData(
+                    dayNumber: md.dayNumber,
+                    matches: md.matches,
+                    outcomesByMatchId: appState.outcomesForMatchday(
+                      md.dayNumber,
+                    ),
+                  )
+                : md,
+            appState.hasSavedPicksForMatchday(md.dayNumber)
+                ? appState.currentUserPicksForMatchday(md.dayNumber)
+                : _demoPicksForMatchday('${uid}_${md.dayNumber}', md.matches),
+            tag: appState.hasSavedPicksForMatchday(md.dayNumber)
+                ? 'SALVATI'
+                : 'DEMO',
           ),
       ],
     );
