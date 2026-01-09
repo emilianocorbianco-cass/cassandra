@@ -136,7 +136,20 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       currentUserEntry,
     ];
 
-    final sorted = _sortedGeneral(entriesWithCurrent);
+    appState.ensureMemberPicksLoaded();
+    final entriesWithOverrides = entriesWithCurrent.map((e) {
+      final override = appState.memberPicksByMemberId[e.member.id];
+      if (override != null && override.isNotEmpty) {
+        return buildSeasonEntryForMemberFromPicks(
+          member: e.member,
+          matchdays: matchdays,
+          picksByMatchId: override,
+        );
+      }
+      return e;
+    }).toList();
+
+    final sorted = _sortedGeneral(entriesWithOverrides);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Classifiche')),
@@ -286,7 +299,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                 MaterialPageRoute(
                                   builder: (_) => MatchdayLeaderboardPage(
                                     matchday: md,
-                                    seasonEntries: entriesWithCurrent,
+                                    seasonEntries: entriesWithOverrides,
                                   ),
                                 ),
                               );

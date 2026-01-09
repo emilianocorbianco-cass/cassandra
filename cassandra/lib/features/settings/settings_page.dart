@@ -9,6 +9,9 @@ import 'package:cassandra/features/predictions/adapters/api_football_fixture_ada
 import 'package:cassandra/features/predictions/models/formatters.dart';
 import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
+import 'package:cassandra/features/group/mock_group_data.dart';
+import 'package:cassandra/features/group/models/group_member.dart';
+import 'package:cassandra/features/predictions/models/pick_option.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -212,6 +215,127 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text('outcomes in cache: $outcomesCount'),
                       Text('aggiornamento: $updatedLabel'),
                       const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Builder(
+                            builder: (context) {
+                              final app = CassandraScope.of(context);
+                              app.ensureCurrentUserPicksLoaded();
+                              app.ensureMemberPicksLoaded();
+
+                              final matches = app.cachedPredictionMatches;
+                              final canSeed =
+                                  matches != null && matches.isNotEmpty;
+
+                              final me = GroupMember(
+                                id: app.profile.id,
+                                displayName: app.profile.displayName,
+                                teamName: app.profile.teamName,
+                                avatarSeed: app.currentUserAvatarSeed,
+                                favoriteTeam: app.profile.favoriteTeam,
+                              );
+
+                              final members = mockGroupMembers(
+                                overrideMember: me,
+                              );
+                              final others = members
+                                  .where((m) => m.id != me.id)
+                                  .toList();
+
+                              void snack(String msg) {
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).showSnackBar(SnackBar(content: Text(msg)));
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Simulazione gruppo',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'picks simulati salvati: ${app.memberPicksByMemberId.length}',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      FilledButton.tonal(
+                                        onPressed: canSeed
+                                            ? () {
+                                                final seedKey = matches.isEmpty
+                                                    ? ''
+                                                    : matches.first.id;
+                                                final map =
+                                                    <
+                                                      String,
+                                                      Map<String, PickOption>
+                                                    >{};
+                                                for (final m in others) {
+                                                  map[m.id] =
+                                                      mockPicksForMember(
+                                                        '${m.id}_$seedKey',
+                                                        matches,
+                                                      );
+                                                }
+                                                app.setMemberPicksBulk(
+                                                  map,
+                                                  replace: true,
+                                                );
+                                                snack(
+                                                  'Picks generati per ${others.length} membri',
+                                                );
+                                              }
+                                            : null,
+                                        child: const Text('Genera picks'),
+                                      ),
+                                      FilledButton.tonal(
+                                        onPressed: canSeed
+                                            ? () {
+                                                final map =
+                                                    <
+                                                      String,
+                                                      Map<String, PickOption>
+                                                    >{};
+                                                final mine = app
+                                                    .currentUserPicksByMatchId;
+                                                for (final m in others) {
+                                                  map[m.id] = mine;
+                                                }
+                                                app.setMemberPicksBulk(
+                                                  map,
+                                                  replace: true,
+                                                );
+                                                snack(
+                                                  'Copiati i tuoi pick su ${others.length} membri',
+                                                );
+                                              }
+                                            : null,
+                                        child: const Text('Copia i miei'),
+                                      ),
+                                      FilledButton.tonal(
+                                        onPressed: () {
+                                          app.clearMemberPicks();
+                                          snack('Picks simulati svuotati');
+                                        },
+                                        child: const Text('Svuota simulati'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -230,6 +354,16 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                             child: const Text('Svuota outcomes'),
                           ),
+                          FilledButton.tonal(
+                            onPressed: matchCount > 0
+                                ? () {
+                                    app.debugSimulateOutcomesForCachedMatches();
+                                    snack('Risultati simulati (TEST)');
+                                  }
+                                : null,
+                            child: const Text('Simula risultati'),
+                          ),
+
                           FilledButton(
                             onPressed: () {
                               app.clearAllPredictionCache();

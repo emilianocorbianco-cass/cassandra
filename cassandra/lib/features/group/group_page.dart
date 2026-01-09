@@ -136,12 +136,18 @@ class _GroupPageState extends State<GroupPage> {
     final members = mockGroupMembers(overrideMember: overrideMember);
 
     appState.ensureCurrentUserPicksLoaded();
+    appState.ensureCurrentUserPicksLoaded();
+    appState.ensureMemberPicksLoaded();
+    final overridePicksByMemberId = {
+      ...appState.memberPicksByMemberId,
+      overrideMember.id: appState.currentUserPicksByMatchId,
+    };
+
     final entries = buildSortedMockGroupLeaderboard(
       matches: _matches,
       outcomesByMatchId: outcomesByMatchId,
       members: members,
-      overrideMemberId: overrideMember.id,
-      overridePicksByMatchId: appState.currentUserPicksByMatchId,
+      overridePicksByMemberId: overridePicksByMemberId,
     );
 
     // Storico (DEMO) per ora: giornate 16–19 (evitiamo mismatch con la giornata corrente reale).

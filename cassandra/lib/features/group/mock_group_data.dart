@@ -122,17 +122,26 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   List<GroupMember>? members,
   String? overrideMemberId,
   Map<String, PickOption>? overridePicksByMatchId,
+  Map<String, Map<String, PickOption>>? overridePicksByMemberId,
 }) {
   final membersList = members ?? mockGroupMembers();
 
+  final singleId = overrideMemberId;
+  final singlePicks = overridePicksByMatchId;
+  final overridesByMemberId = <String, Map<String, PickOption>>{
+    ...?overridePicksByMemberId,
+    if (singleId != null && singlePicks != null && singlePicks.isNotEmpty)
+      singleId: singlePicks,
+  };
+
   final entries = membersList.map((member) {
-    final picks =
-        (overrideMemberId != null &&
-            overridePicksByMatchId != null &&
-            member.id == overrideMemberId &&
-            overridePicksByMatchId.isNotEmpty)
-        ? overridePicksByMatchId
-        : mockPicksForMember(member.id, matches);
+    final picks = () {
+      final override = overridesByMemberId[member.id];
+      if (override != null && override.isNotEmpty) {
+        return override;
+      }
+      return mockPicksForMember(member.id, matches);
+    }();
 
     final day = CassandraScoringEngine.computeDayScore(
       matches: matches,

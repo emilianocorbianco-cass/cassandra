@@ -10,6 +10,7 @@ import '../../features/scoring/models/match_outcome.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../../features/predictions/models/pick_option.dart';
+import 'dart:math';
 
 class AppState extends ChangeNotifier {
   Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
@@ -315,5 +316,148 @@ class AppState extends ChangeNotifier {
     };
 
     await prefs.setString(_kCurrentUserPicksByMatchIdV1, jsonEncode(map));
+  }
+
+  // ===== Picks membri simulati (persistiti in locale) =====
+  static const String _kMemberPicksByMemberIdV1 =
+      'cassandra.member_picks_by_member_id_v1';
+
+  bool _memberPicksLoaded = false;
+
+  /// Map: memberId -> (matchId -> pick)
+  Map<String, Map<String, PickOption>> memberPicksByMemberId =
+      const <String, Map<String, PickOption>>{};
+
+  void ensureMemberPicksLoaded() {
+    if (_memberPicksLoaded) return;
+    _memberPicksLoaded = true;
+
+    final raw = _prefs?.getString(_kMemberPicksByMemberIdV1);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+
+      final outer = <String, Map<String, PickOption>>{};
+
+      for (final outerEntry in decoded.entries) {
+        final memberId = outerEntry.key;
+        final v = outerEntry.value;
+
+        if (memberId is! String || v is! Map) continue;
+
+        final inner = <String, PickOption>{};
+
+        for (final innerEntry in v.entries) {
+          final matchId = innerEntry.key;
+          final pickName = innerEntry.value;
+
+          if (matchId is! String || pickName is! String) continue;
+
+          try {
+            final pick = PickOption.values.byName(pickName);
+            if (pick != PickOption.none) {
+              inner[matchId] = pick;
+            }
+          } catch (_) {
+            // ignore valori sconosciuti
+          }
+        }
+
+        if (inner.isNotEmpty) {
+          outer[memberId] = Map.unmodifiable(inner);
+        }
+      }
+
+      memberPicksByMemberId = Map.unmodifiable(outer);
+    } catch (_) {
+      // ignore JSON rotto
+    }
+  }
+
+  void setMemberPicksBulk(
+    Map<String, Map<String, PickOption>> picksByMemberId, {
+    bool replace = false,
+  }) {
+    ensureMemberPicksLoaded();
+
+    final next = <String, Map<String, PickOption>>{
+      if (!replace) ...memberPicksByMemberId,
+    };
+
+    for (final entry in picksByMemberId.entries) {
+      final memberId = entry.key;
+      final picks = entry.value;
+
+      if (picks.isEmpty) {
+        next.remove(memberId);
+      } else {
+        next[memberId] = Map.unmodifiable(Map<String, PickOption>.of(picks));
+      }
+    }
+
+    memberPicksByMemberId = Map.unmodifiable(next);
+    notifyListeners();
+
+    unawaited(_persistMemberPicks());
+  }
+
+  void clearMemberPicks({String? memberId}) {
+    ensureMemberPicksLoaded();
+
+    if (memberId == null) {
+      memberPicksByMemberId = const <String, Map<String, PickOption>>{};
+    } else {
+      final next = Map<String, Map<String, PickOption>>.of(
+        memberPicksByMemberId,
+      );
+      next.remove(memberId);
+      memberPicksByMemberId = Map.unmodifiable(next);
+    }
+
+    notifyListeners();
+
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    if (memberId == null) {
+      unawaited(prefs.remove(_kMemberPicksByMemberIdV1));
+    } else {
+      unawaited(_persistMemberPicks());
+    }
+  }
+
+  Future<void> _persistMemberPicks() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    final outer = <String, Map<String, String>>{
+      for (final outerEntry in memberPicksByMemberId.entries)
+        outerEntry.key: {
+          for (final innerEntry in outerEntry.value.entries)
+            innerEntry.key: innerEntry.value.name,
+        },
+    };
+
+    await prefs.setString(_kMemberPicksByMemberIdV1, jsonEncode(outer));
+  }
+
+  // ===== DEBUG =====
+  // Simula risultati (tutti graded) per la matchday in cache: utile per testare leaderboard
+  void debugSimulateOutcomesForCachedMatches({int seed = 777}) {
+    final matches = _cachedPredictionMatches;
+    if (matches == null || matches.isEmpty) return;
+
+    final rnd = Random(seed);
+    const outs = [MatchOutcome.home, MatchOutcome.draw, MatchOutcome.away];
+
+    final map = <String, MatchOutcome>{};
+    for (final m in matches) {
+      map[m.id] = outs[rnd.nextInt(outs.length)];
+    }
+
+    cachedPredictionOutcomesByMatchId = map;
+    notifyListeners();
   }
 }
