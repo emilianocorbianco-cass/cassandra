@@ -126,7 +126,13 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   final membersList = members ?? mockGroupMembers();
 
   final entries = membersList.map((member) {
-    final picks = mockPicksForMember(member.id, matches);
+    final picks =
+        (overrideMemberId != null &&
+            overridePicksByMatchId != null &&
+            member.id == overrideMemberId &&
+            overridePicksByMatchId.isNotEmpty)
+        ? overridePicksByMatchId
+        : mockPicksForMember(member.id, matches);
 
     final day = CassandraScoringEngine.computeDayScore(
       matches: matches,
