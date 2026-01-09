@@ -17,6 +17,7 @@ class AppState extends ChangeNotifier {
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
+  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -279,6 +280,96 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // ignore JSON rotto
     }
+  }
+
+  // ===== PICKS STORICO (per matchday) =====
+  bool _currentUserPicksHistoryLoaded = false;
+  final Map<int, Map<String, PickOption>> _currentUserPicksByMatchday = {};
+
+  Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
+      _currentUserPicksByMatchday;
+
+  bool hasSavedPicksForMatchday(int dayNumber) {
+    final m = _currentUserPicksByMatchday[dayNumber];
+    return m != null && m.isNotEmpty;
+  }
+
+  Map<String, PickOption> currentUserPicksForMatchday(int dayNumber) {
+    return _currentUserPicksByMatchday[dayNumber] ?? const {};
+  }
+
+  void ensureCurrentUserPicksHistoryLoaded() {
+    if (_currentUserPicksHistoryLoaded) return;
+    _currentUserPicksHistoryLoaded = true;
+
+    final raw = _prefs?.getString(_kCurrentUserPicksByMatchday);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+
+      for (final entry in decoded.entries) {
+        final day = int.tryParse(entry.key.toString());
+        if (day == null) continue;
+
+        final v = entry.value;
+        if (v is! Map) continue;
+
+        final picks = <String, PickOption>{};
+        for (final e2 in v.entries) {
+          final matchId = e2.key.toString();
+          final s = e2.value;
+          if (s is! String) continue;
+          try {
+            picks[matchId] = PickOption.values.byName(s);
+          } catch (_) {
+            // ignore unknown
+          }
+        }
+        if (picks.isNotEmpty) _currentUserPicksByMatchday[day] = picks;
+      }
+    } catch (_) {
+      // ignore corrupted prefs
+    }
+  }
+
+  void saveCurrentUserPicksHistory({
+    required int dayNumber,
+    required Map<String, PickOption> picksByMatchId,
+  }) {
+    ensureCurrentUserPicksHistoryLoaded();
+
+    // salva snapshot (copia)
+    _currentUserPicksByMatchday[dayNumber] = Map<String, PickOption>.from(
+      picksByMatchId,
+    );
+
+    // persist (string->string)
+    final out = <String, Object?>{};
+    for (final e in _currentUserPicksByMatchday.entries) {
+      out[e.key.toString()] = {
+        for (final p in e.value.entries) p.key: p.value.name,
+      };
+    }
+
+    try {
+      _prefs?.setString(_kCurrentUserPicksByMatchday, jsonEncode(out));
+    } catch (_) {
+      // ignore
+    }
+
+    notifyListeners();
+  }
+
+  void clearCurrentUserPicksHistory() {
+    _currentUserPicksByMatchday.clear();
+    try {
+      _prefs?.remove(_kCurrentUserPicksByMatchday);
+    } catch (_) {
+      // ignore
+    }
+    notifyListeners();
   }
 
   void setCurrentUserPick(String matchId, PickOption pick) {
