@@ -94,13 +94,26 @@ class _GroupPageState extends State<GroupPage> {
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
 
-    final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
+    // Storico reale: picks/outcomes salvati per giornata
+    appState.ensureCurrentUserPicksHistoryLoaded();
+    appState.ensureOutcomesHistoryLoaded();
+
+    final baseOutcomesByMatchId = appState.cachedPredictionMatchesAreReal
         ? <String, MatchOutcome>{
             for (final m in _matches)
               if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
                 m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
           }
         : _outcomes;
+
+    // Se abbiamo outcomes salvati per questa giornata, usali (sovrascrivono live/demo).
+    final outcomesByMatchId =
+        appState.hasSavedOutcomesForMatchday(_matchdayNumber)
+        ? <String, MatchOutcome>{
+            ...baseOutcomesByMatchId,
+            ...appState.outcomesForMatchday(_matchdayNumber),
+          }
+        : baseOutcomesByMatchId;
 
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
@@ -137,9 +150,15 @@ class _GroupPageState extends State<GroupPage> {
 
     appState.ensureCurrentUserPicksLoaded();
     appState.ensureMemberPicksLoaded();
+
+    final currentUserPicksForDay =
+        appState.hasSavedPicksForMatchday(_matchdayNumber)
+        ? appState.currentUserPicksForMatchday(_matchdayNumber)
+        : appState.currentUserPicksByMatchId;
+
     final overridePicksByMemberId = {
       ...appState.memberPicksByMemberId,
-      overrideMember.id: appState.currentUserPicksByMatchId,
+      overrideMember.id: currentUserPicksForDay,
     };
 
     final entries = buildSortedMockGroupLeaderboard(
@@ -150,7 +169,20 @@ class _GroupPageState extends State<GroupPage> {
     );
 
     // Storico (DEMO) per ora: giornate 16–19 (evitiamo mismatch con la giornata corrente reale).
-    final seasonMatchdays = mockSeasonMatchdays(startDay: 16, count: 4);
+    final seasonMatchdays = mockSeasonMatchdays(startDay: 16, count: 4).map((
+      md,
+    ) {
+      if (!appState.hasSavedOutcomesForMatchday(md.dayNumber)) return md;
+
+      return MatchdayData(
+        dayNumber: md.dayNumber,
+        matches: md.matches,
+        outcomesByMatchId: <String, MatchOutcome>{
+          ...md.outcomesByMatchId,
+          ...appState.outcomesForMatchday(md.dayNumber),
+        },
+      );
+    }).toList();
     final seasonEntries = buildMockSeasonLeaderboardEntries(
       matchdays: seasonMatchdays,
       members: members,
