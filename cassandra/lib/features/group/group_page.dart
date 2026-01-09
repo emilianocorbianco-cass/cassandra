@@ -12,9 +12,9 @@ import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
 
 import 'mock_group_data.dart';
+import 'group_matchday_page.dart';
 import 'models/group_member.dart';
 import '../leaderboards/mock_season_data.dart';
-import '../leaderboards/matchday_leaderboard_page.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -183,10 +183,6 @@ class _GroupPageState extends State<GroupPage> {
         },
       );
     }).toList();
-    final seasonEntries = buildMockSeasonLeaderboardEntries(
-      matchdays: seasonMatchdays,
-      members: members,
-    );
     final seasonMatchdaysDesc = seasonMatchdays.toList()
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
@@ -290,9 +286,10 @@ class _GroupPageState extends State<GroupPage> {
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => MatchdayLeaderboardPage(
+                                  builder: (_) => GroupMatchdayPage(
                                     matchday: md,
-                                    seasonEntries: seasonEntries,
+                                    members: members,
+                                    groupName: _groupName,
                                   ),
                                 ),
                               );
