@@ -263,6 +263,111 @@ class _SettingsPageState extends State<SettingsPage> {
                                     'picks simulati salvati: ${app.memberPicksByMemberId.length}',
                                   ),
                                   const SizedBox(height: 12),
+                                  Card(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Builder(
+                                        builder: (context) {
+                                          final app = CassandraScope.of(
+                                            context,
+                                          );
+                                          final matches =
+                                              app.cachedPredictionMatches;
+                                          final canSim =
+                                              matches != null &&
+                                              matches.isNotEmpty;
+                                          final simCount =
+                                              app
+                                                  .simulatedOutcomesByMatchId
+                                                  ?.length ??
+                                              0;
+                                          final on =
+                                              app.useSimulatedOutcomes &&
+                                              simCount > 0;
+
+                                          void snack(String msg) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(content: Text(msg)),
+                                            );
+                                          }
+
+                                          return Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Simulazione risultati',
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.titleMedium,
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'simulati: $simCount • stato: ${on ? 'ON' : 'OFF'}',
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 8,
+                                                children: [
+                                                  FilledButton.tonal(
+                                                    onPressed: canSim
+                                                        ? () {
+                                                            app.debugSimulateOutcomesForCachedMatches(
+                                                              enable: true,
+                                                            );
+                                                            snack(
+                                                              'Outcomes simulati creati (TEST)',
+                                                            );
+                                                          }
+                                                        : null,
+                                                    child: const Text(
+                                                      'Crea simulazione',
+                                                    ),
+                                                  ),
+                                                  FilledButton.tonal(
+                                                    onPressed: simCount > 0
+                                                        ? () {
+                                                            app.setUseSimulatedOutcomes(
+                                                              !app.useSimulatedOutcomes,
+                                                            );
+                                                            snack(
+                                                              app.useSimulatedOutcomes
+                                                                  ? 'Simulazione ON'
+                                                                  : 'Simulazione OFF',
+                                                            );
+                                                          }
+                                                        : null,
+                                                    child: Text(
+                                                      app.useSimulatedOutcomes
+                                                          ? 'Simulazione: ON'
+                                                          : 'Simulazione: OFF',
+                                                    ),
+                                                  ),
+                                                  FilledButton.tonal(
+                                                    onPressed: simCount > 0
+                                                        ? () {
+                                                            app.clearSimulatedOutcomes();
+                                                            snack(
+                                                              'Ripristinati outcomes reali',
+                                                            );
+                                                          }
+                                                        : null,
+                                                    child: const Text(
+                                                      'Ripristina reali',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,

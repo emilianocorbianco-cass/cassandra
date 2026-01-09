@@ -97,8 +97,8 @@ class _GroupPageState extends State<GroupPage> {
     final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
         ? <String, MatchOutcome>{
             for (final m in _matches)
-              if (appState.cachedPredictionOutcomesByMatchId[m.id] != null)
-                m.id: appState.cachedPredictionOutcomesByMatchId[m.id]!,
+              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
           }
         : _outcomes;
 

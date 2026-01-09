@@ -87,7 +87,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     if (cachedMatches != null) {
       for (final m in cachedMatches) {
         liveOutcomes[m.id] =
-            appState.cachedPredictionOutcomesByMatchId[m.id] ??
+            appState.effectivePredictionOutcomesByMatchId[m.id] ??
             MatchOutcome.pending;
       }
     }
@@ -165,7 +165,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                     final app = CassandraScope.of(context);
                     final matches = app.cachedPredictionMatches;
                     final total = matches?.length ?? 0;
-                    final outcomes = app.cachedPredictionOutcomesByMatchId;
+                    final outcomes = app.effectivePredictionOutcomesByMatchId;
                     final graded = (matches == null)
                         ? 0
                         : matches.where((m) {

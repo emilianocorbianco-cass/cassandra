@@ -443,9 +443,44 @@ class AppState extends ChangeNotifier {
     await prefs.setString(_kMemberPicksByMemberIdV1, jsonEncode(outer));
   }
 
+  // ===== OUTCOMES SIMULATI (solo test, non persistiti) =====
+  bool _useSimulatedOutcomes = false;
+  Map<String, MatchOutcome>? _simulatedOutcomesByMatchId;
+
+  bool get useSimulatedOutcomes => _useSimulatedOutcomes;
+
+  Map<String, MatchOutcome>? get simulatedOutcomesByMatchId =>
+      _simulatedOutcomesByMatchId;
+
+  /// Outcomes usati dall'app: se la simulazione è ON usa quelli simulati,
+  /// altrimenti usa la cache reale.
+  Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId {
+    final sim = _simulatedOutcomesByMatchId;
+    if (_useSimulatedOutcomes && sim != null && sim.isNotEmpty) return sim;
+    return cachedPredictionOutcomesByMatchId;
+  }
+
+  void setUseSimulatedOutcomes(bool value) {
+    if (_useSimulatedOutcomes == value) return;
+    _useSimulatedOutcomes = value;
+    notifyListeners();
+  }
+
+  void clearSimulatedOutcomes() {
+    _simulatedOutcomesByMatchId = null;
+    _useSimulatedOutcomes = false;
+    notifyListeners();
+  }
+
   // ===== DEBUG =====
   // Simula risultati (tutti graded) per la matchday in cache: utile per testare leaderboard
-  void debugSimulateOutcomesForCachedMatches({int seed = 777}) {
+  // ===== DEBUG =====
+  // Crea outcomes simulati (tutti graded) per la matchday in cache: utile per testare leaderboard.
+  // Non sovrascrive la cache reale: puoi fare ON/OFF e ripristinare in un click.
+  void debugSimulateOutcomesForCachedMatches({
+    int seed = 777,
+    bool enable = true,
+  }) {
     final matches = _cachedPredictionMatches;
     if (matches == null || matches.isEmpty) return;
 
@@ -457,7 +492,8 @@ class AppState extends ChangeNotifier {
       map[m.id] = outs[rnd.nextInt(outs.length)];
     }
 
-    cachedPredictionOutcomesByMatchId = map;
+    _simulatedOutcomesByMatchId = map;
+    if (enable) _useSimulatedOutcomes = true;
     notifyListeners();
   }
 }
