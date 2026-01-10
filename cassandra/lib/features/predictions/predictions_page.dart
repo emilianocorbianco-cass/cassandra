@@ -19,6 +19,7 @@ import '../scoring/adapters/api_football_outcome_adapter.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
 import 'predictions_matchday_page.dart';
+import 'predictions_history_page.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -119,7 +120,6 @@ class _PredictionsPageState extends State<PredictionsPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Attenzione'),
           content: Text(
             'Hai lasciato $missing partite senza pronostico.\n\n'
             'Regola Cassandra: per ogni partita non giocata verrà applicata '
@@ -127,6 +127,18 @@ class _PredictionsPageState extends State<PredictionsPage> {
             'Vuoi inviare comunque?',
           ),
           actions: [
+            IconButton(
+              tooltip: 'Storico',
+              icon: const Icon(Icons.history),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PredictionsHistoryPage(),
+                  ),
+                );
+              },
+            ),
+
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Annulla'),
@@ -438,9 +450,12 @@ class _PredictionsPageState extends State<PredictionsPage> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => PredictionsMatchdayPage(
-                  matchday: md,
-                  picksByMatchId: picks,
-                  tag: tag,
+                  matchdayNumber: (md).dayNumber,
+                  matches: (md).matches,
+                  outcomesByMatchId: (md).outcomesByMatchId,
+                  picksByMatchId: CassandraScope.of(
+                    context,
+                  ).picksForCurrentUserForMatchday((md).dayNumber),
                 ),
               ),
             );
@@ -516,7 +531,6 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pronostici'),
         actions: [
           IconButton(
             tooltip: 'Aggiorna match',

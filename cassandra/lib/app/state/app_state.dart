@@ -711,4 +711,18 @@ class AppState extends ChangeNotifier {
 
     notifyListeners();
   }
+
+  /// Ritorna i pick dell'utente per una giornata (se abbiamo uno snapshot salvato).
+  /// Fallback: pick correnti (giornata live).
+  Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) {
+    try {
+      // Accesso "robusto": se il campo/getter non esiste, non rompiamo la build.
+      final dynamic self = this;
+      final byMatchday =
+          self.currentUserPicksByMatchday as Map<int, Map<String, PickOption>>;
+      final saved = byMatchday[matchdayNumber];
+      if (saved != null) return saved;
+    } catch (_) {}
+    return currentUserPicksByMatchId;
+  }
 }
