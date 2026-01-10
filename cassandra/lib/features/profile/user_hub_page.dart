@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/state/cassandra_scope.dart';
@@ -46,18 +47,25 @@ class _UserHubPageState extends State<UserHubPage> {
   late final BadgeCounts _trophies;
 
   bool _initialized = false;
+  int? _lastDemoSeed;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_initialized) return;
+    final appState = CassandraScope.of(context);
+    final seed = appState.demoSeed;
+    if (_initialized && _lastDemoSeed == seed) return;
     _initialized = true;
+    _lastDemoSeed = seed;
 
     // Coerente con Classifiche/Stats: stagione demo 16–20
-    final matchdays = mockSeasonMatchdays(startDay: 16, count: 5);
+    final matchdays = mockSeasonMatchdays(
+      startDay: 16,
+      count: 5,
+      demoSeed: seed,
+    );
 
     // Leggiamo il profilo (nome squadra + squadra del cuore) dai Settings
-    final appState = CassandraScope.of(context);
 
     final overrideMember = GroupMember(
       id: appState.profile.id,
@@ -91,6 +99,44 @@ class _UserHubPageState extends State<UserHubPage> {
     );
   }
 
+  Future<void> _resetHistory(dynamic app) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset storico'),
+        content: const Text(
+          'Cancella i pick salvati e i risultati salvati (outcomes).\n\n'
+          'Utile per testare da zero.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    app.clearAllHistory();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Storico resettato')));
+  }
+
+  Future<void> _regenDemo(dynamic app) async {
+    await app.bumpDemoSeed();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Demo rigenerata (seed: ${app.demoSeed})')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalMatches = widget.matchday.matches.length;
@@ -114,6 +160,8 @@ class _UserHubPageState extends State<UserHubPage> {
         : '';
 
     final initial = widget.initialTabIndex.clamp(0, 2);
+    final isMe = widget.member.id == app.profile.id;
+    final seed = app.demoSeed;
 
     return DefaultTabController(
       length: 3,
@@ -131,7 +179,7 @@ class _UserHubPageState extends State<UserHubPage> {
             ],
           ),
           bottom: PreferredSize(
-            preferredSize: Size.fromHeight(kTextTabBarHeight + 44),
+            preferredSize: Size.fromHeight(kTextTabBarHeight + 112),
             child: Column(
               children: [
                 const TabBar(
@@ -143,11 +191,40 @@ class _UserHubPageState extends State<UserHubPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      '$dataLabel$updatedLabel\n$resultsLabel',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$dataLabel$updatedLabel\n$resultsLabel',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        if (kDebugMode)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                'demo seed: $seed',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              OutlinedButton(
+                                onPressed: isMe
+                                    ? () async => _resetHistory(app)
+                                    : null,
+                                child: const Text('Reset storico'),
+                              ),
+                              OutlinedButton(
+                                onPressed: () async => _regenDemo(app),
+                                child: const Text('Rigenera demo'),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
                 ),

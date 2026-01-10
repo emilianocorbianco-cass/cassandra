@@ -169,20 +169,23 @@ class _GroupPageState extends State<GroupPage> {
     );
 
     // Storico (DEMO) per ora: giornate 16–19 (evitiamo mismatch con la giornata corrente reale).
-    final seasonMatchdays = mockSeasonMatchdays(startDay: 16, count: 4).map((
-      md,
-    ) {
-      if (!appState.hasSavedOutcomesForMatchday(md.dayNumber)) return md;
+    final seasonMatchdays =
+        mockSeasonMatchdays(
+          startDay: 16,
+          count: 4,
+          demoSeed: appState.demoSeed,
+        ).map((md) {
+          if (!appState.hasSavedOutcomesForMatchday(md.dayNumber)) return md;
 
-      return MatchdayData(
-        dayNumber: md.dayNumber,
-        matches: md.matches,
-        outcomesByMatchId: <String, MatchOutcome>{
-          ...md.outcomesByMatchId,
-          ...appState.outcomesForMatchday(md.dayNumber),
-        },
-      );
-    }).toList();
+          return MatchdayData(
+            dayNumber: md.dayNumber,
+            matches: md.matches,
+            outcomesByMatchId: <String, MatchOutcome>{
+              ...md.outcomesByMatchId,
+              ...appState.outcomesForMatchday(md.dayNumber),
+            },
+          );
+        }).toList();
     final seasonMatchdaysDesc = seasonMatchdays.toList()
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 

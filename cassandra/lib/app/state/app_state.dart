@@ -19,6 +19,7 @@ class AppState extends ChangeNotifier {
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
   static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
   static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
+  static const _kDemoSeedV1 = 'demo_seed.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -40,14 +41,18 @@ class AppState extends ChangeNotifier {
   CassandraLanguage _language;
   PredictionVisibility _defaultVisibility;
 
+  int _demoSeed;
+
   AppState._(
     this._prefs, {
     required UserProfile profile,
     required CassandraLanguage language,
     required PredictionVisibility defaultVisibility,
+    int demoSeed = 0,
   }) : _profile = profile,
        _language = language,
-       _defaultVisibility = defaultVisibility;
+       _defaultVisibility = defaultVisibility,
+       _demoSeed = demoSeed;
 
   /// --- getters usati dal resto dell'app ---
   UserProfile get profile => _profile;
@@ -58,6 +63,8 @@ class AppState extends ChangeNotifier {
 
   CassandraLanguage get language => _language;
   PredictionVisibility get defaultVisibility => _defaultVisibility;
+
+  int get demoSeed => _demoSeed;
 
   Locale? get localeOverride => localeForLanguage(_language);
 
@@ -94,12 +101,14 @@ class AppState extends ChangeNotifier {
     final visibility = predictionVisibilityFromStorage(
       prefs.getString(_kDefaultVisibility),
     );
+    final demoSeed = prefs.getInt(_kDemoSeedV1) ?? 0;
 
     return AppState._(
       prefs,
       profile: profile,
       language: language,
       defaultVisibility: visibility,
+      demoSeed: demoSeed,
     );
   }
 
@@ -114,6 +123,7 @@ class AppState extends ChangeNotifier {
       profile: profile ?? _defaultProfile,
       language: language,
       defaultVisibility: defaultVisibility,
+      demoSeed: 0,
     );
   }
 
@@ -674,6 +684,31 @@ class AppState extends ChangeNotifier {
 
     _simulatedOutcomesByMatchId = map;
     if (enable) _useSimulatedOutcomes = true;
+    notifyListeners();
+  }
+
+  Future<void> bumpDemoSeed() async {
+    _demoSeed = _demoSeed + 1;
+    await _prefs?.setInt(_kDemoSeedV1, _demoSeed);
+    notifyListeners();
+  }
+
+  void clearAllHistory() {
+    ensureCurrentUserPicksLoaded();
+    ensureCurrentUserPicksHistoryLoaded();
+    ensureOutcomesHistoryLoaded();
+    ensureMemberPicksLoaded();
+
+    currentUserPicksByMatchId = const <String, PickOption>{};
+    _currentUserPicksByMatchday.clear();
+    _outcomesByMatchday.clear();
+    memberPicksByMemberId = const <String, Map<String, PickOption>>{};
+
+    _prefs?.remove(_kCurrentUserPicksByMatchIdV1);
+    _prefs?.remove(_kCurrentUserPicksByMatchday);
+    _prefs?.remove(_kPredictionOutcomesByMatchday);
+    _prefs?.remove(_kMemberPicksByMemberIdV1);
+
     notifyListeners();
   }
 }

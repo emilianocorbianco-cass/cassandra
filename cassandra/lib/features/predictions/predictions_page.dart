@@ -400,8 +400,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
         }
       });
     }
-    final demoHistory = mockSeasonMatchdays(startDay: 16, count: 4)
-      ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
+    final demoHistory = mockSeasonMatchdays(
+      startDay: 16,
+      count: 4,
+      demoSeed: appState.demoSeed,
+    )..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
     Widget tileFor(
       MatchdayData md,
@@ -485,7 +488,10 @@ class _PredictionsPageState extends State<PredictionsPage> {
                 : md,
             appState.hasSavedPicksForMatchday(md.dayNumber)
                 ? appState.currentUserPicksForMatchday(md.dayNumber)
-                : _demoPicksForMatchday('${uid}_${md.dayNumber}', md.matches),
+                : _demoPicksForMatchday(
+                    '${uid}_${md.dayNumber}_${appState.demoSeed}',
+                    md.matches,
+                  ),
             tag: appState.hasSavedPicksForMatchday(md.dayNumber)
                 ? 'SALVATI'
                 : 'DEMO',
