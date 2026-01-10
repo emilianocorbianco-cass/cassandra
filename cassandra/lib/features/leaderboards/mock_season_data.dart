@@ -34,6 +34,7 @@ Map<String, MatchOutcome> _mockOutcomesForMatchesSeeded(
 List<MatchdayData> mockSeasonMatchdays({
   required int startDay,
   required int count,
+  int demoSeed = 0,
 }) {
   final template = mockPredictionMatches();
   final firstKickoff = template.first.kickoff;
@@ -72,7 +73,7 @@ List<MatchdayData> mockSeasonMatchdays({
 
     final outcomes = _mockOutcomesForMatchesSeeded(
       matches,
-      seed: 7000 + dayNumber,
+      seed: 7000 + dayNumber + (demoSeed * 1000),
     );
 
     matchdays.add(
@@ -93,6 +94,7 @@ List<MatchdayData> mockSeasonMatchdays({
 List<SeasonLeaderboardEntry> buildMockSeasonLeaderboardEntries({
   required List<MatchdayData> matchdays,
   List<GroupMember>? members,
+  int demoSeed = 0,
 }) {
   final membersList = members ?? mockGroupMembers();
   final entries = <SeasonLeaderboardEntry>[];
@@ -106,7 +108,7 @@ List<SeasonLeaderboardEntry> buildMockSeasonLeaderboardEntries({
     for (final md in playedMatchdays) {
       // Picks diversi per giornata (seed diversa)
       final picks = mockPicksForMember(
-        '${member.id}_${md.dayNumber}',
+        '${member.id}_${md.dayNumber}_$demoSeed',
         md.matches,
       );
 
@@ -152,6 +154,7 @@ SeasonLeaderboardEntry buildSeasonEntryForMemberFromPicks({
   required GroupMember member,
   required List<MatchdayData> matchdays,
   required Map<String, PickOption> picksByMatchId,
+  int demoSeed = 0,
 }) {
   // Coerente con i mock: alcuni utenti “iniziano dopo” 0..2 giornate.
   final joinOffset = member.avatarSeed % 3; // 0..2
@@ -169,7 +172,10 @@ SeasonLeaderboardEntry buildSeasonEntryForMemberFromPicks({
 
     final picks = hasOverride
         ? picksByMatchId
-        : mockPicksForMember('${member.id}_${md.dayNumber}', md.matches);
+        : mockPicksForMember(
+            '${member.id}_${md.dayNumber}_$demoSeed',
+            md.matches,
+          );
 
     final day = CassandraScoringEngine.computeDayScore(
       matches: md.matches,
