@@ -388,6 +388,9 @@ class AppState extends ChangeNotifier {
   bool _outcomesHistoryLoaded = false;
   final Map<int, Map<String, MatchOutcome>> _outcomesByMatchday = {};
 
+  // Snapshot match per giornata (storico stabile)
+  Map<int, List<PredictionMatch>> _matchdayMatchesByDay = {};
+
   Map<int, Map<String, MatchOutcome>> get outcomesByMatchday =>
       _outcomesByMatchday;
 
@@ -477,9 +480,6 @@ class AppState extends ChangeNotifier {
   final Map<int, List<PredictionMatch>> _matchesByMatchday = {};
 
   Map<int, List<PredictionMatch>> get matchesByMatchday => _matchesByMatchday;
-
-  bool hasSavedMatchesForMatchday(int matchdayNumber) =>
-      _matchesByMatchday.containsKey(matchdayNumber);
 
   List<PredictionMatch>? matchesForMatchday(int matchdayNumber) =>
       _matchesByMatchday[matchdayNumber];
@@ -754,5 +754,91 @@ class AppState extends ChangeNotifier {
       if (saved != null) return saved;
     } catch (_) {}
     return currentUserPicksByMatchId;
+  }
+
+  static const String _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
+
+  Future<void> ensureMatchdayMatchesLoaded() async {
+    if (_matchdayMatchesByDay.isNotEmpty) return;
+
+    final prefs = _prefs!;
+    final raw = prefs.getString(_kMatchdayMatchesByDayV1);
+    if (raw == null || raw.isEmpty) return;
+
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final map = <int, List<PredictionMatch>>{};
+
+    for (final e in decoded.entries) {
+      final day = int.tryParse(e.key);
+      if (day == null) continue;
+      final list = (e.value as List).cast<Map<String, dynamic>>();
+      map[day] = list.map(_predictionMatchFromSnapshot).toList();
+    }
+
+    _matchdayMatchesByDay = map;
+  }
+
+  bool hasSavedMatchesForMatchday(int matchdayNumber) {
+    return _matchdayMatchesByDay.containsKey(matchdayNumber) &&
+        _matchdayMatchesByDay[matchdayNumber]!.isNotEmpty;
+  }
+
+  List<PredictionMatch>? savedMatchesForMatchday(int matchdayNumber) {
+    final v = _matchdayMatchesByDay[matchdayNumber];
+    if (v == null || v.isEmpty) return null;
+    return v;
+  }
+
+  Future<void> saveMatchdayMatchesSnapshot({
+    required int matchdayNumber,
+    required List<PredictionMatch> matches,
+  }) async {
+    await ensureMatchdayMatchesLoaded();
+
+    _matchdayMatchesByDay[matchdayNumber] = List<PredictionMatch>.of(matches);
+
+    final encoded = <String, dynamic>{
+      for (final e in _matchdayMatchesByDay.entries)
+        e.key.toString(): e.value.map(_predictionMatchToSnapshot).toList(),
+    };
+
+    final prefs = _prefs!;
+    await prefs.setString(_kMatchdayMatchesByDayV1, jsonEncode(encoded));
+    notifyListeners();
+  }
+
+  Map<String, dynamic> _predictionMatchToSnapshot(PredictionMatch m) {
+    return {
+      'id': m.id,
+      'kickoff': m.kickoff.toIso8601String(),
+      'home': m.homeTeam,
+      'away': m.awayTeam,
+      'odds': {
+        'home': m.odds.home,
+        'draw': m.odds.draw,
+        'away': m.odds.away,
+        'homeDraw': m.odds.homeDraw,
+        'drawAway': m.odds.drawAway,
+        'homeAway': m.odds.homeAway,
+      },
+    };
+  }
+
+  PredictionMatch _predictionMatchFromSnapshot(Map<String, dynamic> j) {
+    final odds = j['odds'] as Map<String, dynamic>;
+    return PredictionMatch(
+      id: j['id'] as String,
+      kickoff: DateTime.parse(j['kickoff'] as String),
+      homeTeam: j['home'] as String,
+      awayTeam: j['away'] as String,
+      odds: Odds(
+        home: (odds['home'] as num).toDouble(),
+        draw: (odds['draw'] as num).toDouble(),
+        away: (odds['away'] as num).toDouble(),
+        homeDraw: (odds['homeDraw'] as num).toDouble(),
+        drawAway: (odds['drawAway'] as num).toDouble(),
+        homeAway: (odds['homeAway'] as num).toDouble(),
+      ),
+    );
   }
 }

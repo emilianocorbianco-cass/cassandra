@@ -194,12 +194,17 @@ class _PredictionsPageState extends State<PredictionsPage> {
     // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
     final appState = CassandraScope.of(context);
     appState.ensureCurrentUserPicksHistoryLoaded();
+    appState.ensureMatchdayMatchesLoaded();
     appState.ensureOutcomesHistoryLoaded();
     appState.saveCurrentUserPicksHistory(
       dayNumber: _matchdayNumber,
       picksByMatchId: _picks,
     );
 
+    await appState.saveMatchdayMatchesSnapshot(
+      matchdayNumber: _matchdayNumber,
+      matches: _matches,
+    );
     appState.ensureMatchesHistoryLoaded();
     appState.saveMatchesHistory(
       matchdayNumber: _matchdayNumber,
