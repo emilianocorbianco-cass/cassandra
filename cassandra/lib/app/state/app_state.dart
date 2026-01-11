@@ -5,12 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
 import 'user_profile.dart';
-import 'package:cassandra/features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../../features/predictions/models/pick_option.dart';
 import 'dart:math';
+
+import '../../features/predictions/models/prediction_match.dart';
 
 class AppState extends ChangeNotifier {
   Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
@@ -255,7 +256,6 @@ class AppState extends ChangeNotifier {
   // ===== Pronostici utente (persistiti) =====
   static const String _kCurrentUserPicksByMatchIdV1 =
       'cassandra.current_user_picks_by_match_id_v1';
-
   bool _currentUserPicksLoaded = false;
   Map<String, PickOption> currentUserPicksByMatchId =
       const <String, PickOption>{};
@@ -468,6 +468,36 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // ignore
     }
+    notifyListeners();
+  }
+
+  // ===== MATCHES STORICO (per matchday) =====
+  // Nota: per ora lo teniamo SOLO in-memory.
+  // Per persisterlo su storage serve aggiungere serializzazione JSON a PredictionMatch (+ odds).
+  final Map<int, List<PredictionMatch>> _matchesByMatchday = {};
+
+  Map<int, List<PredictionMatch>> get matchesByMatchday => _matchesByMatchday;
+
+  bool hasSavedMatchesForMatchday(int matchdayNumber) =>
+      _matchesByMatchday.containsKey(matchdayNumber);
+
+  List<PredictionMatch>? matchesForMatchday(int matchdayNumber) =>
+      _matchesByMatchday[matchdayNumber];
+
+  void ensureMatchesHistoryLoaded() {
+    // no-op (in-memory only)
+  }
+
+  Future<void> saveMatchesHistory({
+    required int matchdayNumber,
+    required List<PredictionMatch> matches,
+  }) async {
+    _matchesByMatchday[matchdayNumber] = List.unmodifiable(matches);
+    notifyListeners();
+  }
+
+  Future<void> clearMatchesHistory() async {
+    _matchesByMatchday.clear();
     notifyListeners();
   }
 

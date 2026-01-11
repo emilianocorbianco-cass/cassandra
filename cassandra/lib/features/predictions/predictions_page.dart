@@ -20,6 +20,7 @@ import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
 import 'predictions_matchday_page.dart';
 import 'predictions_history_page.dart';
+import '../scoring/models/score_breakdown.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -65,7 +66,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
   DateTime get _firstKickoff =>
       _matches.map((m) => m.kickoff).reduce((a, b) => a.isBefore(b) ? a : b);
 
-  DateTime get _lockTime => _firstKickoff.subtract(const Duration(hours: 2));
+  DateTime get _lockTime => _firstKickoff.subtract(const Duration(minutes: 30));
 
   bool get _locked => DateTime.now().isAfter(_lockTime);
 
@@ -106,6 +107,19 @@ class _PredictionsPageState extends State<PredictionsPage> {
   }
 
   void _setPick(String matchId, PickOption pick) {
+    // Lock: non permettere modifiche ai pick se la partita è già iniziata.
+    final PredictionMatch? match = _matches.cast<PredictionMatch?>().firstWhere(
+      (m) => m?.id == matchId,
+      orElse: () => null,
+    );
+
+    if (match != null && DateTime.now().isAfter(match.kickoff)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Partita già iniziata: pick bloccato')),
+      );
+      return;
+    }
+
     setState(() => _picks[matchId] = pick);
     CassandraScope.of(context).setCurrentUserPick(matchId, pick);
   }
@@ -186,6 +200,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
       picksByMatchId: _picks,
     );
 
+    appState.ensureMatchesHistoryLoaded();
+    appState.saveMatchesHistory(
+      matchdayNumber: _matchdayNumber,
+      matches: _matches,
+    );
     // Se abbiamo outcomes disponibili, salvali anche nello storico (per punteggi stabili)
     final outcomesNow = <String, MatchOutcome>{
       for (final e in appState.effectivePredictionOutcomesByMatchId.entries)
@@ -440,6 +459,23 @@ class _PredictionsPageState extends State<PredictionsPage> {
           ? 'Giornata ${md.dayNumber}'
           : 'Giornata ${md.dayNumber} ($tag)';
 
+      final appState = CassandraScope.of(context);
+
+      final savedMatches = appState.matchesByMatchday[md.dayNumber];
+      final matchesEffective = (savedMatches != null && savedMatches.isNotEmpty)
+          ? savedMatches
+          : md.matches;
+
+      final savedOutcomes = appState.outcomesByMatchday[md.dayNumber];
+      final outcomesEffective =
+          (savedOutcomes != null && savedOutcomes.isNotEmpty)
+          ? savedOutcomes
+          : md.outcomesByMatchId;
+
+      final picksEffective = appState.picksForCurrentUserForMatchday(
+        md.dayNumber,
+      );
+
       return Card(
         child: ListTile(
           title: Text(title),
@@ -450,12 +486,10 @@ class _PredictionsPageState extends State<PredictionsPage> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => PredictionsMatchdayPage(
-                  matchdayNumber: (md).dayNumber,
-                  matches: (md).matches,
-                  outcomesByMatchId: (md).outcomesByMatchId,
-                  picksByMatchId: CassandraScope.of(
-                    context,
-                  ).picksForCurrentUserForMatchday((md).dayNumber),
+                  matchdayNumber: md.dayNumber,
+                  matches: matchesEffective,
+                  outcomesByMatchId: outcomesEffective,
+                  picksByMatchId: picksEffective,
                 ),
               ),
             );
@@ -517,9 +551,38 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = CassandraScope.of(context);
+
     final lockLabel = _locked
         ? 'giocate bloccate'
         : 'modificabile fino alle ${formatKickoff(_lockTime)}';
+
+    final scoreOutcomesByMatchId = <String, MatchOutcome>{
+      for (final m in _matches)
+        if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+          m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+    };
+
+    final DayScoreBreakdown dayScore = CassandraScoringEngine.computeDayScore(
+      matches: _matches,
+      picksByMatchId: {for (final m in _matches) m.id: _pickFor(m.id)},
+      outcomesByMatchId: scoreOutcomesByMatchId,
+    );
+
+    final bonusSigned = dayScore.bonusPoints == 0
+        ? '0'
+        : (dayScore.bonusPoints > 0
+              ? '+${dayScore.bonusPoints}'
+              : '${dayScore.bonusPoints}');
+
+    final scoreAvgLabel = dayScore.averageOddsPlayed == null
+        ? '—'
+        : formatOdds(dayScore.averageOddsPlayed!);
+
+    final scoreLabel =
+        'punti: ${formatOdds(dayScore.total)} (base ${formatOdds(dayScore.baseTotal)} • bonus $bonusSigned)'
+        ' • corretti ${dayScore.correctCount}/${dayScore.matchBreakdowns.length}'
+        ' • quota media $scoreAvgLabel';
 
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
@@ -585,6 +648,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(lockLabel, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    scoreLabel,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     '$dataLabel$updatedLabel',
