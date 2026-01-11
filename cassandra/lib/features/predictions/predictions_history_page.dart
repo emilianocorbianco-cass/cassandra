@@ -32,6 +32,7 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
       if (!mounted) return;
       app.ensureCurrentUserPicksLoaded();
       app.ensureOutcomesHistoryLoaded();
+      app.ensureMatchdayMatchesLoaded();
     });
   }
 
@@ -87,7 +88,13 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
             final canUseCached = _canUseCachedFor(cached, picks);
 
             final MatchdayData md = _mockMatchday(dayNumber);
-            final matches = canUseCached ? cached : md.matches;
+
+            final saved = app.savedMatchesForMatchday(dayNumber);
+            final canUseSaved = saved != null && _canUseCachedFor(saved, picks);
+
+            final matches = canUseSaved
+                ? saved
+                : (canUseCached ? cached : md.matches);
 
             final outcomes = app.hasSavedOutcomesForMatchday(dayNumber)
                 ? app.outcomesForMatchday(dayNumber)
@@ -116,11 +123,15 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
                 ? 'risultati: $gradedCount/$totalMatches'
                 : 'risultati: $gradedCount/$totalMatches (parziale)';
 
+            final tag = canUseSaved
+                ? 'SALVATI'
+                : (canUseCached ? 'API' : 'DEMO');
+
             return Card(
               child: ListTile(
                 title: Text('Giornata $dayNumber'),
                 subtitle: Text('$daysLabel\n$resultsLabel'),
-                trailing: Text(canUseCached ? 'API' : 'DEMO'),
+                trailing: Text(tag),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -129,7 +140,7 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
                         matches: matches,
                         picksByMatchId: picks,
                         outcomesByMatchId: outcomes,
-                        isDemoData: !canUseCached,
+                        isDemoData: !(canUseSaved || canUseCached),
                       ),
                     ),
                   );
