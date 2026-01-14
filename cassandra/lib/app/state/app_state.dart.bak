@@ -19,8 +19,6 @@ class AppState extends ChangeNotifier {
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
   static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
-  static const _kCassandraMatchdayCursorV1 = 'cassandra.matchday.cursor.v1';
-  static const int _kCassandraDefaultMatchdayCursor = 20;
   static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
   static const _kDemoSeedV1 = 'demo_seed.v1';
 
@@ -39,25 +37,6 @@ class AppState extends ChangeNotifier {
   );
 
   final SharedPreferences? _prefs;
-
-  int? _cassandraMatchdayCursor;
-
-  /// Giornata “corrente” secondo Cassandra (ignorando recuperi di round vecchi).
-  /// Persistita in SharedPreferences.
-  int get cassandraMatchdayCursor => _cassandraMatchdayCursor ??=
-      (_prefs?.getInt(_kCassandraMatchdayCursorV1) ??
-      _kCassandraDefaultMatchdayCursor);
-
-  Future<void> setCassandraMatchdayCursor(int dayNumber) async {
-    if (dayNumber <= 0) return;
-    _cassandraMatchdayCursor = dayNumber;
-    await _prefs?.setInt(_kCassandraMatchdayCursorV1, dayNumber);
-    notifyListeners();
-  }
-
-  Future<void> bumpCassandraMatchdayCursor() async {
-    await setCassandraMatchdayCursor(cassandraMatchdayCursor + 1);
-  }
 
   UserProfile _profile;
   CassandraLanguage _language;

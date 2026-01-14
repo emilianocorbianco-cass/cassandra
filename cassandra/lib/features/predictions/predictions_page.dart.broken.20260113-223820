@@ -32,13 +32,13 @@ class PredictionsPage extends StatefulWidget {
 }
 
 class _PredictionsPageState extends State<PredictionsPage> {
-  static const int _matchdayNumber = 20;
+  
+  bool _didInitDeps = false;
+int _matchdayNumber = 20;
 
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
   bool _loadingFixtures = false;
-  bool _didLoadFixtures = false;
-
   DateTime? _fixturesUpdatedAt;
 
   final Map<String, PickOption> _picks = {};
@@ -47,23 +47,26 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   VisibilityChoice? _submittedVisibility;
   DateTime? _submittedAt;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInitDeps) return;
+    _didInitDeps = true;
+
+    // final appState = CassandraScope.of(context); // provided by caller
+    _tryLoadRealFixtures(appState);
+  }
+
 
   @override
   void initState() {
     super.initState();
     _matches = mockPredictionMatches();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_didLoadFixtures) return;
-    _didLoadFixtures = true;
-    _tryLoadRealFixtures();
+//     _tryLoadRealFixtures();  // moved to didChangeDependencies
   }
 
   PickOption _pickFor(String matchId) {
-    final appState = CassandraScope.of(context);
+    // final appState = CassandraScope.of(context); // provided by caller
     appState.ensureCurrentUserPicksLoaded();
     return appState.currentUserPicksByMatchId[matchId] ?? PickOption.none;
   }
@@ -201,7 +204,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
     );
 
     // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
-    final appState = CassandraScope.of(context);
+    // final appState = CassandraScope.of(context); // provided by caller
     appState.ensureCurrentUserPicksHistoryLoaded();
     appState.ensureMatchdayMatchesLoaded();
     appState.ensureOutcomesHistoryLoaded();
@@ -328,7 +331,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
     );
   }
 
-  Future<void> _tryLoadRealFixtures({bool showLoader = false}) async {
+  Future<void> _tryLoadRealFixtures(dynamic appState, {bool showLoader = false}) async {
     final key = Env.apiFootballKey;
     if (key == null) return; // in test o senza .env restiamo sui mock
 
@@ -336,6 +339,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
       setState(() => _loadingFixtures = true);
     }
 
+    // final appState = CassandraScope.of(context); // provided by caller
     final client = ApiFootballClient(
       apiKey: key,
       baseUrl: Env.baseUrl,
@@ -345,16 +349,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     try {
       final service = ApiFootballService(client);
-      // Intorno di partite (passate recenti + future) per scegliere la giornata corretta
-      final past = await service.getLastSerieAFixtures(count: 40);
-      final next = await service.getNextSerieAFixtures(count: 80);
-      final fixtures = [...past, ...next];
+      final fixtures = await service.getNextSerieAFixtures(count: 80);
+      final filteredFixtures = _filterMatchdayWindow(fixtures);
 
-      // Dedup per ID (se l'API restituisce doppioni)
-      final seen = <Object?>{};
-      final _ = fixtures.where((f) => seen.add((f as dynamic).id)).toList();
-      final outcomes = outcomesByMatchIdFromFixtures(fixtures);
-      final matches = predictionMatchesFromFixtures(fixtures);
+      final outcomes = outcomesByMatchIdFromFixtures(filteredFixtures);
+      final matches = predictionMatchesFromFixtures(filteredFixtures);
       if (matches.isEmpty) return;
 
       if (!mounted) return;
@@ -365,12 +364,12 @@ class _PredictionsPageState extends State<PredictionsPage> {
       });
 
       // Salviamo le fixture reali in cache runtime (per Gruppo / User pages)
-      CassandraScope.of(context).setCachedPredictionMatches(
+      appState.setCachedPredictionMatches(
         matches,
         isReal: true,
         updatedAt: _fixturesUpdatedAt,
       );
-      CassandraScope.of(context).setCachedPredictionOutcomesByMatchId(outcomes);
+      appState.setCachedPredictionOutcomesByMatchId(outcomes);
     } catch (_) {
       // Se fallisce la rete o la key, restiamo sui mock.
     } finally {
@@ -413,7 +412,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
   }
 
   Widget _buildHistory(BuildContext context) {
-    final appState = CassandraScope.of(context);
+    // final appState = CassandraScope.of(context); // provided by caller
     appState.ensureCurrentUserPicksLoaded();
 
     final uid = appState.profile.id;
@@ -480,8 +479,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
           ? 'Giornata ${md.dayNumber}'
           : 'Giornata ${md.dayNumber} ($tag)';
 
-      final appState = CassandraScope.of(context);
-
+      // final appState = CassandraScope.of(context); // provided by caller
       final savedMatches = appState.matchesByMatchday[md.dayNumber];
       final matchesEffective = (savedMatches != null && savedMatches.isNotEmpty)
           ? savedMatches
@@ -570,10 +568,252 @@ class _PredictionsPageState extends State<PredictionsPage> {
     );
   }
 
+  /// Tiene solo i match “della giornata” ed esclude i recuperi molto lontani nel tempo.
+  /// Regola: prendiamo il primo kickoff della giornata e includiamo solo i match entro 7 giorni.
+  // ignore: unused_element
+  List<T> _filterMatchdayWindow<T>(
+    List<T> fixtures, {
+    required int? Function(T) roundOf,
+    required DateTime Function(T) kickoffOf,
+    int minFixtures = 8,
+  }) {
+    if (fixtures.isEmpty) return fixtures;
+
+    final sorted = fixtures.toList()
+      ..sort((a, b) => kickoffOf(a).compareTo(kickoffOf(b)));
+
+    // Cluster più denso (tipicamente 2-4 giorni) per tagliare recuperi molto distanti
+    List<T> denseCluster(List<T> xs) {
+      if (xs.length <= 2) return xs;
+      const window = Duration(days: 4);
+
+      var bestStart = 0;
+      var bestEnd = 0;
+
+      for (var i = 0; i < xs.length; i++) {
+        final start = kickoffOf(xs[i]);
+        var j = i;
+        while (j < xs.length &&
+            kickoffOf(xs[j]).difference(start) <= window) {
+          j++;
+        }
+        final len = (j - i);
+        if (len > (bestEnd - bestStart + 1)) {
+          bestStart = i;
+          bestEnd = j - 1;
+        }
+      }
+      return xs.sublist(bestStart, bestEnd + 1);
+    }
+
+    final byRound = <int, List<T>>{};
+    for (final f in sorted) {
+      final r = roundOf(f);
+      if (r == null) continue;
+      (byRound[r] ??= <T>[]).add(f);
+    }
+
+    if (byRound.isEmpty) return denseCluster(sorted);
+
+    // 1) Preferisci la prima “giornata vera” (>= minFixtures) anche se c'è un recupero prima
+    int? chosenRound;
+    DateTime? chosenFirstKickoff;
+
+    for (final e in byRound.entries) {
+      final list = e.value.toList()
+        ..sort((a, b) => kickoffOf(a).compareTo(kickoffOf(b)));
+      if (list.length < minFixtures) continue;
+
+      final first = kickoffOf(list.first);
+      if (chosenFirstKickoff == null || first.isBefore(chosenFirstKickoff!)) {
+        chosenRound = e.key;
+        chosenFirstKickoff = first;
+      }
+    }
+
+    // 2) Fallback: round con più partite (tie -> kickoff più vicino)
+    if (chosenRound == null) {
+      var bestRound = byRound.keys.first;
+      var bestCount = -1;
+      DateTime? bestFirst;
+
+      for (final e in byRound.entries) {
+        final list = e.value.toList()
+          ..sort((a, b) => kickoffOf(a).compareTo(kickoffOf(b)));
+        final count = list.length;
+        final first = kickoffOf(list.first);
+
+        final better = (count > bestCount) ||
+            (count == bestCount &&
+                (bestFirst == null || first.isBefore(bestFirst!)));
+
+        if (better) {
+          bestRound = e.key;
+          bestCount = count;
+          bestFirst = first;
+        }
+      }
+      chosenRound = bestRound;
+    }
+
+    final chosen = byRound[chosenRound]!.toList()
+      ..sort((a, b) => kickoffOf(a).compareTo(kickoffOf(b)));
+
+    // REGOLA: se NON è una giornata “vera”, NON arretrare su recuperi (16ª ecc.)
+    // Se invece è “vera”, aggiorna la giornata corrente.
+    if (chosen.length >= minFixtures) {
+      _matchdayNumber = chosenRound;
+    }
+
+    return denseCluster(chosen);
+  }
+    if (fixtures.isEmpty) return fixtures;
+
+    DateTime? kickoffOf(T f) {
+      try {
+        final d = f as dynamic;
+        final v =
+            d.kickoff ??
+            d.date ??
+            d.fixture?.date ??
+            d.fixture?.timestamp ??
+            d.fixture?.timestampMs ??
+            d.fixture?.time ??
+            d.fixture?.dateTimestamp ??
+            d.start ??
+            d.startTime;
+        if (v is DateTime) return v;
+        if (v is String) return DateTime.tryParse(v);
+        if (v is int) {
+          if (v > 1000000000000) return DateTime.fromMillisecondsSinceEpoch(v);
+          if (v > 1000000000)
+            return DateTime.fromMillisecondsSinceEpoch(v * 1000);
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    int? roundOf(T f) {
+      int? parseRound(dynamic r) {
+        if (r is int) return r;
+        if (r is String) {
+          final m = RegExp(r'(\d+)\s*$').firstMatch(r);
+          return m == null ? null : int.tryParse(m.group(1)!);
+        }
+        return null;
+      }
+
+      try {
+        final d = f as dynamic;
+        final v = d.roundNumber ?? d.matchdayNumber ?? d.dayNumber ?? d.round;
+        final p = parseRound(v);
+        if (p != null) {
+          return p;
+        }
+        final league = d.league;
+        if (league != null) {
+          final lv =
+              (league as dynamic).roundNumber ?? (league as dynamic).round;
+          final p2 = parseRound(lv);
+          if (p2 != null) {
+            return p2;
+          }
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    List<T> denseCluster(List<T> items) {
+      if (items.length <= 1) return items;
+      final sorted = List<T>.of(items)
+        ..sort((a, b) => kickoffOf(a)!.compareTo(kickoffOf(b)!));
+      int bestI = 0, bestJ = 0, bestCount = 0;
+
+      for (int i = 0; i < sorted.length; i++) {
+        final start = kickoffOf(sorted[i])!;
+        final end = start.add(Duration(days: maxSpanDays));
+        int j = i;
+        while (j < sorted.length) {
+          final k = kickoffOf(sorted[j])!;
+          if (k.isAfter(end)) break;
+          j++;
+        }
+        final count = j - i;
+        if (count > bestCount) {
+          bestCount = count;
+          bestI = i;
+          bestJ = j;
+        }
+      }
+      return sorted.sublist(bestI, bestJ);
+    }
+
+    final now = DateTime.now();
+
+    final candidates = fixtures.where((f) {
+      final k = kickoffOf(f);
+      if (k == null) return false;
+      // evita giornate vecchie finite "da settimane"
+      return k.isAfter(now.subtract(const Duration(days: 7)));
+    }).toList();
+
+    if (candidates.isEmpty) return fixtures;
+
+    final sorted = List<T>.of(candidates)
+      ..sort((a, b) => kickoffOf(a)!.compareTo(kickoffOf(b)!));
+
+    int? bestRound;
+    int bestRoundCount = 0;
+
+    for (int i = 0; i < sorted.length; i++) {
+      final start = kickoffOf(sorted[i])!;
+      final end = start.add(Duration(days: maxSpanDays));
+      final counts = <int, int>{};
+
+      for (int j = i; j < sorted.length; j++) {
+        final k = kickoffOf(sorted[j])!;
+        if (k.isAfter(end)) break;
+        final r = roundOf(sorted[j]);
+        if (r != null) counts[r] = (counts[r] ?? 0) + 1;
+      }
+
+      if (counts.isEmpty) continue;
+
+      var top = counts.entries.first;
+      for (final e in counts.entries) {
+        if (e.value > top.value) top = e;
+      }
+
+      final qualifies = top.value >= minFixtures;
+      final better =
+          (qualifies && top.value > bestRoundCount) ||
+          (!qualifies &&
+              bestRoundCount < minFixtures &&
+              top.value > bestRoundCount);
+
+      if (better) {
+        bestRound = top.key;
+        bestRoundCount = top.value;
+      }
+
+      if (i == 0 && bestRoundCount >= minFixtures) {
+        break;
+      }
+    }
+
+    List<T> sameRound = sorted;
+    if (bestRound != null) {
+      _matchdayNumber = bestRound;
+      sameRound = sorted.where((f) => roundOf(f) == bestRound).toList();
+    }
+
+    // Taglia recuperi molto distanti: tieni solo il cluster più denso
+    return denseCluster(sameRound);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final appState = CassandraScope.of(context);
-
+    // final appState = CassandraScope.of(context); // provided by caller
     final lockLabel = _locked
         ? 'giocate bloccate'
         : 'modificabile fino alle ${formatKickoff(_lockTime)}';

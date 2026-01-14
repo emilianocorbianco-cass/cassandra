@@ -42,9 +42,9 @@ class UserHubPage extends StatefulWidget {
 }
 
 class _UserHubPageState extends State<UserHubPage> {
-  late final List<SeasonLeaderboardEntry> _seasonEntries;
-  late final SeasonLeaderboardEntry _seasonEntry;
-  late final BadgeCounts _trophies;
+  late List<SeasonLeaderboardEntry> _seasonEntries;
+  late SeasonLeaderboardEntry _seasonEntry;
+  late BadgeCounts _trophies;
 
   bool _initialized = false;
   int? _lastDemoSeed;

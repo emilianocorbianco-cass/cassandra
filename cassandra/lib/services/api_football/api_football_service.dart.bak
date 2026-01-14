@@ -166,25 +166,4 @@ class ApiFootballService {
 
     return _fixturesFromJson(json);
   }
-
-  /// Fixtures Serie A per round (matchday) specifico.
-  /// Utile per evitare che i recuperi di round vecchi “sporchino” la giornata corrente.
-  Future<List<ApiFootballFixture>> getSerieAFixturesByRound({
-    required int round,
-  }) async {
-    final season = _seasonStartYear(DateTime.now());
-    final leagueId = await _resolveSerieALeagueId(season: season);
-
-    final json = await _client.getJson(
-      'fixtures',
-      query: {
-        'league': '$leagueId',
-        'season': '$season',
-        'round': 'Regular Season - $round',
-        'timezone': 'Europe/Rome',
-      },
-    );
-
-    return _fixturesFromJson(json);
-  }
 }

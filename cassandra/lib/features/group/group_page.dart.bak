@@ -24,10 +24,8 @@ class GroupPage extends StatefulWidget {
 }
 
 class _GroupPageState extends State<GroupPage> {
-  bool _didApplyMatches = false;
-
-  static const String _groupName = 'Cassandra Crew';
   static const int _matchdayNumber = 20;
+  static const String _groupName = 'Cassandra Crew';
 
   // Fallback demo: stabile, creato una volta.
   late final List<PredictionMatch> _fallbackMatches;
@@ -48,13 +46,6 @@ class _GroupPageState extends State<GroupPage> {
   void initState() {
     super.initState();
     _fallbackMatches = mockPredictionMatches();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_didApplyMatches) return;
-    _didApplyMatches = true;
     _applyMatches(_fallbackMatches);
   }
 
@@ -89,9 +80,9 @@ class _GroupPageState extends State<GroupPage> {
     });
   }
 
-  String _matchdayLabelFor(int matchdayNumber, List<PredictionMatch> matches) {
+  String _matchdayLabelFor(List<PredictionMatch> matches) {
     final days = formatMatchdayDaysItalian(matches.map((m) => m.kickoff));
-    return 'giornata $matchdayNumber - $days';
+    return 'giornata $_matchdayNumber - $days';
   }
 
   Color _avatarColorFromSeed(int seed) {
@@ -229,10 +220,7 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    _matchdayLabelFor(
-                      appState.cassandraMatchdayCursor,
-                      _matches,
-                    ),
+                    _matchdayLabelFor(_matches),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 6),

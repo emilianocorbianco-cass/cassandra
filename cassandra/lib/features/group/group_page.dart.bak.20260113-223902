@@ -24,8 +24,6 @@ class GroupPage extends StatefulWidget {
 }
 
 class _GroupPageState extends State<GroupPage> {
-  bool _didApplyMatches = false;
-
   static const String _groupName = 'Cassandra Crew';
   static const int _matchdayNumber = 20;
 
@@ -48,13 +46,6 @@ class _GroupPageState extends State<GroupPage> {
   void initState() {
     super.initState();
     _fallbackMatches = mockPredictionMatches();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_didApplyMatches) return;
-    _didApplyMatches = true;
     _applyMatches(_fallbackMatches);
   }
 
