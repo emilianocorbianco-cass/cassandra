@@ -15,13 +15,17 @@ List<PredictionMatch> predictionMatchesFromFixtures(
   final sorted = List<ApiFootballFixture>.of(fixtures)
     ..sort((a, b) => a.kickoffUtc.compareTo(b.kickoffUtc));
 
-  final pickedSource = matchdayNumber == null
-      ? sorted
+  final filtered = matchdayNumber == null
+      ? null
       : sorted
             .where(
               (f) => _matchdayFromRound(_fixtureRound(f)) == matchdayNumber,
             )
             .toList();
+
+  final pickedSource = (filtered != null && filtered.isNotEmpty)
+      ? filtered
+      : sorted;
 
   final picked = pickedSource.take(take).toList();
 
