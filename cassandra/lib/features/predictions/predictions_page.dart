@@ -32,7 +32,7 @@ class PredictionsPage extends StatefulWidget {
 }
 
 class _PredictionsPageState extends State<PredictionsPage> {
-  static const int _matchdayNumber = 20;
+  int get _matchdayNumber => CassandraScope.of(context).cassandraMatchdayCursor;
 
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
