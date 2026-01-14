@@ -11,7 +11,7 @@ MatchOutcome matchOutcomeFromFixture(ApiFootballFixture f) {
   final s = f.statusShort.trim().toUpperCase();
 
   // Status “non giocabile / annullato”
-  const voidedStatuses = {'CANC', 'PST', 'ABD', 'SUSP'};
+  const voidedStatuses = {'CANC'};
   if (voidedStatuses.contains(s)) return MatchOutcome.voided;
 
   // Status “finale”
