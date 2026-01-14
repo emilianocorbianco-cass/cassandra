@@ -354,7 +354,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
       final seen = <Object?>{};
       final _ = fixtures.where((f) => seen.add((f as dynamic).id)).toList();
       final outcomes = outcomesByMatchIdFromFixtures(fixtures);
-      final matches = predictionMatchesFromFixtures(fixtures);
+      final matches = predictionMatchesFromFixtures(
+        fixtures,
+        matchdayNumber: _matchdayNumber,
+        useMockIds: false,
+      );
       if (matches.isEmpty) return;
 
       if (!mounted) return;

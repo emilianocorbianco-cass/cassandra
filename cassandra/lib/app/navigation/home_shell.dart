@@ -62,7 +62,10 @@ class _HomeShellState extends State<HomeShell> {
       final fixtures = await service.getNextSerieAFixtures(count: 10);
       if (fixtures.isEmpty) return;
 
-      final matches = predictionMatchesFromFixtures(fixtures);
+      final matches = predictionMatchesFromFixtures(
+        fixtures,
+        useMockIds: false,
+      );
 
       app.setCachedPredictionMatches(
         matches,
