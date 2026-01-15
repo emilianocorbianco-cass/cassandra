@@ -54,3 +54,5 @@ _backup/
 # env files
 .env
 .env.*
+s
+*.bak.*

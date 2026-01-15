@@ -74,10 +74,10 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
 
+    appState.ensureOutcomesHistoryLoaded();
+
     final cachedMatches = appState.cachedPredictionMatches;
-    final liveDayNumber = _matchdays.isNotEmpty
-        ? _matchdays.last.dayNumber
-        : 20;
+    final liveDayNumber = appState.cassandraMatchdayCursor;
     final useLive =
         appState.cachedPredictionMatchesAreReal &&
         cachedMatches != null &&
@@ -92,21 +92,64 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       }
     }
 
-    final liveMatchday = useLive
-        ? MatchdayData(
-            dayNumber: liveDayNumber,
-            matches: cachedMatches,
-            outcomesByMatchId: liveOutcomes,
-          )
-        : null;
+    MatchdayData effectiveMatchday(MatchdayData md) {
+      final savedMatches = appState.savedMatchesForMatchday(md.dayNumber);
+      final matchesEffective = (savedMatches != null && savedMatches.isNotEmpty)
+          ? savedMatches
+          : md.matches;
 
-    final matchdays = useLive
-        ? [
-            for (final md in _matchdays)
-              if (md.dayNumber != liveDayNumber) md,
-            liveMatchday!,
-          ]
-        : _matchdays;
+      final outcomesEffective =
+          appState.hasSavedOutcomesForMatchday(md.dayNumber)
+          ? appState.outcomesForMatchday(md.dayNumber)
+          : md.outcomesByMatchId;
+
+      return MatchdayData(
+        dayNumber: md.dayNumber,
+        matches: matchesEffective,
+        outcomesByMatchId: outcomesEffective,
+      );
+    }
+
+    final base = <MatchdayData>[..._matchdays];
+    final hasLiveInList = base.any((m) => m.dayNumber == liveDayNumber);
+
+    if (useLive && !hasLiveInList) {
+      base.add(
+        MatchdayData(
+          dayNumber: liveDayNumber,
+          matches: cachedMatches,
+          outcomesByMatchId: liveOutcomes,
+        ),
+      );
+    }
+
+    final matchdays = <MatchdayData>[];
+    for (final md in base) {
+      final isLive = useLive && md.dayNumber == liveDayNumber;
+
+      if (isLive) {
+        final savedMatches = appState.savedMatchesForMatchday(liveDayNumber);
+        final hasSavedMatches = savedMatches != null && savedMatches.isNotEmpty;
+        final hasSavedOutcomes = appState.hasSavedOutcomesForMatchday(
+          liveDayNumber,
+        );
+
+        // Preferisci sempre gli snapshot finalizzati (stabili).
+        if (hasSavedMatches || hasSavedOutcomes) {
+          matchdays.add(effectiveMatchday(md));
+        } else {
+          matchdays.add(
+            MatchdayData(
+              dayNumber: liveDayNumber,
+              matches: cachedMatches,
+              outcomesByMatchId: liveOutcomes,
+            ),
+          );
+        }
+      } else {
+        matchdays.add(effectiveMatchday(md));
+      }
+    }
 
     final overrideMember = GroupMember(
       id: appState.profile.id,

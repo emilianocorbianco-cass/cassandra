@@ -35,6 +35,8 @@ class PredictionsPage extends StatefulWidget {
 
 class _PredictionsPageState extends State<PredictionsPage> {
   int get _matchdayNumber => CassandraScope.of(context).cassandraMatchdayCursor;
+  int? _shownMatchdayNumber;
+  int get _effectiveMatchdayNumber => _shownMatchdayNumber ?? _matchdayNumber;
 
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
@@ -85,7 +87,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
     final daysLabel = formatMatchdayDaysItalian(_matches.map((m) => m.kickoff));
 
     final appState = CassandraScope.of(context);
-    final progress = appState.matchdayProgressFor(_matchdayNumber);
+    final progress = appState.matchdayProgressFor(_effectiveMatchdayNumber);
 
     final status = progress == null
         ? ''
@@ -96,7 +98,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
               '${progress.voidFixtures > 0 ? " • nulle ${progress.voidFixtures}" : ""}'
               ' • ${progress.isValidMatchday ? "valida" : "non valida"}';
 
-    return 'giornata $_matchdayNumber - $daysLabel$status';
+    return 'giornata $_effectiveMatchdayNumber - $daysLabel$status';
   }
 
   double? _oddsForPick(PredictionMatch match, PickOption pick) {
@@ -221,17 +223,17 @@ class _PredictionsPageState extends State<PredictionsPage> {
     appState.ensureMatchdayMatchesLoaded();
     appState.ensureOutcomesHistoryLoaded();
     appState.saveCurrentUserPicksHistory(
-      dayNumber: _matchdayNumber,
+      dayNumber: _effectiveMatchdayNumber,
       picksByMatchId: _picks,
     );
 
     await appState.saveMatchdayMatchesSnapshot(
-      matchdayNumber: _matchdayNumber,
+      matchdayNumber: _effectiveMatchdayNumber,
       matches: _matches,
     );
     appState.ensureMatchesHistoryLoaded();
     appState.saveMatchesHistory(
-      matchdayNumber: _matchdayNumber,
+      matchdayNumber: _effectiveMatchdayNumber,
       matches: _matches,
     );
     // Se abbiamo outcomes disponibili, salvali anche nello storico (per punteggi stabili)
@@ -242,7 +244,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
     if (outcomesNow.isNotEmpty) {
       appState.ensureOutcomesHistoryLoaded();
       appState.saveOutcomesHistory(
-        dayNumber: _matchdayNumber,
+        dayNumber: _effectiveMatchdayNumber,
         outcomesByMatchId: outcomesNow,
       );
     }
@@ -460,7 +462,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
       }
 
       final inferredByTime = bestMatchdayByTime(uniqueFixtures);
-      if (inferredByTime != null && inferredByTime != dayNumber) {
+      if (inferredByTime != null && inferredByTime > dayNumber) {
         if (kDebugMode) {
           debugPrint(
             '[fixtures] sync cursor=$dayNumber -> $inferredByTime (closest by time)',
@@ -609,6 +611,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
       // TODO: cablare MatchdayProgress (primaryDone/finalDone) prima di bumpare il cursor automaticamente.
       if (!mounted) return;
       setState(() {
+        _shownMatchdayNumber = dayNumber;
         _matches = matchesToShow;
         _usingRealFixtures = true;
         _fixturesUpdatedAt = DateTime.now();
@@ -678,8 +681,9 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     final liveMatches = appState.cachedPredictionMatches ?? _matches;
 
-    final liveOutcomes = appState.hasSavedOutcomesForMatchday(_matchdayNumber)
-        ? appState.outcomesForMatchday(_matchdayNumber)
+    final liveOutcomes =
+        appState.hasSavedOutcomesForMatchday(_effectiveMatchdayNumber)
+        ? appState.outcomesForMatchday(_effectiveMatchdayNumber)
         : <String, MatchOutcome>{
             for (final m in liveMatches)
               if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
@@ -691,20 +695,20 @@ class _PredictionsPageState extends State<PredictionsPage> {
         : _picks;
 
     final liveMatchday = MatchdayData(
-      dayNumber: _matchdayNumber,
+      dayNumber: _effectiveMatchdayNumber,
       matches: liveMatches,
       outcomesByMatchId: liveOutcomes,
     );
 
     // Autosave outcomes (post-frame): appena abbiamo outcomes per la giornata corrente,
     // persistiamoli così lo storico diventa stabile senza dipendere dal submit.
-    if (!appState.hasSavedOutcomesForMatchday(_matchdayNumber) &&
+    if (!appState.hasSavedOutcomesForMatchday(_effectiveMatchdayNumber) &&
         liveOutcomes.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // ricontrolla (potrebbe essere già stato salvato)
-        if (!appState.hasSavedOutcomesForMatchday(_matchdayNumber)) {
+        if (!appState.hasSavedOutcomesForMatchday(_effectiveMatchdayNumber)) {
           appState.saveOutcomesHistory(
-            dayNumber: _matchdayNumber,
+            dayNumber: _effectiveMatchdayNumber,
             outcomesByMatchId: liveOutcomes,
           );
         }
@@ -781,9 +785,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     appState.ensureCurrentUserPicksHistoryLoaded();
 
-    final hasSavedLive = appState.hasSavedPicksForMatchday(_matchdayNumber);
+    final hasSavedLive = appState.hasSavedPicksForMatchday(
+      _effectiveMatchdayNumber,
+    );
     final livePicksEffective = hasSavedLive
-        ? appState.currentUserPicksForMatchday(_matchdayNumber)
+        ? appState.currentUserPicksForMatchday(_effectiveMatchdayNumber)
         : livePicks;
     final liveTagEffective = hasSavedLive ? 'SALVATI' : liveTag;
 
