@@ -15,8 +15,6 @@ import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 import '../../app/state/cassandra_scope.dart';
-import '../../domain/matchday/matchday_recovery_rules.dart'
-    show clusterByKickoff;
 import '../scoring/adapters/api_football_outcome_adapter.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
@@ -358,7 +356,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
       final service = ApiFootballService(client);
       final scope = CassandraScope.of(context);
       final appState = CassandraScope.of(context);
-      final dayNumber = appState.cassandraMatchdayCursor;
+      var dayNumber = appState.cassandraMatchdayCursor;
       // Intorno di partite (passate recenti + future) per scegliere la giornata corretta
       final past = await service.getLastSerieAFixtures(count: 40);
       final next = await service.getNextSerieAFixtures(count: 80);
@@ -373,56 +371,122 @@ class _PredictionsPageState extends State<PredictionsPage> {
           .where((f) => seen.add(f.fixtureId))
           .toList();
       final outcomes = outcomesByMatchIdFromFixtures(uniqueFixtures);
-      final matches = predictionMatchesFromFixtures(
-        fixtures,
+
+      int? matchdayFromRound(String? round) {
+        if (round == null) return null;
+        final m = RegExp(r'(\d{1,2})\s*$').firstMatch(round.trim());
+        if (m == null) return null;
+        return int.tryParse(m.group(1)!);
+      }
+
+      // ignore: unused_element
+      int? mostRepresentedMatchday(Iterable fixtures) {
+        final counts = <int, int>{};
+        for (final f in fixtures) {
+          final md = matchdayFromRound((f as dynamic).round?.toString());
+          if (md == null) continue;
+          counts[md] = (counts[md] ?? 0) + 1;
+        }
+        if (counts.isEmpty) return null;
+        var bestMd = counts.keys.first;
+        var bestCount = counts[bestMd]!;
+        for (final e in counts.entries) {
+          if (e.value > bestCount) {
+            bestMd = e.key;
+            bestCount = e.value;
+          }
+        }
+        return bestMd;
+      }
+
+      Duration distanceToInterval(DateTime now, DateTime start, DateTime end) {
+        if (now.isBefore(start)) return start.difference(now);
+        if (now.isAfter(end)) return now.difference(end);
+        return Duration.zero; // siamo dentro l'intervallo della giornata
+      }
+
+      int? bestMatchdayByTime(Iterable fixtures) {
+        final now = DateTime.now();
+        final candidates = <int>{};
+
+        for (final f in fixtures) {
+          final md = matchdayFromRound((f as dynamic).round?.toString());
+          if (md != null) candidates.add(md);
+        }
+        if (candidates.isEmpty) return null;
+
+        int? bestMd;
+        Duration? bestDist;
+
+        for (final md in candidates) {
+          final ms = predictionMatchesFromFixtures(
+            uniqueFixtures,
+            matchdayNumber: md,
+            useMockIds: false,
+          );
+          if (ms.isEmpty) continue;
+
+          final first = ms
+              .map((m) => m.kickoff)
+              .reduce((a, b) => a.isBefore(b) ? a : b);
+          final last = ms
+              .map((m) => m.kickoff)
+              .reduce((a, b) => a.isAfter(b) ? a : b);
+
+          final dist = distanceToInterval(now, first, last);
+
+          if (bestDist == null || dist < bestDist) {
+            bestDist = dist;
+            bestMd = md;
+          }
+        }
+
+        return bestMd;
+      }
+
+      final inferredByTime = bestMatchdayByTime(uniqueFixtures);
+      if (inferredByTime != null && inferredByTime != dayNumber) {
+        if (kDebugMode) {
+          debugPrint(
+            '[fixtures] sync cursor=$dayNumber -> $inferredByTime (closest by time)',
+          );
+        }
+        await appState.setCassandraMatchdayCursor(inferredByTime);
+        dayNumber = inferredByTime;
+      }
+
+      var matches = predictionMatchesFromFixtures(
+        uniqueFixtures,
         matchdayNumber: dayNumber,
         useMockIds: false,
       );
 
-      var matchesToShow = matches;
-      var advanced = false;
-
-      final clusters = clusterByKickoff<PredictionMatch>(
-        matchesToShow,
-        kickoff: (m) => m.kickoff,
-        gapThreshold: const Duration(hours: 60),
-      );
-      final primary = clusters.isNotEmpty
-          ? clusters.first
-          : const <PredictionMatch>[];
-      bool graded(PredictionMatch m) =>
-          (outcomes[m.id] ?? MatchOutcome.pending).isGraded;
-      final primaryDone = primary.isNotEmpty && primary.every(graded);
-
-      if (primaryDone) {
-        final nextMatches = predictionMatchesFromFixtures(
-          fixtures,
-          matchdayNumber: dayNumber + 1,
-          useMockIds: false,
+      if (kDebugMode && matches.isNotEmpty) {
+        final first = matches
+            .map((m) => m.kickoff)
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+        final last = matches
+            .map((m) => m.kickoff)
+            .reduce((a, b) => a.isAfter(b) ? a : b);
+        debugPrint(
+          '[fixtures] day=$dayNumber matches=${matches.length} range=${first.toIso8601String()}..${last.toIso8601String()} now=${DateTime.now().toIso8601String()}',
         );
-        if (nextMatches.isNotEmpty) {
-          await appState.bumpCassandraMatchdayCursor();
-          matchesToShow = nextMatches;
-          advanced = true;
-        }
       }
+
       if (matches.isEmpty) return;
 
+      var matchesToShow = matches;
+      // TODO: cablare MatchdayProgress (primaryDone/finalDone) prima di bumpare il cursor automaticamente.
       if (!mounted) return;
       setState(() {
         _matches = matchesToShow;
         _usingRealFixtures = true;
         _fixturesUpdatedAt = DateTime.now();
-        if (advanced) {
-          _picks.clear();
-          _submittedAt = null;
-          _submittedVisibility = null;
-        }
       });
 
       // Salviamo le fixture reali in cache runtime (per Gruppo / User pages)
       scope.setCachedPredictionMatches(
-        matches,
+        matchesToShow,
         isReal: true,
         updatedAt: _fixturesUpdatedAt,
       );
