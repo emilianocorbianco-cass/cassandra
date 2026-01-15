@@ -502,7 +502,45 @@ class _PredictionsPageState extends State<PredictionsPage> {
       var matchesToShow = matches;
       var advanced = false;
 
+      final fromMatchday = dayNumber;
+
       // Dopo primaryDone la matchday successiva è giocabile (decisione Cassandra)
+
+      // Finalizzazione: quando finalDone e matchday valida (>=6),
+      // salviamo snapshot + storico per leaderboard stabile anche con recuperi.
+      if (progress.finalDone && progress.isValidMatchday) {
+        final voidedIds = <String>{};
+
+        for (final m in matches) {
+          final out = outcomes[m.id] ?? MatchOutcome.pending;
+          if (out.isGraded) continue;
+
+          final origin = appState.originKickoffFor(
+            matchId: m.id,
+            fallbackKickoff: m.kickoff,
+          );
+
+          if (now.isAfter(origin.add(const Duration(hours: 48)))) {
+            voidedIds.add(m.id);
+          }
+        }
+
+        final effectiveMatches = matches
+            .where((m) => !voidedIds.contains(m.id))
+            .toList(growable: false);
+
+        final effectiveOutcomes = <String, MatchOutcome>{
+          for (final e in outcomes.entries)
+            if (!voidedIds.contains(e.key)) e.key: e.value,
+        };
+
+        await appState.maybeFinalizeMatchday(
+          matchdayNumber: fromMatchday,
+          matches: effectiveMatches,
+          outcomesByMatchId: effectiveOutcomes,
+        );
+      }
+
       if (progress.primaryDone) {
         final nextMatches = predictionMatchesFromFixtures(
           uniqueFixtures,
@@ -518,10 +556,10 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
           // bump idempotente: una sola volta per "fromMatchday"
           await appState.maybeAutoBumpCassandraMatchdayCursor(
-            fromMatchday: dayNumber,
+            fromMatchday: fromMatchday,
           );
 
-          dayNumber = dayNumber + 1;
+          dayNumber = fromMatchday + 1;
           matchesToShow = nextMatches;
           advanced = true;
         }
@@ -531,7 +569,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
       if (kDebugMode) {
         debugPrint(
-          '[fixtures] progress day=$dayNumber '
+          '[fixtures] progress day=$fromMatchday '
           'primaryDone=${progress.primaryDone} finalDone=${progress.finalDone} '
           'played=${progress.playedFixtures} void=${progress.voidFixtures}',
         );

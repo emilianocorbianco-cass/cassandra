@@ -23,6 +23,7 @@ class AppState extends ChangeNotifier {
   static const int _kCassandraDefaultMatchdayCursor = 20;
   static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
   static const _kDemoSeedV1 = 'demo_seed.v1';
+  static const _kFinalizedMatchdaysV1 = 'matchday.finalized.v1';
   static const _kCassandraMatchdayLastAutoBumpFromV1 =
       'cassandra.matchday.lastAutoBumpFrom.v1';
   static const _kOriginKickoffsByMatchIdV1 =
@@ -61,6 +62,75 @@ class AppState extends ChangeNotifier {
 
   Future<void> bumpCassandraMatchdayCursor() async {
     await setCassandraMatchdayCursor(cassandraMatchdayCursor + 1);
+  }
+
+  void ensureFinalizedMatchdaysLoaded() {
+    if (_finalizedMatchdaysLoaded) return;
+    _finalizedMatchdaysLoaded = true;
+
+    final raw = _prefs?.getString(_kFinalizedMatchdaysV1);
+    if (raw == null || raw.trim().isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        for (final e in decoded) {
+          final n = int.tryParse(e.toString());
+          if (n != null && n > 0) _finalizedMatchdays.add(n);
+        }
+      }
+    } catch (_) {
+      // ignore corrupt storage
+    }
+  }
+
+  bool isMatchdayFinalized(int matchdayNumber) {
+    ensureFinalizedMatchdaysLoaded();
+    return _finalizedMatchdays.contains(matchdayNumber);
+  }
+
+  Future<bool> markMatchdayFinalized(int matchdayNumber) async {
+    if (matchdayNumber <= 0) return false;
+    ensureFinalizedMatchdaysLoaded();
+    if (_finalizedMatchdays.contains(matchdayNumber)) return false;
+
+    _finalizedMatchdays.add(matchdayNumber);
+    final list = _finalizedMatchdays.toList()..sort();
+    await _prefs?.setString(_kFinalizedMatchdaysV1, jsonEncode(list));
+    notifyListeners();
+    return true;
+  }
+
+  /// Finalizza una matchday quando `finalDone` (e valida >= 6):
+  /// - salva snapshot matches
+  /// - salva matches/outcomes nello storico (per leaderboard stabile)
+  ///
+  /// Idempotente: se già finalizzata non fa nulla.
+  Future<bool> maybeFinalizeMatchday({
+    required int matchdayNumber,
+    required List<PredictionMatch> matches,
+    required Map<String, MatchOutcome> outcomesByMatchId,
+  }) async {
+    final didMark = await markMatchdayFinalized(matchdayNumber);
+    if (!didMark) return false;
+
+    ensureMatchdayMatchesLoaded();
+    ensureMatchesHistoryLoaded();
+    ensureOutcomesHistoryLoaded();
+
+    await saveMatchdayMatchesSnapshot(
+      matchdayNumber: matchdayNumber,
+      matches: matches,
+    );
+
+    saveMatchesHistory(matchdayNumber: matchdayNumber, matches: matches);
+
+    saveOutcomesHistory(
+      dayNumber: matchdayNumber,
+      outcomesByMatchId: outcomesByMatchId,
+    );
+
+    return true;
   }
 
   int? get lastAutoBumpFromMatchday =>
@@ -134,6 +204,10 @@ class AppState extends ChangeNotifier {
   PredictionVisibility _defaultVisibility;
 
   int _demoSeed;
+
+  // ===== MATCHDAY FINALIZATION (finalDone) =====
+  bool _finalizedMatchdaysLoaded = false;
+  final Set<int> _finalizedMatchdays = <int>{};
 
   bool _originKickoffsLoaded = false;
   Map<String, String> _originKickoffIsoByMatchId = {};
