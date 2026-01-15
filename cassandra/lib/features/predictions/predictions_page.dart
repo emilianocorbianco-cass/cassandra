@@ -83,7 +83,20 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   String get _matchdayLabel {
     final daysLabel = formatMatchdayDaysItalian(_matches.map((m) => m.kickoff));
-    return 'giornata $_matchdayNumber - $daysLabel';
+
+    final appState = CassandraScope.of(context);
+    final progress = appState.matchdayProgressFor(_matchdayNumber);
+
+    final status = progress == null
+        ? ''
+        : ' • ${String.fromCharCode(0x1F512)} ${progress.isLocked ? "LOCK" : "OPEN"}'
+              ' • P:${progress.primaryDone ? "OK" : "..."}'
+              ' • F:${progress.finalDone ? "OK" : "..."}'
+              ' • ${progress.playedFixtures}/${progress.totalFixtures}'
+              '${progress.voidFixtures > 0 ? " • nulle ${progress.voidFixtures}" : ""}'
+              ' • ${progress.isValidMatchday ? "valida" : "non valida"}';
+
+    return 'giornata $_matchdayNumber - $daysLabel$status';
   }
 
   double? _oddsForPick(PredictionMatch match, PickOption pick) {
@@ -500,6 +513,24 @@ class _PredictionsPageState extends State<PredictionsPage> {
         statusShort: (m) => statusFor(m),
       );
       var matchesToShow = matches;
+
+      // Progress da mostrare (coerente con matchesToShow e dayNumber attuale)
+      final progressToShow = computeMatchdayProgress<PredictionMatch>(
+        matchesToShow,
+        now: now,
+        kickoff: (m) => m.kickoff,
+        originKickoff: (m) => appState.originKickoffFor(
+          matchId: m.id,
+          fallbackKickoff: m.kickoff,
+        ),
+        statusShort: (m) => statusFor(m),
+      );
+
+      appState.setMatchdayProgress(
+        matchdayNumber: dayNumber,
+        progress: progressToShow,
+      );
+
       var advanced = false;
 
       final fromMatchday = dayNumber;

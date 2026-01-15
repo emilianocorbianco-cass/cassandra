@@ -13,6 +13,8 @@ import 'dart:math';
 
 import '../../features/predictions/models/prediction_match.dart';
 
+import '../../domain/matchday/matchday_recovery_rules.dart';
+
 class AppState extends ChangeNotifier {
   Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
   // Chiavi "nuove" (più pulite)
@@ -380,6 +382,26 @@ class AppState extends ChangeNotifier {
   bool get cachedPredictionMatchesAreReal => _cachedPredictionMatchesAreReal;
   DateTime? get cachedPredictionMatchesUpdatedAt =>
       _cachedPredictionMatchesUpdatedAt;
+
+  // ===== MatchdayProgress (runtime, non persistito) =====
+  final Map<int, MatchdayProgress> _matchdayProgressByDay = {};
+
+  MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
+      _matchdayProgressByDay[matchdayNumber];
+
+  void setMatchdayProgress({
+    required int matchdayNumber,
+    required MatchdayProgress progress,
+  }) {
+    _matchdayProgressByDay[matchdayNumber] = progress;
+    notifyListeners();
+  }
+
+  void clearMatchdayProgress(int matchdayNumber) {
+    if (_matchdayProgressByDay.remove(matchdayNumber) != null) {
+      notifyListeners();
+    }
+  }
 
   void setCachedPredictionMatches(
     List<PredictionMatch> matches, {
