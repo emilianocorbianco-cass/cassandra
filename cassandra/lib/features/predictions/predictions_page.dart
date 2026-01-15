@@ -332,7 +332,16 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   Future<void> _tryLoadRealFixtures({bool showLoader = false}) async {
     final key = Env.apiFootballKey;
-    if (key == null) return; // in test o senza .env restiamo sui mock
+    if (key == null) {
+      if (kDebugMode) {
+        debugPrint('[fixtures] API_FOOTBALL_KEY is null -> using mock');
+      }
+      return; // in test o senza key restiamo sui mock
+    }
+    if (kDebugMode) {
+      final tail = key.length >= 4 ? key.substring(key.length - 4) : key;
+      debugPrint('[fixtures] key present (…$tail). loading…');
+    }
 
     if (showLoader && mounted) {
       setState(() => _loadingFixtures = true);
@@ -347,17 +356,23 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
     try {
       final service = ApiFootballService(client);
+      final scope = CassandraScope.of(context);
       final appState = CassandraScope.of(context);
       final dayNumber = appState.cassandraMatchdayCursor;
       // Intorno di partite (passate recenti + future) per scegliere la giornata corretta
       final past = await service.getLastSerieAFixtures(count: 40);
       final next = await service.getNextSerieAFixtures(count: 80);
       final fixtures = [...past, ...next];
+      if (kDebugMode) {
+        debugPrint('[fixtures] got ${fixtures.length} fixtures (past+next)');
+      }
 
       // Dedup per ID (se l'API restituisce doppioni)
       final seen = <Object?>{};
-      final _ = fixtures.where((f) => seen.add((f as dynamic).id)).toList();
-      final outcomes = outcomesByMatchIdFromFixtures(fixtures);
+      final uniqueFixtures = fixtures
+          .where((f) => seen.add(f.fixtureId))
+          .toList();
+      final outcomes = outcomesByMatchIdFromFixtures(uniqueFixtures);
       final matches = predictionMatchesFromFixtures(
         fixtures,
         matchdayNumber: dayNumber,
@@ -406,14 +421,17 @@ class _PredictionsPageState extends State<PredictionsPage> {
       });
 
       // Salviamo le fixture reali in cache runtime (per Gruppo / User pages)
-      CassandraScope.of(context).setCachedPredictionMatches(
+      scope.setCachedPredictionMatches(
         matches,
         isReal: true,
         updatedAt: _fixturesUpdatedAt,
       );
-      CassandraScope.of(context).setCachedPredictionOutcomesByMatchId(outcomes);
-    } catch (_) {
-      // Se fallisce la rete o la key, restiamo sui mock.
+      scope.setCachedPredictionOutcomesByMatchId(outcomes);
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[fixtures] load failed: $e');
+        debugPrint('$st');
+      }
     } finally {
       client.close();
       if (showLoader && mounted) {
