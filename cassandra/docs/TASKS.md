@@ -13,3 +13,14 @@
 ## Miglioramenti (non bloccanti)
 - Colori pulsanti a partita finita (pick corretta/errata) — in attesa palette
 - Pulizia `.gitignore` (cache varie Xcode/SwiftPM se ricompaiono)
+
+## Aggiornamento 2026-01-15
+Done
+- Recuperi v1: lib/domain/matchday/matchday_recovery_rules.dart + test.
+- Fix Pronostici live: dedup fixtureId + caching scope safe (no use_build_context_synchronously).
+- Predictions: filtro matchday per round + ID coerenti; matchday cursor al posto di hardcode.
+
+Next
+- Wiring MatchdayProgress: lock UI, bump cursor su primaryDone, leaderboard/calcolo su finalDone (ricalcolo retroattivo).
+- Scoring: integrare bonus scaling su partite giocate + regola validità >=6 nel motore punteggio + test.
+- Pulizia: rimuovere/ignorare backup temporanei se riappaiono.

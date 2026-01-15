@@ -35,3 +35,9 @@ App Flutter (iOS/Android) per pronostici Serie A con quote e risultati (API), ca
   - `flutter analyze`
   - `flutter test`
   - `flutter run`
+
+## Sessione 2026-01-15 — Recuperi/Fixtures
+- Fix runtime Pronostici: dedup fixtures su fixtureId (non .id) per evitare crash NoSuchMethodError.
+- Fix lint: evitare BuildContext dopo await in _tryLoadRealFixtures catturando CassandraScope prima degli await.
+- Recuperi: introdotto domain rules (lockAt/primaryDone/finalDone) + regola 48h (void) + validità matchday >=6 + bonus scaling (correct->/10).
+- Predictions: filtro matchday su round + ID coerenti fixtureId.toString() tra matches/outcomes; matchday corrente da cassandraMatchdayCursor.
