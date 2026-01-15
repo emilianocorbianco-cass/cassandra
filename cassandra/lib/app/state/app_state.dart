@@ -23,6 +23,10 @@ class AppState extends ChangeNotifier {
   static const int _kCassandraDefaultMatchdayCursor = 20;
   static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
   static const _kDemoSeedV1 = 'demo_seed.v1';
+  static const _kCassandraMatchdayLastAutoBumpFromV1 =
+      'cassandra.matchday.lastAutoBumpFrom.v1';
+  static const _kOriginKickoffsByMatchIdV1 =
+      'fixtures.originKickoffsByMatchId.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -59,11 +63,80 @@ class AppState extends ChangeNotifier {
     await setCassandraMatchdayCursor(cassandraMatchdayCursor + 1);
   }
 
+  int? get lastAutoBumpFromMatchday =>
+      _prefs?.getInt(_kCassandraMatchdayLastAutoBumpFromV1);
+
+  Future<bool> maybeAutoBumpCassandraMatchdayCursor({
+    required int fromMatchday,
+  }) async {
+    final prefs = _prefs;
+    if (prefs == null) return false;
+
+    final last = prefs.getInt(_kCassandraMatchdayLastAutoBumpFromV1) ?? -1;
+    if (last == fromMatchday) return false;
+
+    await prefs.setInt(_kCassandraMatchdayLastAutoBumpFromV1, fromMatchday);
+    await setCassandraMatchdayCursor(fromMatchday + 1);
+    return true;
+  }
+
+  void ensureOriginKickoffsLoaded() {
+    if (_originKickoffsLoaded) return;
+    _originKickoffsLoaded = true;
+    final raw = _prefs?.getString(_kOriginKickoffsByMatchIdV1);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        _originKickoffIsoByMatchId = {
+          for (final e in decoded.entries) e.key.toString(): e.value.toString(),
+        };
+      }
+    } catch (_) {
+      // ignore: keep empty
+    }
+  }
+
+  void registerOriginKickoff({
+    required String matchId,
+    required DateTime kickoff,
+  }) {
+    ensureOriginKickoffsLoaded();
+    _originKickoffIsoByMatchId.putIfAbsent(
+      matchId,
+      () => kickoff.toUtc().toIso8601String(),
+    );
+  }
+
+  DateTime originKickoffFor({
+    required String matchId,
+    required DateTime fallbackKickoff,
+  }) {
+    ensureOriginKickoffsLoaded();
+    final iso = _originKickoffIsoByMatchId[matchId];
+    if (iso == null) return fallbackKickoff;
+    final parsed = DateTime.tryParse(iso);
+    return parsed?.toLocal() ?? fallbackKickoff;
+  }
+
+  Future<void> persistOriginKickoffs() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    ensureOriginKickoffsLoaded();
+    await prefs.setString(
+      _kOriginKickoffsByMatchIdV1,
+      jsonEncode(_originKickoffIsoByMatchId),
+    );
+  }
+
   UserProfile _profile;
   CassandraLanguage _language;
   PredictionVisibility _defaultVisibility;
 
   int _demoSeed;
+
+  bool _originKickoffsLoaded = false;
+  Map<String, String> _originKickoffIsoByMatchId = {};
 
   AppState._(
     this._prefs, {

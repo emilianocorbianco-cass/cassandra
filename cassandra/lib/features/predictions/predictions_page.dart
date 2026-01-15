@@ -15,6 +15,8 @@ import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 import '../../app/state/cassandra_scope.dart';
+import '../../domain/matchday/matchday_recovery_rules.dart'
+    show computeMatchdayProgress;
 import '../scoring/adapters/api_football_outcome_adapter.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
@@ -475,13 +477,77 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
       if (matches.isEmpty) return;
 
+      // === MatchdayProgress (48h void / primaryDone / finalDone / >=6) ===
+      final now = DateTime.now();
+
+      // Registra origin kickoff (prima volta che vediamo questa fixtureId)
+      appState.ensureOriginKickoffsLoaded();
+      for (final m in matches) {
+        appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
+      }
+
+      String statusFor(PredictionMatch m) =>
+          (outcomes[m.id] ?? MatchOutcome.pending).isGraded ? 'FT' : 'NS';
+
+      final progress = computeMatchdayProgress<PredictionMatch>(
+        matches,
+        now: now,
+        kickoff: (m) => m.kickoff,
+        originKickoff: (m) => appState.originKickoffFor(
+          matchId: m.id,
+          fallbackKickoff: m.kickoff,
+        ),
+        statusShort: (m) => statusFor(m),
+      );
       var matchesToShow = matches;
+      var advanced = false;
+
+      // Dopo primaryDone la matchday successiva è giocabile (decisione Cassandra)
+      if (progress.primaryDone) {
+        final nextMatches = predictionMatchesFromFixtures(
+          uniqueFixtures,
+          matchdayNumber: dayNumber + 1,
+          useMockIds: false,
+        );
+
+        if (nextMatches.isNotEmpty) {
+          for (final m in nextMatches) {
+            appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
+          }
+          await appState.persistOriginKickoffs();
+
+          // bump idempotente: una sola volta per "fromMatchday"
+          await appState.maybeAutoBumpCassandraMatchdayCursor(
+            fromMatchday: dayNumber,
+          );
+
+          dayNumber = dayNumber + 1;
+          matchesToShow = nextMatches;
+          advanced = true;
+        }
+      } else {
+        await appState.persistOriginKickoffs();
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          '[fixtures] progress day=$dayNumber '
+          'primaryDone=${progress.primaryDone} finalDone=${progress.finalDone} '
+          'played=${progress.playedFixtures} void=${progress.voidFixtures}',
+        );
+      }
+
       // TODO: cablare MatchdayProgress (primaryDone/finalDone) prima di bumpare il cursor automaticamente.
       if (!mounted) return;
       setState(() {
         _matches = matchesToShow;
         _usingRealFixtures = true;
         _fixturesUpdatedAt = DateTime.now();
+        if (advanced) {
+          _picks.clear();
+          _submittedAt = null;
+          _submittedVisibility = null;
+        }
       });
 
       // Salviamo le fixture reali in cache runtime (per Gruppo / User pages)
