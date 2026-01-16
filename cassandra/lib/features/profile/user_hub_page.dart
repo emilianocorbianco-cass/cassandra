@@ -163,85 +163,99 @@ class _UserHubPageState extends State<UserHubPage> {
     final isMe = widget.member.id == app.profile.id;
     final seed = app.demoSeed;
 
-    return DefaultTabController(
-      length: 3,
-      initialIndex: initial,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.member.teamName),
-              Text(
-                widget.member.displayName,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-          bottom: PreferredSize(
-            preferredSize: Size.fromHeight(kTextTabBarHeight + 112),
-            child: Column(
+    return MediaQuery(
+      data: MediaQueryData.fromView(View.of(context)),
+      child: DefaultTabController(
+        length: 3,
+        initialIndex: initial,
+        child: Scaffold(
+          appBar: AppBar(
+            primary: true,
+            centerTitle: true,
+            title: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const TabBar(
-                  tabs: [
-                    Tab(text: 'Pronostici'),
-                    Tab(text: 'Stats'),
-                    Tab(text: 'Trofei'),
-                  ],
+                Text(
+                  widget.member.teamName,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$dataLabel$updatedLabel\n$resultsLabel',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 8),
-                        if (kDebugMode)
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(
-                                'demo seed: $seed',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              OutlinedButton(
-                                onPressed: isMe
-                                    ? () async => _resetHistory(app)
-                                    : null,
-                                child: const Text('Reset storico'),
-                              ),
-                              OutlinedButton(
-                                onPressed: () async => _regenDemo(app),
-                                child: const Text('Rigenera demo'),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
+                Text(
+                  widget.member.displayName,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            UserPicksView(
-              member: widget.member,
-              matchday: widget.matchday,
-              picksByMatchId: widget.picksByMatchId,
+            bottom: PreferredSize(
+              preferredSize: Size.fromHeight(kTextTabBarHeight + 112),
+              child: Column(
+                children: [
+                  const TabBar(
+                    tabs: [
+                      Tab(text: 'Pronostici'),
+                      Tab(text: 'Stats'),
+                      Tab(text: 'Trofei'),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$dataLabel$updatedLabel\n$resultsLabel',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 8),
+                          if (kDebugMode)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  'demo seed: $seed',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                OutlinedButton(
+                                  onPressed: isMe
+                                      ? () async => _resetHistory(app)
+                                      : null,
+                                  child: const Text('Reset'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () async => _regenDemo(app),
+                                  child: const Text('Demo'),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            UserStatsView(entry: _seasonEntry, trophies: _trophies),
-            UserTrophiesView(member: widget.member, trophies: _trophies),
-          ],
+          ),
+          body: TabBarView(
+            children: [
+              UserPicksView(
+                member: widget.member,
+                matchday: widget.matchday,
+                picksByMatchId: widget.picksByMatchId,
+              ),
+              UserStatsView(entry: _seasonEntry, trophies: _trophies),
+              UserTrophiesView(member: widget.member, trophies: _trophies),
+            ],
+          ),
         ),
       ),
     );
