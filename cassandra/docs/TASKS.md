@@ -24,3 +24,25 @@ Next
 - Wiring MatchdayProgress: lock UI, bump cursor su primaryDone, leaderboard/calcolo su finalDone (ricalcolo retroattivo).
 - Scoring: integrare bonus scaling su partite giocate + regola validità >=6 nel motore punteggio + test.
 - Pulizia: rimuovere/ignorare backup temporanei se riappaiono.
+<!-- TASKS_UPDATE:2026-01-16 -->
+## TODO (agg. 2026-01-16)
+
+### DONE
+- Recuperi: logica giornata effettiva + 48h rule (passati/futuri coerenti con posticipi).
+- AppState: cache recenti per matchday + setter bulk.
+- UI: “Serie A” → “Live” (tab + header).
+- Fix scaling navigazione entrando in `UserHubPage` (via `rootNavigator: true` su push principali).
+
+### NEXT
+- [ ] Fix definitivo `UserHubPage` AppBar/safe-area su iOS notch (titolo + back sempre visibili, no overlap).
+- [ ] Aggiungere test “a freddo” per recuperi:
+  - matchday con recupero a distanza (parziale/pending),
+  - determinazione giornata giocabile,
+  - coerenza passati vs futuri.
+- [ ] Cleanup repo: rimuovere `.bak.*` e artefatti di patch/script non necessari.
+- [ ] Audit Navigator pushes/modals: standardizzare `rootNavigator` dove serve per evitare regressioni scaling.
+
+### Rischi
+- UI notch/safe-area fragile senza checklist/test dedicati.
+- Recuperi: regressioni future senza suite di test specifica.
+<!-- /TASKS_UPDATE:2026-01-16 -->

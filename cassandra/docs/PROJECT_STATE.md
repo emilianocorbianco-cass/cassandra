@@ -41,3 +41,21 @@ App Flutter (iOS/Android) per pronostici Serie A con quote e risultati (API), ca
 - Fix lint: evitare BuildContext dopo await in _tryLoadRealFixtures catturando CassandraScope prima degli await.
 - Recuperi: introdotto domain rules (lockAt/primaryDone/finalDone) + regola 48h (void) + validità matchday >=6 + bonus scaling (correct->/10).
 - Predictions: filtro matchday su round + ID coerenti fixtureId.toString() tra matches/outcomes; matchday corrente da cassandraMatchdayCursor.
+<!-- SESSION_LOG:2026-01-16 -->
+## Sessione 2026-01-16 — Recuperi + UI
+
+### Cambiamenti
+- Recuperi: “giornata effettiva” + regola 48h → i futuri mostrano la prossima giornata giocabile; i recuperi restano nei passati con esiti `pending`.
+- AppState: cache recenti per matchday (`recentMatchesByMatchday`, `recentOutcomesByMatchday`) + setter bulk.
+- UI: tab “Serie A” rinominato in “Live” (tab + titolo pagina).
+- Navigazione verso UserHub: introdotto `rootNavigator: true` in vari push per eliminare scaling.
+- UI: tentativi di allineamento titoli/header (Pronostici/UserHub) e safe-area notch; rimane un problema visivo in UserHub su iOS.
+
+### Decisioni (ADR)
+- ADR-RECUPERI-001: corrente = prossima giocabile; recuperi non spostano automaticamente la giornata nei futuri (48h rule).
+- ADR-STATE-RECENT-001: storicizzazione recent matchdays in AppState via mappe + bulk setter.
+
+### Problemi aperti
+- iOS notch: titolo/back e header di `UserHubPage` ancora tagliati/sovrapposti (safe-area/AppBar).
+- Residui `.bak.*` generati durante le patch: da ripulire prima del merge/release.
+<!-- /SESSION_LOG:2026-01-16 -->
