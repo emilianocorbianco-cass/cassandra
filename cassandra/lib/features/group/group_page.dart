@@ -299,7 +299,7 @@ class _GroupPageState extends State<GroupPage> {
                             isThreeLine: true,
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
-                              Navigator.of(context).push(
+                              Navigator.of(context, rootNavigator: true).push(
                                 MaterialPageRoute(
                                   builder: (_) => GroupMatchdayPage(
                                     matchday: md,
@@ -341,7 +341,7 @@ class _GroupPageState extends State<GroupPage> {
                                 outcomesByMatchId: outcomesByMatchId,
                               );
 
-                              Navigator.of(context).push(
+                              Navigator.of(context, rootNavigator: true).push(
                                 MaterialPageRoute(
                                   builder: (_) => UserHubPage(
                                     member: e.member,

@@ -443,6 +443,38 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ===== MATCHDAY RECENT (runtime, non persistito) =====
+  // Serve per mostrare "pronostici passati" corretti anche quando il cursor
+  // viene fast-forwardato (es. 20 -> 21) e per gestire recuperi (matchday parziale).
+  final Map<int, List<PredictionMatch>> _recentMatchesByMatchday = {};
+  final Map<int, Map<String, MatchOutcome>> _recentOutcomesByMatchday = {};
+
+  Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
+      _recentMatchesByMatchday;
+  Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
+      _recentOutcomesByMatchday;
+
+  void setRecentMatchdayDataBulk({
+    required Map<int, List<PredictionMatch>> matchesByMatchday,
+    required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
+  }) {
+    _recentMatchesByMatchday
+      ..clear()
+      ..addAll({
+        for (final e in matchesByMatchday.entries)
+          e.key: List<PredictionMatch>.unmodifiable(e.value),
+      });
+
+    _recentOutcomesByMatchday
+      ..clear()
+      ..addAll({
+        for (final e in outcomesByMatchday.entries)
+          e.key: Map<String, MatchOutcome>.unmodifiable(e.value),
+      });
+
+    notifyListeners();
+  }
+
   // ===== Pronostici utente (persistiti) =====
   static const String _kCurrentUserPicksByMatchIdV1 =
       'cassandra.current_user_picks_by_match_id_v1';

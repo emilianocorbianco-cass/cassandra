@@ -86,7 +86,7 @@ class MemberSeasonPage extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       onTap: () {
-                        Navigator.of(context).push(
+                        Navigator.of(context, rootNavigator: true).push(
                           MaterialPageRoute(
                             builder: (_) => UserHubPage(
                               member: entry.member,

@@ -110,7 +110,7 @@ class _HomeShellState extends State<HomeShell> {
           ),
           NavigationDestination(
             icon: Icon(Icons.format_list_bulleted),
-            label: 'Serie A',
+            label: 'Live',
           ),
           NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),

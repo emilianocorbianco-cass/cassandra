@@ -86,7 +86,7 @@ class _SerieAPageState extends State<SerieAPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Serie A')),
+      appBar: AppBar(title: const Text('Live')),
       body: SafeArea(
         child: FutureBuilder<_SerieAData>(
           future: _future,
