@@ -59,6 +59,8 @@ class AppState extends ChangeNotifier {
     if (dayNumber <= 0) return;
     _cassandraMatchdayCursor = dayNumber;
     await _prefs?.setInt(_kCassandraMatchdayCursorV1, dayNumber);
+
+    _uiMatchdayNumber = null;
     notifyListeners();
   }
 

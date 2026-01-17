@@ -504,6 +504,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
       var advanced = false;
       final fromMatchday = dayNumber;
       // Dopo primaryDone la matchday successiva è giocabile (decisione Cassandra)
+      // // AUTO-BUMP: primaryDone
+      // if (progress.primaryDone && progress.isValidMatchday && dayNumber == appState.cassandraMatchdayCursor) {
+      //   await appState.setCassandraMatchdayCursor(dayNumber + 1);
+      // }
+
       // Finalizzazione: quando finalDone e matchday valida (>=6),
       // salviamo snapshot + storico per leaderboard stabile anche con recuperi.
       if (progress.finalDone && progress.isValidMatchday) {
