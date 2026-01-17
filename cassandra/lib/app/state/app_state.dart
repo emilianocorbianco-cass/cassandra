@@ -389,6 +389,7 @@ class AppState extends ChangeNotifier {
   final Map<int, MatchdayProgress> _matchdayProgressByDay = {};
 
   int? _uiMatchdayNumber;
+  int? _autoAdvancedFromMatchday;
   int get uiMatchdayNumber => _uiMatchdayNumber ?? cassandraMatchdayCursor;
 
   MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
@@ -401,6 +402,19 @@ class AppState extends ChangeNotifier {
     _matchdayProgressByDay[matchdayNumber] = progress;
 
     _uiMatchdayNumber = matchdayNumber;
+
+    // AUTO-ADVANCE: primaryDone
+    if (progress.primaryDone &&
+        matchdayNumber == cassandraMatchdayCursor &&
+        _autoAdvancedFromMatchday != matchdayNumber) {
+      _autoAdvancedFromMatchday = matchdayNumber;
+      Future.microtask(() async {
+        try {
+          await setCassandraMatchdayCursor(matchdayNumber + 1);
+        } catch (_) {}
+      });
+    }
+
     notifyListeners();
   }
 
