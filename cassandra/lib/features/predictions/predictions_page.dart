@@ -548,10 +548,6 @@ class _PredictionsPageState extends State<PredictionsPage> {
             appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
           }
           await appState.persistOriginKickoffs();
-          // bump idempotente: una sola volta per "fromMatchday"
-          await appState.maybeAutoBumpCassandraMatchdayCursor(
-            fromMatchday: fromMatchday,
-          );
           dayNumber = fromMatchday + 1;
           matchesToShow = nextMatches;
           advanced = true;
