@@ -390,6 +390,7 @@ class AppState extends ChangeNotifier {
 
   int? _uiMatchdayNumber;
   int? _autoAdvancedFromMatchday;
+  int? _autoFinalizedFromMatchday;
   int get uiMatchdayNumber => _uiMatchdayNumber ?? cassandraMatchdayCursor;
 
   MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
@@ -412,6 +413,17 @@ class AppState extends ChangeNotifier {
         try {
           await setCassandraMatchdayCursor(matchdayNumber + 1);
         } catch (_) {}
+      });
+    }
+
+    // AUTO-FINALIZE: finalDone
+    if (progress.finalDone &&
+        progress.isValidMatchday &&
+        _autoFinalizedFromMatchday != matchdayNumber) {
+      _autoFinalizedFromMatchday = matchdayNumber;
+      Future.microtask(() async {
+        try {} catch (_) {}
+        isMatchdayFinalized(matchdayNumber);
       });
     }
 
