@@ -386,6 +386,9 @@ class AppState extends ChangeNotifier {
   // ===== MatchdayProgress (runtime, non persistito) =====
   final Map<int, MatchdayProgress> _matchdayProgressByDay = {};
 
+  int? _uiMatchdayNumber;
+  int get uiMatchdayNumber => _uiMatchdayNumber ?? cassandraMatchdayCursor;
+
   MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
       _matchdayProgressByDay[matchdayNumber];
 
@@ -394,11 +397,14 @@ class AppState extends ChangeNotifier {
     required MatchdayProgress progress,
   }) {
     _matchdayProgressByDay[matchdayNumber] = progress;
+
+    _uiMatchdayNumber = matchdayNumber;
     notifyListeners();
   }
 
   void clearMatchdayProgress(int matchdayNumber) {
     if (_matchdayProgressByDay.remove(matchdayNumber) != null) {
+      if (_uiMatchdayNumber == matchdayNumber) _uiMatchdayNumber = null;
       notifyListeners();
     }
   }

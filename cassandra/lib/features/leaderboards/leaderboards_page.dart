@@ -77,7 +77,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     appState.ensureOutcomesHistoryLoaded();
 
     final cachedMatches = appState.cachedPredictionMatches;
-    final liveDayNumber = appState.cassandraMatchdayCursor;
+    final liveDayNumber = appState.uiMatchdayNumber;
     final useLive =
         appState.cachedPredictionMatchesAreReal &&
         cachedMatches != null &&

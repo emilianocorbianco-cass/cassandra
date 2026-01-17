@@ -229,10 +229,7 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    _matchdayLabelFor(
-                      appState.cassandraMatchdayCursor,
-                      _matches,
-                    ),
+                    _matchdayLabelFor(appState.uiMatchdayNumber, _matches),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 6),
