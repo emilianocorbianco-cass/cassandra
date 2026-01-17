@@ -406,6 +406,7 @@ class AppState extends ChangeNotifier {
 
     // AUTO-ADVANCE: primaryDone
     if (progress.primaryDone &&
+        progress.isValidMatchday &&
         matchdayNumber == cassandraMatchdayCursor &&
         _autoAdvancedFromMatchday != matchdayNumber) {
       _autoAdvancedFromMatchday = matchdayNumber;
