@@ -59,3 +59,22 @@ App Flutter (iOS/Android) per pronostici Serie A con quote e risultati (API), ca
 - iOS notch: titolo/back e header di `UserHubPage` ancora tagliati/sovrapposti (safe-area/AppBar).
 - Residui `.bak.*` generati durante le patch: da ripulire prima del merge/release.
 <!-- /SESSION_LOG:2026-01-16 -->
+<!-- SESSION_LOG:2026-01-17 -->
+## Sessione 2026-01-17 — Theme/Color tokens
+
+### Cambiamenti
+- UI: fix scaling/overlap in UserHub riducendo bottoni dev (Reset/Demo).
+- UI: bottom nav bar: bg `0xFF031926`, icone+testi `0xFFF6F4EF`.
+- UI: label tab “Classifiche” accorciata a “Classifica”.
+- Theme: token in `CassandraColors`:
+  - `bg = 0xFFF2EEE8` (sfondo app)
+  - `cardBg = 0xFFF5F5F5` + `ThemeData.cardTheme` (CardThemeData) per neutralizzare il “rosa” sulle Card
+- Lint: `MaterialStateProperty` → `WidgetStateProperty` (deprecation) in home_shell.
+
+### Decisioni (ADR)
+- ADR-THEME-001: colori gestiti via token (`CassandraColors`) + `ThemeData`; evitare palette/debug runtime e patch per-singola pagina.
+
+### Problemi aperti
+- iOS notch: `UserHubPage` AppBar/safe-area ancora da stabilizzare.
+- Copertura token incompleta: restano colori hardcoded (Container/BoxDecoration) da migrare.
+<!-- /SESSION_LOG:2026-01-17 -->

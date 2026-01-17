@@ -46,3 +46,23 @@ Next
 - UI notch/safe-area fragile senza checklist/test dedicati.
 - Recuperi: regressioni future senza suite di test specifica.
 <!-- /TASKS_UPDATE:2026-01-16 -->
+<!-- TASKS_UPDATE:2026-01-17 -->
+## TODO (agg. 2026-01-17) — Theme/Color
+
+### DONE
+- Fix scaling/overlap in UserHub riducendo bottoni dev (Reset/Demo).
+- Bottom nav bar: bg `0xFF031926`, icone+testi `0xFFF6F4EF`.
+- Tab label: “Classifiche” → “Classifica” (no wrap).
+- Theme: token `CassandraColors.cardBg = 0xFFF5F5F5` + `ThemeData.cardTheme` (CardThemeData) per rimuovere background rosa sulle Card.
+- Lint: migrazione `MaterialStateProperty` → `WidgetStateProperty`.
+
+### NEXT
+- [ ] Fix definitivo `UserHubPage` AppBar/safe-area su iOS notch (titolo/back sempre visibili).
+- [ ] Migrare colori hardcoded (Container/BoxDecoration) a token design-system (chip/badge, cards custom, odds buttons).
+- [ ] Cleanup repo: eliminare `_backup/` e `.bak.*` prima di release/merge.
+- [ ] Audit UI theme: uniformare componenti (Card/Chip/Segmented) su token + ThemeData (evitare override locali).
+
+### Rischi
+- Theme churn: modifiche rapide al tema possono rompere parsing/lint se non isolate.
+- Copertura token non completa: regressioni cromatiche possibili senza checklist.
+<!-- /TASKS_UPDATE:2026-01-17 -->
