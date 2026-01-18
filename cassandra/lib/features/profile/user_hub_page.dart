@@ -123,6 +123,8 @@ class _UserHubPageState extends State<UserHubPage> {
 
     if (ok != true) return;
     app.clearAllHistory();
+    app.clearCachedPredictionMatches();
+    app.setUiMatchdayNumber(null);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -131,9 +133,26 @@ class _UserHubPageState extends State<UserHubPage> {
 
   Future<void> _regenDemo(dynamic app) async {
     await app.bumpDemoSeed();
+
+    final matchdays = mockSeasonMatchdays(
+      startDay: 16,
+      count: 5,
+      demoSeed: app.demoSeed,
+    );
+
+    final demo = matchdays.last; // coerente con stagione demo 16–20 (day 20)
+
+    app.setUiMatchdayNumber(20);
+    app.setCachedPredictionMatches(
+      demo.matches,
+      isReal: false,
+      updatedAt: DateTime.now(),
+    );
+    app.setCachedPredictionOutcomesByMatchId(demo.outcomesByMatchId);
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Demo rigenerata (seed: ${app.demoSeed})')),
+      SnackBar(content: Text('Demo caricata (seed: ${app.demoSeed})')),
     );
   }
 

@@ -393,6 +393,11 @@ class AppState extends ChangeNotifier {
   int? _autoFinalizedFromMatchday;
   int get uiMatchdayNumber => _uiMatchdayNumber ?? cassandraMatchdayCursor;
 
+  void setUiMatchdayNumber(int? matchdayNumber) {
+    _uiMatchdayNumber = matchdayNumber;
+    notifyListeners();
+  }
+
   MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
       _matchdayProgressByDay[matchdayNumber];
 
