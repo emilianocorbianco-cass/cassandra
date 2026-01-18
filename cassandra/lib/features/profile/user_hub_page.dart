@@ -140,9 +140,9 @@ class _UserHubPageState extends State<UserHubPage> {
       demoSeed: app.demoSeed,
     );
 
-    final demo = matchdays.last; // coerente con stagione demo 16–20 (day 20)
+    final demo = matchdays.last;
 
-    app.setUiMatchdayNumber(20);
+    app.setUiMatchdayNumber(demo.dayNumber);
     app.setCachedPredictionMatches(
       demo.matches,
       isReal: false,

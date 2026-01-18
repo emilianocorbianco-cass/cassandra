@@ -32,6 +32,30 @@ class PredictionsPage extends StatefulWidget {
 }
 
 class _PredictionsPageState extends State<PredictionsPage> {
+  bool get demoActive {
+    final appState = CassandraScope.of(context);
+    return appState.cachedPredictionMatches != null &&
+        !appState.cachedPredictionMatchesAreReal;
+  }
+
+  List<PredictionMatch> get matches {
+    final appState = CassandraScope.of(context);
+    final cached = appState.cachedPredictionMatches;
+    if (cached != null && !appState.cachedPredictionMatchesAreReal) {
+      return cached;
+    }
+    return _matches;
+  }
+
+  String get matchdayLabel {
+    final appState = CassandraScope.of(context);
+    if (demoActive) {
+      return 'giornata ${appState.uiMatchdayNumber} - '
+          '${formatMatchdayDaysItalian(matches.map((m) => m.kickoff))}';
+    }
+    return _matchdayLabel;
+  }
+
   int get _matchdayNumber => CassandraScope.of(context).cassandraMatchdayCursor;
   int? _shownMatchdayNumber;
   int get _effectiveMatchdayNumber => _shownMatchdayNumber ?? _matchdayNumber;
@@ -60,6 +84,9 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   PickOption _pickFor(String matchId) {
     final appState = CassandraScope.of(context);
+    appState.cachedPredictionMatches != null &&
+        !appState.cachedPredictionMatchesAreReal;
+
     appState.ensureCurrentUserPicksLoaded();
     return appState.currentUserPicksByMatchId[matchId] ?? PickOption.none;
   }
@@ -617,6 +644,12 @@ class _PredictionsPageState extends State<PredictionsPage> {
         matchesByMatchday: recentMatchesByMd,
         outcomesByMatchday: recentOutcomesByMd,
       );
+      // DEV: se nel frattempo è stata attivata DEMO, non sovrascrivere con LIVE
+      if (scope.cachedPredictionMatches != null &&
+          !scope.cachedPredictionMatchesAreReal) {
+        return;
+      }
+
       scope.setCachedPredictionMatches(
         matchesToShow,
         isReal: true,
@@ -842,13 +875,13 @@ class _PredictionsPageState extends State<PredictionsPage> {
         ? 'giocate bloccate'
         : 'modificabile fino alle ${formatKickoff(_lockTime)}';
     final scoreOutcomesByMatchId = <String, MatchOutcome>{
-      for (final m in _matches)
+      for (final m in matches)
         if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
           m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
     };
     final DayScoreBreakdown dayScore = CassandraScoringEngine.computeDayScore(
-      matches: _matches,
-      picksByMatchId: {for (final m in _matches) m.id: _pickFor(m.id)},
+      matches: matches,
+      picksByMatchId: {for (final m in matches) m.id: _pickFor(m.id)},
       outcomesByMatchId: scoreOutcomesByMatchId,
     );
     final bonusSigned = dayScore.bonusPoints == 0
@@ -865,8 +898,11 @@ class _PredictionsPageState extends State<PredictionsPage> {
         ' • quota media $scoreAvgLabel';
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
-    final dataLabel = _usingRealFixtures ? 'dati: reali (API)' : 'dati: demo';
-    final updatedLabel = (_usingRealFixtures && _fixturesUpdatedAt != null)
+    final dataLabel = demoActive
+        ? 'dati: demo'
+        : (_usingRealFixtures ? 'dati: reali (API)' : 'dati: demo');
+    final updatedLabel =
+        (_usingRealFixtures && !demoActive && _fixturesUpdatedAt != null)
         ? ' • agg. ${formatKickoff(_fixturesUpdatedAt!)}'
         : '';
     return Scaffold(
@@ -876,7 +912,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
         actions: [
           IconButton(
             tooltip: 'Aggiorna match',
-            onPressed: _loadingFixtures
+            onPressed: (_loadingFixtures || demoActive)
                 ? null
                 : () => _tryLoadRealFixtures(showLoader: true),
             icon: _loadingFixtures
@@ -920,7 +956,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    _matchdayLabel,
+                    matchdayLabel,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 6),
@@ -939,7 +975,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'scelte: $_pickedCount/${_matches.length}  •  quota media: $avgLabel',
+                    'scelte: $_pickedCount/${matches.length}  •  quota media: $avgLabel',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: CassandraColors.slate,
                     ),
@@ -963,9 +999,9 @@ class _PredictionsPageState extends State<PredictionsPage> {
                   ? _buildHistory(context)
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: _matches.length,
+                      itemCount: matches.length,
                       itemBuilder: (context, i) {
-                        final match = _matches[i];
+                        final match = matches[i];
                         final pick = _pickFor(match.id);
                         return PredictionMatchCard(
                           match: match,

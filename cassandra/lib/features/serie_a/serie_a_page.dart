@@ -123,9 +123,13 @@ class _SerieAPageState extends State<SerieAPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        data?.errorMessage != null
-                            ? data!.errorMessage!
-                            : 'dati: reali (API)$updatedLabel',
+                        demoActive
+                            ? 'dati: demo'
+                            : (data?.errorMessage != null
+                                  ? data!.errorMessage!
+                                  : (demoActive
+                                        ? 'dati: demo'
+                                        : 'dati: reali (API)$updatedLabel')),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
