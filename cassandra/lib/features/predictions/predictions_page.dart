@@ -338,6 +338,21 @@ class _PredictionsPageState extends State<PredictionsPage> {
     try {
       final service = ApiFootballService(client);
       final scope = CassandraScope.of(context);
+      // DEV: se abbiamo cache DEMO (isReal=false), non sovrascrivere con fetch LIVE
+      final cached = scope.cachedPredictionMatches;
+      if (cached != null && !scope.cachedPredictionMatchesAreReal) {
+        if (mounted) {
+          setState(() {
+            _shownMatchdayNumber = scope.uiMatchdayNumber;
+            _matches = cached;
+            _usingRealFixtures = false;
+            _fixturesUpdatedAt =
+                scope.cachedPredictionMatchesUpdatedAt ?? DateTime.now();
+          });
+        }
+        return;
+      }
+
       final appState = CassandraScope.of(context);
       var dayNumber = appState.cassandraMatchdayCursor;
       // Intorno di partite (passate recenti + future) per scegliere la giornata corretta
