@@ -5,7 +5,10 @@ import '../../services/api_football/api_football_client.dart';
 import '../../services/api_football/api_football_service.dart';
 import '../../services/api_football/models/api_football_fixture.dart';
 import '../predictions/models/formatters.dart';
+import '../predictions/models/prediction_match.dart';
+import '../scoring/models/match_outcome.dart';
 import 'adapters/fixture_result_adapter.dart';
+import '../../app/state/cassandra_scope.dart';
 
 class SerieAPage extends StatefulWidget {
   const SerieAPage({super.key});
@@ -93,6 +96,11 @@ class _SerieAPageState extends State<SerieAPage> {
           builder: (context, snap) {
             final data = snap.data;
 
+            final appState = CassandraScope.of(context);
+            final demoMatches = appState.cachedPredictionMatches;
+            final demoActive =
+                demoMatches != null && !appState.cachedPredictionMatchesAreReal;
+
             final updatedLabel = _updatedAt == null
                 ? ''
                 : ' • agg. ${formatKickoff(_updatedAt!)}';
@@ -126,8 +134,15 @@ class _SerieAPageState extends State<SerieAPage> {
                 const Divider(height: 1),
                 Expanded(
                   child: RefreshIndicator(
-                    onRefresh: _reload,
-                    child: _buildList(context, snap),
+                    onRefresh: demoActive ? () async {} : _reload,
+                    child: demoActive
+                        ? _buildDemoList(
+                            context,
+                            _segment,
+                            demoMatches,
+                            appState.cachedPredictionOutcomesByMatchId,
+                          )
+                        : _buildList(context, snap),
                   ),
                 ),
               ],
@@ -215,4 +230,108 @@ class _SerieAData {
     required this.next,
     this.errorMessage,
   });
+}
+
+Widget _buildDemoList(
+  BuildContext context,
+  int segment,
+  List<PredictionMatch> all,
+  Map<String, MatchOutcome> outcomes,
+) {
+  final matches = all.where((m) {
+    final o = outcomes[m.id] ?? MatchOutcome.pending;
+    return segment == 0 ? !o.isPending : o.isPending;
+  }).toList()..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+
+  if (matches.isEmpty) {
+    return Center(
+      child: Text(
+        segment == 0 ? 'Nessun risultato' : 'Nessuna partita in programma',
+      ),
+    );
+  }
+
+  return ListView.separated(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    itemCount: matches.length,
+    separatorBuilder: (context, index) => const SizedBox(height: 12),
+    itemBuilder: (context, i) {
+      final m = matches[i];
+      final o = outcomes[m.id] ?? MatchOutcome.pending;
+      final title = _demoTitleFor(m);
+      final subtitle = 'Kickoff: ${formatKickoff(m.kickoff)}';
+      final trailing = o.isPending ? '' : _demoOutcomeLabel(o);
+
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing.isNotEmpty)
+                Text(trailing, style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+String _demoTitleFor(PredictionMatch m) {
+  final d = m as dynamic;
+
+  String? readStr(Object? Function() f) {
+    try {
+      final v = f();
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+    } catch (_) {}
+    return null;
+  }
+
+  String? readTeamName(Object? Function() f) {
+    try {
+      final v = f();
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+      final name = (v as dynamic).name;
+      if (name is String && name.trim().isNotEmpty) return name.trim();
+    } catch (_) {}
+    return null;
+  }
+
+  final home =
+      readStr(() => d.homeTeamName) ??
+      readStr(() => d.homeName) ??
+      readStr(() => d.home) ??
+      readTeamName(() => d.homeTeam) ??
+      '?';
+
+  final away =
+      readStr(() => d.awayTeamName) ??
+      readStr(() => d.awayName) ??
+      readStr(() => d.away) ??
+      readTeamName(() => d.awayTeam) ??
+      '?';
+
+  return '$home  vs  $away';
+}
+
+String _demoOutcomeLabel(MatchOutcome o) {
+  final raw = o.toString().split('.').last;
+  if (raw == 'home') return '1';
+  if (raw == 'draw') return 'X';
+  if (raw == 'away') return '2';
+  return raw.toUpperCase();
 }
