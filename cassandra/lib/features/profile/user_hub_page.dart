@@ -157,6 +157,106 @@ class _UserHubPageState extends State<UserHubPage> {
     );
   }
 
+  Future<void> _devAddPostponedMatch(
+    dynamic app, {
+    required bool within48,
+  }) async {
+    final matchdays = mockSeasonMatchdays(
+      startDay: 16,
+      count: 5,
+      demoSeed: app.demoSeed,
+    );
+    final demo = matchdays.last;
+
+    // Origini stabili da calendario demo (kickoff previsto)
+    final originById = <String, DateTime>{
+      for (final m in demo.matches) m.id: m.kickoff,
+    };
+
+    // Usa la cache demo se già attiva, altrimenti la demo pulita
+    final cached = app.cachedPredictionMatches;
+    final usingDemoCache =
+        cached != null && !app.cachedPredictionMatchesAreReal;
+    final baseMatches = usingDemoCache ? cached : demo.matches;
+
+    // Registra le origini in AppState (serve per originKickoffFor)
+    final dyn = app as dynamic;
+    try {
+      dyn.registerOriginKickoffs(demo.matches);
+    } catch (_) {
+      try {
+        dyn.registerOriginKickoff(demo.matches);
+      } catch (_) {}
+    }
+
+    // Prendi il prossimo match "non ancora toccato" (kickoff == origin)
+    PredictionMatch? target;
+    DateTime? targetOrigin;
+
+    for (final m in baseMatches) {
+      final origin = originById[m.id] ?? m.kickoff;
+      final untouched = m.kickoff.isAtSameMomentAs(origin);
+      if (!untouched) continue;
+
+      if (target == null || origin.isBefore(targetOrigin!)) {
+        target = m;
+        targetOrigin = origin;
+      }
+    }
+
+    if (target == null || targetOrigin == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessun altro match da modificare')),
+      );
+      return;
+    }
+
+    final t = target;
+    final o = targetOrigin;
+
+    final shift = within48
+        ? const Duration(hours: 24)
+        : const Duration(hours: 72);
+    final newKickoff = o.add(shift);
+
+    final updatedMatches = baseMatches.map((m) {
+      if (m.id != t.id) return m;
+      return PredictionMatch(
+        id: m.id,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        kickoff: newKickoff,
+        odds: m.odds,
+      );
+    }).toList()..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+
+    // Outcomes: mantieni quelli già presenti (cache o demo)
+    final cachedOutcomes = app.cachedPredictionOutcomesByMatchId;
+    final outcomes = (cachedOutcomes is Map && cachedOutcomes.isNotEmpty)
+        ? cachedOutcomes
+        : demo.outcomesByMatchId;
+
+    app.setUiMatchdayNumber(demo.dayNumber);
+    app.setCachedPredictionMatches(
+      updatedMatches,
+      isReal: false,
+      updatedAt: DateTime.now(),
+    );
+    app.setCachedPredictionOutcomesByMatchId(outcomes);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          within48
+              ? 'Aggiunto 1 recupero <48h'
+              : 'Aggiunto 1 partita nulla >48h',
+        ),
+      ),
+    );
+  }
+
   Future<void> _applyDemoScenario(
     dynamic app, {
     required int hoursAgo,
@@ -310,6 +410,21 @@ class _UserHubPageState extends State<UserHubPage> {
                                 OutlinedButton(
                                   onPressed: () async => _regenDemo(app),
                                   child: const Text('Demo'),
+                                ),
+
+                                OutlinedButton(
+                                  onPressed: () => _devAddPostponedMatch(
+                                    app,
+                                    within48: true,
+                                  ),
+                                  child: const Text('+ recuperata <48h'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () => _devAddPostponedMatch(
+                                    app,
+                                    within48: false,
+                                  ),
+                                  child: const Text('+ nulla >48h'),
                                 ),
 
                                 OutlinedButton(
