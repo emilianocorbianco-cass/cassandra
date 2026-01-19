@@ -257,6 +257,7 @@ class _UserHubPageState extends State<UserHubPage> {
     );
   }
 
+  // ignore: unused_element
   Future<void> _applyDemoScenario(
     dynamic app, {
     required int hoursAgo,
