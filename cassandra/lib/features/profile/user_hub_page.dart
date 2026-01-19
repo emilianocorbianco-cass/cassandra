@@ -10,6 +10,7 @@ import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../leaderboards/models/season_leaderboard_entry.dart';
 import '../predictions/models/pick_option.dart';
+import '../predictions/models/prediction_match.dart';
 
 import 'widgets/user_picks_view.dart';
 import 'widgets/user_stats_view.dart';
@@ -156,6 +157,62 @@ class _UserHubPageState extends State<UserHubPage> {
     );
   }
 
+  Future<void> _applyDemoScenario(
+    dynamic app, {
+    required int hoursAgo,
+    required int voidCount,
+  }) async {
+    final matchdays = mockSeasonMatchdays(
+      startDay: 16,
+      count: 5,
+      demoSeed: app.demoSeed,
+    );
+    final demo = matchdays.last;
+
+    final now = DateTime.now();
+    final shiftedKickoff = now.subtract(Duration(hours: hoursAgo));
+
+    final sorted = [...demo.matches]
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    final target = sorted.take(voidCount).toList();
+    final targetIds = {for (final m in target) m.id};
+
+    final matchesOverride = demo.matches.map((m) {
+      if (!targetIds.contains(m.id)) return m;
+      return PredictionMatch(
+        id: m.id,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        kickoff: shiftedKickoff,
+        odds: m.odds,
+      );
+    }).toList();
+
+    final outcomesOverride = Map<String, MatchOutcome>.from(
+      demo.outcomesByMatchId,
+    );
+    for (final id in targetIds) {
+      outcomesOverride[id] = MatchOutcome.pending;
+    }
+
+    app.setUiMatchdayNumber(demo.dayNumber);
+    app.setCachedPredictionMatches(
+      matchesOverride,
+      isReal: false,
+      updatedAt: DateTime.now(),
+    );
+    app.setCachedPredictionOutcomesByMatchId(outcomesOverride);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Scenario DEMO: $voidCount match pending con kickoff ${hoursAgo}h fa',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalMatches = widget.matchday.matches.length;
@@ -253,6 +310,31 @@ class _UserHubPageState extends State<UserHubPage> {
                                 OutlinedButton(
                                   onPressed: () async => _regenDemo(app),
                                   child: const Text('Demo'),
+                                ),
+
+                                OutlinedButton(
+                                  onPressed: () => _applyDemoScenario(
+                                    app,
+                                    hoursAgo: 24,
+                                    voidCount: 1,
+                                  ),
+                                  child: const Text('Rinvio 24h'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () => _applyDemoScenario(
+                                    app,
+                                    hoursAgo: 72,
+                                    voidCount: 1,
+                                  ),
+                                  child: const Text('Rinvio 72h'),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () => _applyDemoScenario(
+                                    app,
+                                    hoursAgo: 72,
+                                    voidCount: 5,
+                                  ),
+                                  child: const Text('Void 5'),
                                 ),
                               ],
                             ),
