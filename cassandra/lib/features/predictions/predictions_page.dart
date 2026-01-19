@@ -557,12 +557,20 @@ class _PredictionsPageState extends State<PredictionsPage> {
         final voidedIds = <String>{};
         for (final m in matches) {
           final out = outcomes[m.id] ?? MatchOutcome.pending;
-          if (out.isGraded) continue;
           final origin = appState.originKickoffFor(
             matchId: m.id,
             fallbackKickoff: m.kickoff,
           );
-          if (now.isAfter(origin.add(const Duration(hours: 48)))) {
+          final deadline = origin.add(const Duration(hours: 48));
+
+          // Regola 2: se giocata oltre 48h dal kickoff originario => NULLA (anche se FT)
+          if (out.isGraded && m.kickoff.isAfter(deadline)) {
+            voidedIds.add(m.id);
+            continue;
+          }
+
+          // Se non final entro 48h => NULLA
+          if (!out.isGraded && now.isAfter(deadline)) {
             voidedIds.add(m.id);
           }
         }
