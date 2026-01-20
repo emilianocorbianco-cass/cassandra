@@ -17,6 +17,7 @@ import 'widgets/user_stats_view.dart';
 import 'widgets/user_trophies_view.dart';
 import 'package:cassandra/features/predictions/models/formatters.dart';
 import 'package:cassandra/features/scoring/models/match_outcome.dart';
+import '../dev/dev_debug_page.dart';
 
 class UserHubPage extends StatefulWidget {
   final GroupMember member;
@@ -348,6 +349,30 @@ class _UserHubPageState extends State<UserHubPage> {
           appBar: AppBar(
             primary: true,
             centerTitle: true,
+            actions: [
+              if (kDebugMode)
+                IconButton(
+                  tooltip: 'Debug',
+                  icon: const Icon(Icons.bug_report_outlined),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DevDebugPage(
+                          onResetHistory: () => _resetHistory(app),
+                          onRegenDemo: () => _regenDemo(app),
+                          onAddRecovered: () async {
+                            _devAddPostponedMatch(app, within48: true);
+                          },
+                          onAddVoid: () async {
+                            _devAddPostponedMatch(app, within48: false);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+
             title: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
