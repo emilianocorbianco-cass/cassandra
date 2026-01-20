@@ -212,7 +212,6 @@ class _UserHubPageState extends State<UserHubPage> {
       return;
     }
 
-    final t = target;
     final o = targetOrigin;
 
     final shift = within48
@@ -221,7 +220,7 @@ class _UserHubPageState extends State<UserHubPage> {
     final newKickoff = o.add(shift);
 
     final updatedMatches = baseMatches.map((m) {
-      if (m.id != t.id) return m;
+      if (m.id != target!.id) return m;
       return PredictionMatch(
         id: m.id,
         homeTeam: m.homeTeam,
@@ -393,66 +392,53 @@ class _UserHubPageState extends State<UserHubPage> {
                           ),
                           const SizedBox(height: 8),
                           if (kDebugMode)
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                Text(
-                                  'demo seed: $seed',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                OutlinedButton(
-                                  onPressed: isMe
-                                      ? () async => _resetHistory(app)
-                                      : null,
-                                  child: const Text('Reset'),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () async => _regenDemo(app),
-                                  child: const Text('Demo'),
-                                ),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        'demo seed: $seed',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: isMe
+                                            ? () async => _resetHistory(app)
+                                            : null,
+                                        child: const Text('Reset'),
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: () async => _regenDemo(app),
+                                        child: const Text('Demo'),
+                                      ),
 
-                                OutlinedButton(
-                                  onPressed: () => _devAddPostponedMatch(
-                                    app,
-                                    within48: true,
+                                      OutlinedButton(
+                                        onPressed: () => _devAddPostponedMatch(
+                                          app,
+                                          within48: true,
+                                        ),
+                                        child: const Text('+ recuperata <48h'),
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: () => _devAddPostponedMatch(
+                                          app,
+                                          within48: false,
+                                        ),
+                                        child: const Text('+ nulla >48h'),
+                                      ),
+                                    ],
                                   ),
-                                  child: const Text('+ recuperata <48h'),
                                 ),
-                                OutlinedButton(
-                                  onPressed: () => _devAddPostponedMatch(
-                                    app,
-                                    within48: false,
-                                  ),
-                                  child: const Text('+ nulla >48h'),
-                                ),
-
-                                OutlinedButton(
-                                  onPressed: () => _applyDemoScenario(
-                                    app,
-                                    hoursAgo: 24,
-                                    voidCount: 1,
-                                  ),
-                                  child: const Text('Rinvio 24h'),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () => _applyDemoScenario(
-                                    app,
-                                    hoursAgo: 72,
-                                    voidCount: 1,
-                                  ),
-                                  child: const Text('Rinvio 72h'),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () => _applyDemoScenario(
-                                    app,
-                                    hoursAgo: 72,
-                                    voidCount: 5,
-                                  ),
-                                  child: const Text('Void 5'),
-                                ),
-                              ],
+                              ),
                             ),
                         ],
                       ),
