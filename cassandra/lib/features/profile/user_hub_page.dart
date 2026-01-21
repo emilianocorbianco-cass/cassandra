@@ -337,8 +337,6 @@ class _UserHubPageState extends State<UserHubPage> {
         : '';
 
     final initial = widget.initialTabIndex.clamp(0, 2);
-    final isMe = widget.member.id == app.profile.id;
-    final seed = app.demoSeed;
 
     return MediaQuery(
       data: MediaQueryData.fromView(View.of(context)),
@@ -416,55 +414,6 @@ class _UserHubPageState extends State<UserHubPage> {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 8),
-                          if (kDebugMode)
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      Text(
-                                        'demo seed: $seed',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                      OutlinedButton(
-                                        onPressed: isMe
-                                            ? () async => _resetHistory(app)
-                                            : null,
-                                        child: const Text('Reset'),
-                                      ),
-                                      OutlinedButton(
-                                        onPressed: () async => _regenDemo(app),
-                                        child: const Text('Demo'),
-                                      ),
-
-                                      OutlinedButton(
-                                        onPressed: () => _devAddPostponedMatch(
-                                          app,
-                                          within48: true,
-                                        ),
-                                        child: const Text('+ recuperata <48h'),
-                                      ),
-                                      OutlinedButton(
-                                        onPressed: () => _devAddPostponedMatch(
-                                          app,
-                                          within48: false,
-                                        ),
-                                        child: const Text('+ nulla >48h'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                     ),
