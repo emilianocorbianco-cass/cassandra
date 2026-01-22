@@ -31,7 +31,17 @@ class PredictionsPage extends StatefulWidget {
   State<PredictionsPage> createState() => _PredictionsPageState();
 }
 
-class _PredictionsPageState extends State<PredictionsPage> {
+class _PredictionsPageState extends State<PredictionsPage>
+    with AutomaticKeepAliveClientMixin {
+  bool _forceDemoFixtures = false;
+
+  bool _isLoadingRealFixtures = false;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  bool _didLoadRealFixtures = false;
+
   bool get demoActive {
     final appState = CassandraScope.of(context);
     return appState.cachedPredictionMatches != null &&
@@ -71,15 +81,28 @@ class _PredictionsPageState extends State<PredictionsPage> {
   @override
   void initState() {
     super.initState();
+    if (kDebugMode) {
+      debugPrint('[predictions] initState ${identityHashCode(this)}');
+    }
     _matches = mockPredictionMatches();
+  }
+
+  @override
+  void dispose() {
+    if (kDebugMode) {
+      debugPrint('[predictions] dispose ${identityHashCode(this)}');
+    }
+    super.dispose();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_didLoadRealFixtures) return;
+    _didLoadRealFixtures = true;
     if (_didLoadFixtures) return;
     _didLoadFixtures = true;
-    _tryLoadRealFixtures();
+    _tryLoadRealFixturesOnce();
   }
 
   PickOption _pickFor(String matchId) {
@@ -878,6 +901,8 @@ class _PredictionsPageState extends State<PredictionsPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final appState = CassandraScope.of(context);
     final lockLabel = _locked
         ? 'giocate bloccate'
@@ -906,7 +931,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
         ' • quota media $scoreAvgLabel';
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
-    final dataLabel = demoActive
+    final dataLabel = (demoActive || _forceDemoFixtures)
         ? 'dati: demo'
         : (_usingRealFixtures ? 'dati: reali (API)' : 'dati: demo');
     final updatedLabel =
@@ -920,9 +945,9 @@ class _PredictionsPageState extends State<PredictionsPage> {
         actions: [
           IconButton(
             tooltip: 'Aggiorna match',
-            onPressed: (_loadingFixtures || demoActive)
+            onPressed: (_loadingFixtures || demoActive || _forceDemoFixtures)
                 ? null
-                : () => _tryLoadRealFixtures(showLoader: true),
+                : () => _tryLoadRealFixturesOnce(showLoader: true, force: true),
             icon: _loadingFixtures
                 ? const SizedBox(
                     width: 20,
@@ -931,6 +956,26 @@ class _PredictionsPageState extends State<PredictionsPage> {
                   )
                 : const Icon(Icons.refresh),
           ),
+          if (kDebugMode)
+            IconButton(
+              tooltip: _forceDemoFixtures
+                  ? 'Usa dati reali (API)'
+                  : 'Forza dati demo',
+              icon: Icon(_forceDemoFixtures ? Icons.public : Icons.science),
+              onPressed: () async {
+                final enableDemo = !_forceDemoFixtures;
+                setState(() {
+                  _forceDemoFixtures = enableDemo;
+                  if (enableDemo) {
+                    _usingRealFixtures = false;
+                    _matches = mockPredictionMatches();
+                  }
+                });
+                if (!enableDemo) {
+                  await _tryLoadRealFixturesOnce(showLoader: true, force: true);
+                }
+              },
+            ),
           if (kDebugMode)
             IconButton(
               icon: const Icon(Icons.calculate),
@@ -1065,5 +1110,24 @@ class _PredictionsPageState extends State<PredictionsPage> {
               ),
             ),
     );
+  }
+
+  Future<void> _tryLoadRealFixturesOnce({
+    bool showLoader = false,
+    bool force = false,
+  }) async {
+    if (_isLoadingRealFixtures) {
+      return;
+    }
+    if (_didLoadFixtures && !force) {
+      return;
+    }
+    _isLoadingRealFixtures = true;
+    try {
+      await _tryLoadRealFixtures(showLoader: showLoader);
+      _didLoadFixtures = true;
+    } finally {
+      _isLoadingRealFixtures = false;
+    }
   }
 }

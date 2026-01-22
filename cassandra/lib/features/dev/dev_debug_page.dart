@@ -34,22 +34,30 @@ class DevDebugPage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           OutlinedButton(
-            onPressed: () async => onResetHistory(),
+            onPressed: () {
+              () async => onResetHistory();
+            },
             child: const Text('Reset storico'),
           ),
           const SizedBox(height: 8),
           OutlinedButton(
-            onPressed: () async => onRegenDemo(),
+            onPressed: () {
+              () async => onRegenDemo();
+            },
             child: const Text('Rigenera demo (seed)'),
           ),
           const Divider(height: 32),
           OutlinedButton(
-            onPressed: () async => onAddRecovered(),
+            onPressed: () {
+              () async => onAddRecovered();
+            },
             child: const Text('+ recuperata <48h'),
           ),
           const SizedBox(height: 8),
           OutlinedButton(
-            onPressed: () async => onAddVoid(),
+            onPressed: () {
+              () async => onAddVoid();
+            },
             child: const Text('+ nulla >48h'),
           ),
         ],

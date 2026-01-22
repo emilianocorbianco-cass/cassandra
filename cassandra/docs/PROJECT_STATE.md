@@ -78,3 +78,23 @@ App Flutter (iOS/Android) per pronostici Serie A con quote e risultati (API), ca
 - iOS notch: `UserHubPage` AppBar/safe-area ancora da stabilizzare.
 - Copertura token incompleta: restano colori hardcoded (Container/BoxDecoration) da migrare.
 <!-- /SESSION_LOG:2026-01-17 -->
+
+## Sessione 2026-01-21 — Debug tools & recuperi (<48h)
+
+### Implementato
+- DevDebugPage (solo debug build) apribile da icona bug in UserHubPage.
+- Azioni debug disponibili:
+  - Reset storico
+  - Rigenera demo (seed)
+  - + recuperata <48h
+  - + nulla >48h
+- Fix build/runtime legati ai tool debug:
+  - fix comparator/sort in _devAddPostponedMatch (no crash tap)
+  - fix SingleChildScrollView (named args corretti)
+  - fix gestione seed/init in didChangeDependencies
+
+### Stato regola recuperi
+- Hook debug per forzare scenari di rinvii e verificare regola <48h vs >48h tramite cache demo.
+
+### Problemi aperti
+- Le mutazioni effettuate da DevDebugPage non risultano visibili in alcune schermate (Pronostici/Predictions): verificare lettura cache + invalidazione/rebuild.

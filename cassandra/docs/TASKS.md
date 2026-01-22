@@ -66,3 +66,13 @@ Next
 - Theme churn: modifiche rapide al tema possono rompere parsing/lint se non isolate.
 - Copertura token non completa: regressioni cromatiche possibili senza checklist.
 <!-- /TASKS_UPDATE:2026-01-17 -->
+
+## Debug tools & simulazioni recuperi (2026-01-21)
+
+- [x] Spostare controlli debug in pagina dedicata (DevDebugPage) e rimuovere bottoni inline.
+- [x] Fix crash tap _devAddPostponedMatch (sort/comparator).
+- [x] Fix SingleChildScrollView (costruttore/argomenti).
+- [ ] Propagare correttamente le mutazioni debug alle schermate Pronostici/Predictions (cache source + notify/rebuild).
+- [ ] Aggiungere bottone “Scenario: 5 recuperate <48h + 1 nulla >48h” (one-click).
+- [ ] Aggiungere indicatori debug-only per kickoff/shift e stato match nella UI (per rendere osservabile l’effetto).
+- [ ] Aggiungere test unit/widget: regola recuperi (<48h / >48h) + coerenza cache.

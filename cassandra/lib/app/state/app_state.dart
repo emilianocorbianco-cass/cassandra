@@ -1103,4 +1103,12 @@ class AppState extends ChangeNotifier {
       ),
     );
   }
+
+  int _devEpoch = 0;
+  int get devEpoch => _devEpoch;
+
+  void bumpDevEpoch() {
+    _devEpoch++;
+    notifyListeners();
+  }
 }
