@@ -411,6 +411,7 @@ class _PredictionsPageState extends State<PredictionsPage>
       useRapidApi: Env.useRapidApi,
       rapidApiHost: Env.rapidApiHost,
     );
+    Future<List<ApiFootballStanding>>? standingsFuture;
     try {
       final service = ApiFootballService(client);
       final scope = CassandraScope.of(context);
@@ -462,10 +463,8 @@ class _PredictionsPageState extends State<PredictionsPage>
       final past = await service.getLastSerieAFixtures(count: 40);
       final next = await service.getNextSerieAFixtures(count: 80);
 
-      // Carica standings in parallelo (best-effort)
-      service.getSerieAStandings().then((s) {
-        if (mounted && s.isNotEmpty) setState(() => _standings = s);
-      }).catchError((_) {});
+      // Carica standings in parallelo (best-effort, await prima del client.close)
+      standingsFuture = service.getSerieAStandings().catchError((_) => <ApiFootballStanding>[]);
 
       final fixtures = [...past, ...next];
       if (kDebugMode) {
@@ -752,6 +751,13 @@ class _PredictionsPageState extends State<PredictionsPage>
         debugPrint('$st');
       }
     } finally {
+      // Attendi standings prima di chiudere il client HTTP
+      if (standingsFuture != null) {
+        try {
+          final s = await standingsFuture;
+          if (mounted && s.isNotEmpty) setState(() => _standings = s);
+        } catch (_) {}
+      }
       client.close();
       if (showLoader && mounted) {
         setState(() => _loadingFixtures = false);

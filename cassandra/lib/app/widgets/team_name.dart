@@ -30,12 +30,24 @@ class TeamName extends StatelessWidget {
       return Text(name, style: effectiveStyle, textAlign: textAlign);
     }
 
-    final logo = Image.network(
-      url,
-      width: logoSize,
-      height: logoSize,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) => SizedBox(width: logoSize, height: logoSize),
+    final logo = DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.6),
+            blurRadius: 1.5,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
+      child: Image.network(
+        url,
+        width: logoSize,
+        height: logoSize,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => SizedBox(width: logoSize, height: logoSize),
+      ),
     );
 
     final text = Flexible(
