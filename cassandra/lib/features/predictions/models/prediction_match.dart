@@ -23,6 +23,8 @@ class PredictionMatch {
   final String awayTeam;
   final DateTime kickoff;
   final Odds odds;
+  final String? homeTeamLogo;
+  final String? awayTeamLogo;
 
   const PredictionMatch({
     required this.id,
@@ -30,5 +32,7 @@ class PredictionMatch {
     required this.awayTeam,
     required this.kickoff,
     required this.odds,
+    this.homeTeamLogo,
+    this.awayTeamLogo,
   });
 }

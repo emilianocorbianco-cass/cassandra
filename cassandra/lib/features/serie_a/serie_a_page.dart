@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../app/config/env.dart';
+import '../../app/widgets/team_name.dart';
 import '../../services/api_football/api_football_client.dart';
 import '../../services/api_football/api_football_service.dart';
 import '../../services/api_football/models/api_football_fixture.dart';
+import '../group/mock_group_data.dart';
+import '../group/models/group_member.dart';
+import '../group/widgets/group_matchday_leaderboard.dart';
 import '../predictions/models/formatters.dart';
+import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
 import 'adapters/fixture_result_adapter.dart';
@@ -18,7 +23,7 @@ class SerieAPage extends StatefulWidget {
 }
 
 class _SerieAPageState extends State<SerieAPage> {
-  int _segment = 0; // 0 = risultati (last), 1 = prossime (next)
+  int _segment = 0; // 0 = risultati (last), 1 = classifica gruppo
   DateTime? _updatedAt;
 
   late Future<_SerieAData> _future;
@@ -115,7 +120,7 @@ class _SerieAPageState extends State<SerieAPage> {
                       SegmentedButton<int>(
                         segments: const [
                           ButtonSegment(value: 0, label: Text('risultati')),
-                          ButtonSegment(value: 1, label: Text('prossime')),
+                          ButtonSegment(value: 1, label: Text('classifica')),
                         ],
                         selected: {_segment},
                         onSelectionChanged: (s) =>
@@ -137,23 +142,68 @@ class _SerieAPageState extends State<SerieAPage> {
                 ),
                 const Divider(height: 1),
                 Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: demoActive ? () async {} : _reload,
-                    child: demoActive
-                        ? _buildDemoList(
-                            context,
-                            _segment,
-                            demoMatches,
-                            appState.cachedPredictionOutcomesByMatchId,
-                          )
-                        : _buildList(context, snap),
-                  ),
+                  child: _segment == 1
+                      ? _buildGroupLeaderboard(context, appState)
+                      : RefreshIndicator(
+                          onRefresh: demoActive ? () async {} : _reload,
+                          child: demoActive
+                              ? _buildDemoList(
+                                  context,
+                                  _segment,
+                                  demoMatches,
+                                  appState.cachedPredictionOutcomesByMatchId,
+                                )
+                              : _buildList(context, snap),
+                        ),
                 ),
               ],
             );
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildGroupLeaderboard(BuildContext context, dynamic appState) {
+    final cachedMatches = appState.cachedPredictionMatches as List<PredictionMatch>?;
+    if (cachedMatches == null || cachedMatches.isEmpty) {
+      return const Center(child: Text('Nessun dato partite disponibile'));
+    }
+
+    final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
+        ? <String, MatchOutcome>{
+            for (final m in cachedMatches)
+              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+          }
+        : <String, MatchOutcome>{};
+
+    final overrideMember = GroupMember(
+      id: appState.profile.id as String,
+      displayName: appState.profile.displayName as String,
+      teamName: appState.profile.teamName as String,
+      avatarSeed: appState.currentUserAvatarSeed as int,
+      favoriteTeam: appState.profile.favoriteTeam as String?,
+    );
+
+    final members = mockGroupMembers(overrideMember: overrideMember);
+
+    appState.ensureCurrentUserPicksLoaded();
+    appState.ensureMemberPicksLoaded();
+
+    final currentUserPicks =
+        appState.currentUserPicksByMatchId as Map<String, PickOption>;
+
+    final overridePicksByMemberId = <String, Map<String, PickOption>>{
+      ...(appState.memberPicksByMemberId as Map<String, Map<String, PickOption>>),
+      overrideMember.id: currentUserPicks,
+    };
+
+    return GroupMatchdayLeaderboard(
+      matches: cachedMatches,
+      outcomesByMatchId: outcomesByMatchId,
+      members: members,
+      overridePicksByMemberId: overridePicksByMemberId,
     );
   }
 
@@ -208,7 +258,26 @@ class _SerieAPageState extends State<SerieAPage> {
 
         return Card(
           child: ListTile(
-            title: Text('${f.homeName}  vs  ${f.awayName}'),
+            title: Row(
+              children: [
+                Expanded(
+                  child: TeamName(
+                    name: f.homeName,
+                    logoUrl: f.homeLogo,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const Text('  vs  '),
+                Expanded(
+                  child: TeamName(
+                    name: f.awayName,
+                    logoUrl: f.awayLogo,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    reversed: true,
+                  ),
+                ),
+              ],
+            ),
             subtitle: Text(
               'Kickoff: ${formatKickoff(kickoffLocal)}$extraLabel',
             ),
@@ -262,7 +331,6 @@ Widget _buildDemoList(
     itemBuilder: (context, i) {
       final m = matches[i];
       final o = outcomes[m.id] ?? MatchOutcome.pending;
-      final title = _demoTitleFor(m);
       final subtitle = 'Kickoff: ${formatKickoff(m.kickoff)}';
       final trailing = o.isPending ? '' : _demoOutcomeLabel(o);
 
@@ -275,7 +343,26 @@ Widget _buildDemoList(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TeamName(
+                            name: m.homeTeam,
+                            logoUrl: m.homeTeamLogo,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        Text('  vs  ', style: Theme.of(context).textTheme.titleMedium),
+                        Expanded(
+                          child: TeamName(
+                            name: m.awayTeam,
+                            logoUrl: m.awayTeamLogo,
+                            style: Theme.of(context).textTheme.titleMedium,
+                            reversed: true,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
@@ -292,44 +379,6 @@ Widget _buildDemoList(
       );
     },
   );
-}
-
-String _demoTitleFor(PredictionMatch m) {
-  final d = m as dynamic;
-
-  String? readStr(Object? Function() f) {
-    try {
-      final v = f();
-      if (v is String && v.trim().isNotEmpty) return v.trim();
-    } catch (_) {}
-    return null;
-  }
-
-  String? readTeamName(Object? Function() f) {
-    try {
-      final v = f();
-      if (v is String && v.trim().isNotEmpty) return v.trim();
-      final name = (v as dynamic).name;
-      if (name is String && name.trim().isNotEmpty) return name.trim();
-    } catch (_) {}
-    return null;
-  }
-
-  final home =
-      readStr(() => d.homeTeamName) ??
-      readStr(() => d.homeName) ??
-      readStr(() => d.home) ??
-      readTeamName(() => d.homeTeam) ??
-      '?';
-
-  final away =
-      readStr(() => d.awayTeamName) ??
-      readStr(() => d.awayName) ??
-      readStr(() => d.away) ??
-      readTeamName(() => d.awayTeam) ??
-      '?';
-
-  return '$home  vs  $away';
 }
 
 String _demoOutcomeLabel(MatchOutcome o) {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
-import '../../features/leaderboards/leaderboards_page.dart';
+
 import '../../features/stats/stats_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
@@ -85,7 +85,6 @@ class _HomeShellState extends State<HomeShell> {
   static final _pages = <Widget>[
     PredictionsPage(),
     GroupPage(),
-    LeaderboardsPage(),
     SerieAPage(),
     StatsPage(),
     SettingsPage(),
@@ -123,10 +122,6 @@ class _HomeShellState extends State<HomeShell> {
               label: 'Pronostici',
             ),
             NavigationDestination(icon: Icon(Icons.groups), label: 'Gruppo'),
-            NavigationDestination(
-              icon: Icon(Icons.emoji_events),
-              label: 'Classifica',
-            ),
             NavigationDestination(
               icon: Icon(Icons.format_list_bulleted),
               label: 'Live',

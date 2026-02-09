@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/widgets/team_name.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
@@ -157,7 +158,24 @@ class PredictionsMatchdayPage extends StatelessWidget {
 
             return Card(
               child: ListTile(
-                title: Text('${m.homeTeam} - ${m.awayTeam}'),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: TeamName(
+                        name: m.homeTeam,
+                        logoUrl: m.homeTeamLogo,
+                      ),
+                    ),
+                    const Text(' - '),
+                    Expanded(
+                      child: TeamName(
+                        name: m.awayTeam,
+                        logoUrl: m.awayTeamLogo,
+                        reversed: true,
+                      ),
+                    ),
+                  ],
+                ),
                 subtitle: Text(
                   'Pick: ${_pickLabel(pick)} • Esito: $outcomeLabel',
                 ),

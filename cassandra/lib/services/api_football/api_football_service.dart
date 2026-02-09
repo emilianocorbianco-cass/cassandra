@@ -1,5 +1,6 @@
 import 'api_football_client.dart';
 import 'models/api_football_fixture.dart';
+import 'models/api_football_standing.dart';
 
 class ApiFootballService {
   ApiFootballService(this._client);
@@ -167,8 +168,43 @@ class ApiFootballService {
     return _fixturesFromJson(json);
   }
 
+  /// Classifica Serie A corrente.
+  Future<List<ApiFootballStanding>> getSerieAStandings() async {
+    final season = _seasonStartYear(DateTime.now());
+    final leagueId = await _resolveSerieALeagueId(season: season);
+
+    final json = await _client.getJson(
+      'standings',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+      },
+    );
+
+    final response = json['response'];
+    if (response is! List || response.isEmpty) return const [];
+
+    final first = response.first;
+    if (first is! Map) return const [];
+
+    final league = first['league'];
+    if (league is! Map) return const [];
+
+    final standings = league['standings'];
+    if (standings is! List || standings.isEmpty) return const [];
+
+    // Il primo array = Serie A regular season
+    final group = standings.first;
+    if (group is! List) return const [];
+
+    return group
+        .whereType<Map>()
+        .map((e) => ApiFootballStanding.fromJson(e.cast<String, dynamic>()))
+        .toList();
+  }
+
   /// Fixtures Serie A per round (matchday) specifico.
-  /// Utile per evitare che i recuperi di round vecchi “sporchino” la giornata corrente.
+  /// Utile per evitare che i recuperi di round vecchi "sporchino" la giornata corrente.
   Future<List<ApiFootballFixture>> getSerieAFixturesByRound({
     required int round,
   }) async {

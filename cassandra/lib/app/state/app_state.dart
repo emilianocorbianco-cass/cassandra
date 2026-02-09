@@ -1075,6 +1075,8 @@ class AppState extends ChangeNotifier {
       'kickoff': m.kickoff.toIso8601String(),
       'home': m.homeTeam,
       'away': m.awayTeam,
+      if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
+      if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
       'odds': {
         'home': m.odds.home,
         'draw': m.odds.draw,
@@ -1093,6 +1095,8 @@ class AppState extends ChangeNotifier {
       kickoff: DateTime.parse(j['kickoff'] as String),
       homeTeam: j['home'] as String,
       awayTeam: j['away'] as String,
+      homeTeamLogo: j['homeLogo'] as String?,
+      awayTeamLogo: j['awayLogo'] as String?,
       odds: Odds(
         home: (odds['home'] as num).toDouble(),
         draw: (odds['draw'] as num).toDouble(),
@@ -1105,6 +1109,38 @@ class AppState extends ChangeNotifier {
   }
 
   int _devEpoch = 0;
+
+  // DEV: tracking fixtures posticipate/iniettate dalla DevDebugPage (simulazione recuperi/rinvii)
+  final Map<Object, bool> _devPostponedIsVoidByMatchId = {};
+  final Map<Object, int> _devPostponedDeltaMinutesByMatchId = {};
+
+  void devClearPostponed() {
+    _devPostponedIsVoidByMatchId.clear();
+    _devPostponedDeltaMinutesByMatchId.clear();
+    notifyListeners();
+  }
+
+  void devMarkPostponed(
+    Object matchId, {
+    required int deltaMinutes,
+    required bool isVoid,
+  }) {
+    _devPostponedIsVoidByMatchId[matchId] = isVoid;
+    _devPostponedDeltaMinutesByMatchId[matchId] = deltaMinutes;
+    notifyListeners();
+  }
+
+  int get devPostponedUnder48Count =>
+      _devPostponedIsVoidByMatchId.values.where((v) => v == false).length;
+
+  int get devPostponedOver48Count =>
+      _devPostponedIsVoidByMatchId.values.where((v) => v == true).length;
+
+  int? devPostponedDeltaMinutesFor(Object matchId) =>
+      _devPostponedDeltaMinutesByMatchId[matchId];
+
+  bool? devPostponedIsVoidFor(Object matchId) =>
+      _devPostponedIsVoidByMatchId[matchId];
   int get devEpoch => _devEpoch;
 
   void bumpDevEpoch() {

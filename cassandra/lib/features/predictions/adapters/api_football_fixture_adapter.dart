@@ -84,6 +84,8 @@ PredictionMatch predictionMatchFromFixture(
     kickoff: f.kickoffUtc.toLocal(),
     homeTeam: f.homeName,
     awayTeam: f.awayName,
+    homeTeamLogo: f.homeLogo,
+    awayTeamLogo: f.awayLogo,
     odds: Odds(
       home: home,
       draw: draw,
