@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../app/widgets/team_name.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
@@ -225,7 +226,24 @@ class GroupMatchdayMemberPage extends StatelessWidget {
 
                   return Card(
                     child: ListTile(
-                      title: Text('${m.homeTeam} - ${m.awayTeam}'),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: TeamName(
+                              name: m.homeTeam,
+                              logoUrl: m.homeTeamLogo,
+                            ),
+                          ),
+                          const Text(' - '),
+                          Expanded(
+                            child: TeamName(
+                              name: m.awayTeam,
+                              logoUrl: m.awayTeamLogo,
+                              reversed: true,
+                            ),
+                          ),
+                        ],
+                      ),
                       subtitle: Text(
                         'pick: ${_pickLabel(pick)} • esito: ${_outcomeLabel(outcome)}\n'
                         '${mb.note}${mb.playedOdds == null ? '' : ' • quota: ${formatOdds(mb.playedOdds!)}'}',

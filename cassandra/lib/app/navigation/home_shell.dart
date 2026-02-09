@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
-import '../../features/leaderboards/leaderboards_page.dart';
+
 import '../../features/stats/stats_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
@@ -11,6 +11,7 @@ import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
 import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
+import '../theme/app_colors.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -62,7 +63,10 @@ class _HomeShellState extends State<HomeShell> {
       final fixtures = await service.getNextSerieAFixtures(count: 10);
       if (fixtures.isEmpty) return;
 
-      final matches = predictionMatchesFromFixtures(fixtures);
+      final matches = predictionMatchesFromFixtures(
+        fixtures,
+        useMockIds: false,
+      );
 
       app.setCachedPredictionMatches(
         matches,
@@ -81,7 +85,6 @@ class _HomeShellState extends State<HomeShell> {
   static final _pages = <Widget>[
     PredictionsPage(),
     GroupPage(),
-    LeaderboardsPage(),
     SerieAPage(),
     StatsPage(),
     SettingsPage(),
@@ -89,29 +92,47 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = CassandraScope.of(context);
+
     return Scaffold(
       // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.sports_soccer),
-            label: 'Pronostici',
+      body: AnimatedBuilder(
+        animation: appState,
+        builder: (context, _) => IndexedStack(index: _index, children: _pages),
+      ),
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          backgroundColor: AppColors.navBarBg,
+          indicatorColor: AppColors.navBarBg,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          iconTheme: WidgetStateProperty.all(
+            const IconThemeData(color: Color(0xFFF6F4EF)),
           ),
-          NavigationDestination(icon: Icon(Icons.groups), label: 'Gruppo'),
-          NavigationDestination(
-            icon: Icon(Icons.emoji_events),
-            label: 'Classifiche',
+          labelTextStyle: WidgetStateProperty.all(
+            const TextStyle(color: Color(0xFFF6F4EF)),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.format_list_bulleted),
-            label: 'Serie A',
-          ),
-          NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
-          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (i) => setState(() => _index = i),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.sports_soccer),
+              label: 'Pronostici',
+            ),
+            NavigationDestination(icon: Icon(Icons.groups), label: 'Gruppo'),
+            NavigationDestination(
+              icon: Icon(Icons.format_list_bulleted),
+              label: 'Live',
+            ),
+            NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
+            NavigationDestination(
+              icon: Icon(Icons.settings),
+              label: 'Settings',
+            ),
+          ],
+        ),
       ),
     );
   }

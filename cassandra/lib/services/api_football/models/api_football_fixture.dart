@@ -8,6 +8,8 @@ class ApiFootballFixture {
     this.homeGoals,
     this.awayGoals,
     this.round,
+    this.homeLogo,
+    this.awayLogo,
   });
 
   final int fixtureId;
@@ -21,6 +23,8 @@ class ApiFootballFixture {
   final int? awayGoals;
 
   final String? round;
+  final String? homeLogo;
+  final String? awayLogo;
 
   factory ApiFootballFixture.fromJson(Map<String, dynamic> json) {
     final fixture = (json['fixture'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -51,6 +55,8 @@ class ApiFootballFixture {
       homeGoals: asNullableInt(goals['home']),
       awayGoals: asNullableInt(goals['away']),
       round: league['round']?.toString(),
+      homeLogo: home['logo']?.toString(),
+      awayLogo: away['logo']?.toString(),
     );
   }
 }

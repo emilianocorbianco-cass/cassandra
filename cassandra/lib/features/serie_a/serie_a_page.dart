@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../app/config/env.dart';
+import '../../app/widgets/team_name.dart';
 import '../../services/api_football/api_football_client.dart';
 import '../../services/api_football/api_football_service.dart';
 import '../../services/api_football/models/api_football_fixture.dart';
+import '../group/mock_group_data.dart';
+import '../group/models/group_member.dart';
+import '../group/widgets/group_matchday_leaderboard.dart';
 import '../predictions/models/formatters.dart';
+import '../predictions/models/pick_option.dart';
+import '../predictions/models/prediction_match.dart';
+import '../scoring/models/match_outcome.dart';
 import 'adapters/fixture_result_adapter.dart';
+import '../../app/state/cassandra_scope.dart';
 
 class SerieAPage extends StatefulWidget {
   const SerieAPage({super.key});
@@ -15,7 +23,7 @@ class SerieAPage extends StatefulWidget {
 }
 
 class _SerieAPageState extends State<SerieAPage> {
-  int _segment = 0; // 0 = risultati (last), 1 = prossime (next)
+  int _segment = 0; // 0 = risultati (last), 1 = classifica gruppo
   DateTime? _updatedAt;
 
   late Future<_SerieAData> _future;
@@ -86,12 +94,17 @@ class _SerieAPageState extends State<SerieAPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Serie A')),
+      appBar: AppBar(title: const Text('Live')),
       body: SafeArea(
         child: FutureBuilder<_SerieAData>(
           future: _future,
           builder: (context, snap) {
             final data = snap.data;
+
+            final appState = CassandraScope.of(context);
+            final demoMatches = appState.cachedPredictionMatches;
+            final demoActive =
+                demoMatches != null && !appState.cachedPredictionMatchesAreReal;
 
             final updatedLabel = _updatedAt == null
                 ? ''
@@ -107,7 +120,7 @@ class _SerieAPageState extends State<SerieAPage> {
                       SegmentedButton<int>(
                         segments: const [
                           ButtonSegment(value: 0, label: Text('risultati')),
-                          ButtonSegment(value: 1, label: Text('prossime')),
+                          ButtonSegment(value: 1, label: Text('classifica')),
                         ],
                         selected: {_segment},
                         onSelectionChanged: (s) =>
@@ -115,9 +128,13 @@ class _SerieAPageState extends State<SerieAPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        data?.errorMessage != null
-                            ? data!.errorMessage!
-                            : 'dati: reali (API)$updatedLabel',
+                        demoActive
+                            ? 'dati: demo'
+                            : (data?.errorMessage != null
+                                  ? data!.errorMessage!
+                                  : (demoActive
+                                        ? 'dati: demo'
+                                        : 'dati: reali (API)$updatedLabel')),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -125,16 +142,68 @@ class _SerieAPageState extends State<SerieAPage> {
                 ),
                 const Divider(height: 1),
                 Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: _reload,
-                    child: _buildList(context, snap),
-                  ),
+                  child: _segment == 1
+                      ? _buildGroupLeaderboard(context, appState)
+                      : RefreshIndicator(
+                          onRefresh: demoActive ? () async {} : _reload,
+                          child: demoActive
+                              ? _buildDemoList(
+                                  context,
+                                  _segment,
+                                  demoMatches,
+                                  appState.cachedPredictionOutcomesByMatchId,
+                                )
+                              : _buildList(context, snap),
+                        ),
                 ),
               ],
             );
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildGroupLeaderboard(BuildContext context, dynamic appState) {
+    final cachedMatches = appState.cachedPredictionMatches as List<PredictionMatch>?;
+    if (cachedMatches == null || cachedMatches.isEmpty) {
+      return const Center(child: Text('Nessun dato partite disponibile'));
+    }
+
+    final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
+        ? <String, MatchOutcome>{
+            for (final m in cachedMatches)
+              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+          }
+        : <String, MatchOutcome>{};
+
+    final overrideMember = GroupMember(
+      id: appState.profile.id as String,
+      displayName: appState.profile.displayName as String,
+      teamName: appState.profile.teamName as String,
+      avatarSeed: appState.currentUserAvatarSeed as int,
+      favoriteTeam: appState.profile.favoriteTeam as String?,
+    );
+
+    final members = mockGroupMembers(overrideMember: overrideMember);
+
+    appState.ensureCurrentUserPicksLoaded();
+    appState.ensureMemberPicksLoaded();
+
+    final currentUserPicks =
+        appState.currentUserPicksByMatchId as Map<String, PickOption>;
+
+    final overridePicksByMemberId = <String, Map<String, PickOption>>{
+      ...(appState.memberPicksByMemberId as Map<String, Map<String, PickOption>>),
+      overrideMember.id: currentUserPicks,
+    };
+
+    return GroupMatchdayLeaderboard(
+      matches: cachedMatches,
+      outcomesByMatchId: outcomesByMatchId,
+      members: members,
+      overridePicksByMemberId: overridePicksByMemberId,
     );
   }
 
@@ -189,7 +258,26 @@ class _SerieAPageState extends State<SerieAPage> {
 
         return Card(
           child: ListTile(
-            title: Text('${f.homeName}  vs  ${f.awayName}'),
+            title: Row(
+              children: [
+                Expanded(
+                  child: TeamName(
+                    name: f.homeName,
+                    logoUrl: f.homeLogo,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const Text('  vs  '),
+                Expanded(
+                  child: TeamName(
+                    name: f.awayName,
+                    logoUrl: f.awayLogo,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    reversed: true,
+                  ),
+                ),
+              ],
+            ),
             subtitle: Text(
               'Kickoff: ${formatKickoff(kickoffLocal)}$extraLabel',
             ),
@@ -215,4 +303,88 @@ class _SerieAData {
     required this.next,
     this.errorMessage,
   });
+}
+
+Widget _buildDemoList(
+  BuildContext context,
+  int segment,
+  List<PredictionMatch> all,
+  Map<String, MatchOutcome> outcomes,
+) {
+  final matches = all.where((m) {
+    final o = outcomes[m.id] ?? MatchOutcome.pending;
+    return segment == 0 ? !o.isPending : o.isPending;
+  }).toList()..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+
+  if (matches.isEmpty) {
+    return Center(
+      child: Text(
+        segment == 0 ? 'Nessun risultato' : 'Nessuna partita in programma',
+      ),
+    );
+  }
+
+  return ListView.separated(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    itemCount: matches.length,
+    separatorBuilder: (context, index) => const SizedBox(height: 12),
+    itemBuilder: (context, i) {
+      final m = matches[i];
+      final o = outcomes[m.id] ?? MatchOutcome.pending;
+      final subtitle = 'Kickoff: ${formatKickoff(m.kickoff)}';
+      final trailing = o.isPending ? '' : _demoOutcomeLabel(o);
+
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TeamName(
+                            name: m.homeTeam,
+                            logoUrl: m.homeTeamLogo,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        Text('  vs  ', style: Theme.of(context).textTheme.titleMedium),
+                        Expanded(
+                          child: TeamName(
+                            name: m.awayTeam,
+                            logoUrl: m.awayTeamLogo,
+                            style: Theme.of(context).textTheme.titleMedium,
+                            reversed: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing.isNotEmpty)
+                Text(trailing, style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+String _demoOutcomeLabel(MatchOutcome o) {
+  final raw = o.toString().split('.').last;
+  if (raw == 'home') return '1';
+  if (raw == 'draw') return 'X';
+  if (raw == 'away') return '2';
+  return raw.toUpperCase();
 }

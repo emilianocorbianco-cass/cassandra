@@ -126,7 +126,10 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final service = ApiFootballService(client);
       final fixtures = await service.getNextSerieAFixtures(count: 10);
-      final matches = predictionMatchesFromFixtures(fixtures);
+      final matches = predictionMatchesFromFixtures(
+        fixtures,
+        useMockIds: false,
+      );
 
       app.setCachedPredictionMatches(
         matches,

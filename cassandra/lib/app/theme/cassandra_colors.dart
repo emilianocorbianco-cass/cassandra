@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
 class CassandraColors {
+  static const Color cardBg = Color(0xFFF5F5F5);
+
+  static const Color simBadgeBg = Color(0xFFF5F5F5);
+  static const Color simBadgeBorder = Color(0xFFE0E0E0);
+
   // Background "bianco antico"
-  static const Color bg = Color(0xFFF1E6D1);
+  static const Color bg = Color(0xFFF2EEE8);
 
   // Rosso fegato
   static const Color primary = Color(0xFF804046);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../app/widgets/team_name.dart';
 import '../models/pick_option.dart';
 import '../models/prediction_match.dart';
 import '../models/formatters.dart';
@@ -32,17 +33,20 @@ class PredictionMatchCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    match.homeTeam,
+                  child: TeamName(
+                    name: match.homeTeam,
+                    logoUrl: match.homeTeamLogo,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
                 const Text('vs'),
                 Expanded(
-                  child: Text(
-                    match.awayTeam,
-                    textAlign: TextAlign.end,
+                  child: TeamName(
+                    name: match.awayTeam,
+                    logoUrl: match.awayTeamLogo,
                     style: const TextStyle(fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.end,
+                    reversed: true,
                   ),
                 ),
               ],

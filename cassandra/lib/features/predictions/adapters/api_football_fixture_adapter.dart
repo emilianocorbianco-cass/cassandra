@@ -10,11 +10,24 @@ List<PredictionMatch> predictionMatchesFromFixtures(
   List<ApiFootballFixture> fixtures, {
   int take = 10,
   bool useMockIds = true,
+  int? matchdayNumber,
 }) {
   final sorted = List<ApiFootballFixture>.of(fixtures)
     ..sort((a, b) => a.kickoffUtc.compareTo(b.kickoffUtc));
 
-  final picked = sorted.take(take).toList();
+  final filtered = matchdayNumber == null
+      ? null
+      : sorted
+            .where(
+              (f) => _matchdayFromRound(_fixtureRound(f)) == matchdayNumber,
+            )
+            .toList();
+
+  final pickedSource = (filtered != null && filtered.isNotEmpty)
+      ? filtered
+      : sorted;
+
+  final picked = pickedSource.take(take).toList();
 
   return [
     for (var i = 0; i < picked.length; i++)
@@ -66,11 +79,13 @@ PredictionMatch predictionMatchFromFixture(
   );
 
   return PredictionMatch(
-    id: idOverride ?? 'fx_${f.fixtureId}',
+    id: idOverride ?? f.fixtureId.toString(),
     // Manteniamo kickoff in local per coerenza con i mock (che sono local time).
     kickoff: f.kickoffUtc.toLocal(),
     homeTeam: f.homeName,
     awayTeam: f.awayName,
+    homeTeamLogo: f.homeLogo,
+    awayTeamLogo: f.awayLogo,
     odds: Odds(
       home: home,
       draw: draw,
@@ -98,4 +113,39 @@ double _clamp(double v, {required double min, required double max}) {
   if (v < min) return min;
   if (v > max) return max;
   return v;
+}
+
+// --- Recuperi: parsing matchday dal campo "round" (API-Football) ---
+// Usiamo accesso dynamic per essere compatibili con diversi shape del model.
+String? _fixtureRound(ApiFootballFixture f) {
+  final d = f as dynamic;
+
+  // Prova f.round
+  try {
+    final r = d.round;
+    if (r is String) return r;
+  } catch (_) {}
+
+  // Prova f.league?.round
+  try {
+    final league = d.league;
+    final r = league?.round;
+    if (r is String) return r;
+  } catch (_) {}
+
+  // Prova f.leagueRound
+  try {
+    final r = d.leagueRound;
+    if (r is String) return r;
+  } catch (_) {}
+
+  return null;
+}
+
+int? _matchdayFromRound(String? round) {
+  if (round == null) return null;
+  // es: "Regular Season - 20" oppure "... 20"
+  final m = RegExp(r'(\d{1,2})\s*$').firstMatch(round);
+  if (m == null) return null;
+  return int.tryParse(m.group(1)!);
 }

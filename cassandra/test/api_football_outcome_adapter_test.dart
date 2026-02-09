@@ -64,7 +64,7 @@ void main() {
     expect(matchOutcomeFromFixture(live), MatchOutcome.pending);
   });
 
-  test('PST/CANC -> voided', () {
+  test('PST -> pending, CANC -> voided', () {
     final pst = ApiFootballFixture(
       fixtureId: 30,
       kickoffUtc: DateTime.utc(2026, 1, 1, 18, 0),
@@ -74,7 +74,7 @@ void main() {
       homeGoals: null,
       awayGoals: null,
     );
-    expect(matchOutcomeFromFixture(pst), MatchOutcome.voided);
+    expect(matchOutcomeFromFixture(pst), MatchOutcome.pending);
   });
 
   test('map builder uses fixtureId.toString() as key', () {

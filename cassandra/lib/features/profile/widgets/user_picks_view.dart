@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:cassandra/app/widgets/team_name.dart';
 import '../../group/models/group_member.dart';
 import '../../leaderboards/models/matchday_data.dart';
 import '../../predictions/models/formatters.dart';
@@ -105,7 +106,24 @@ class UserPicksView extends StatelessWidget {
                 return Card(
                   child: ListTile(
                     leading: Icon(icon),
-                    title: Text('${m.homeTeam} - ${m.awayTeam}'),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: TeamName(
+                            name: m.homeTeam,
+                            logoUrl: m.homeTeamLogo,
+                          ),
+                        ),
+                        const Text(' - '),
+                        Expanded(
+                          child: TeamName(
+                            name: m.awayTeam,
+                            logoUrl: m.awayTeamLogo,
+                            reversed: true,
+                          ),
+                        ),
+                      ],
+                    ),
                     subtitle: Text(
                       'pick ${pick.label} (quota $playedOddsLabel)  •  res ${outcome.label}\n'
                       'punti: $sign${formatOdds(b.basePoints)}',

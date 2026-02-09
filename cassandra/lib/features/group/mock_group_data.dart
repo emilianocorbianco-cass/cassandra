@@ -123,6 +123,7 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   String? overrideMemberId,
   Map<String, PickOption>? overridePicksByMatchId,
   Map<String, Map<String, PickOption>>? overridePicksByMemberId,
+  int demoSeed = 0,
 }) {
   final membersList = members ?? mockGroupMembers();
 
@@ -140,7 +141,7 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
       if (override != null && override.isNotEmpty) {
         return override;
       }
-      return mockPicksForMember(member.id, matches);
+      return mockPicksForMember('${member.id}_$demoSeed', matches);
     }();
 
     final day = CassandraScoringEngine.computeDayScore(

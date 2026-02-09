@@ -103,7 +103,7 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                   return Card(
                     child: ListTile(
                       onTap: () {
-                        Navigator.of(context).push(
+                        Navigator.of(context, rootNavigator: true).push(
                           MaterialPageRoute(
                             builder: (_) => UserHubPage(
                               member: e.member,
