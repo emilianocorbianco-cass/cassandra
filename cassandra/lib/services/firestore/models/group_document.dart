@@ -1,0 +1,71 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class GroupDocument {
+  final String id;
+  final String name;
+  final String inviteCode;
+  final String adminUid;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int memberCount;
+
+  const GroupDocument({
+    required this.id,
+    required this.name,
+    required this.inviteCode,
+    required this.adminUid,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.memberCount,
+  });
+
+  factory GroupDocument.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final d = doc.data()!;
+    return GroupDocument(
+      id: doc.id,
+      name: d['name'] as String? ?? '',
+      inviteCode: d['inviteCode'] as String? ?? '',
+      adminUid: d['adminUid'] as String? ?? '',
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      updatedAt: (d['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      memberCount: d['memberCount'] as int? ?? 0,
+    );
+  }
+}
+
+class GroupMemberDocument {
+  final String uid;
+  final String displayName;
+  final String teamName;
+  final int avatarSeed;
+  final String? favoriteTeam;
+  final DateTime joinedAt;
+  final String role;
+
+  const GroupMemberDocument({
+    required this.uid,
+    required this.displayName,
+    required this.teamName,
+    required this.avatarSeed,
+    this.favoriteTeam,
+    required this.joinedAt,
+    required this.role,
+  });
+
+  factory GroupMemberDocument.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final d = doc.data()!;
+    return GroupMemberDocument(
+      uid: doc.id,
+      displayName: d['displayName'] as String? ?? '',
+      teamName: d['teamName'] as String? ?? '',
+      avatarSeed: d['avatarSeed'] as int? ?? 0,
+      favoriteTeam: d['favoriteTeam'] as String?,
+      joinedAt: (d['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      role: d['role'] as String? ?? 'member',
+    );
+  }
+}

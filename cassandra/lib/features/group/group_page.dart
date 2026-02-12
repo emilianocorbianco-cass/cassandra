@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../app/state/app_settings.dart';
+import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import 'widgets/group_image_picker.dart';
 import '../badges/badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/mock_prediction_data.dart';
+import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
 
+import '../../app/widgets/demo_banner.dart';
+import 'create_group_page.dart';
+import 'join_group_page.dart';
 import 'mock_group_data.dart';
 import 'group_matchday_page.dart';
 import 'models/group_member.dart';
@@ -26,7 +34,6 @@ class GroupPage extends StatefulWidget {
 class _GroupPageState extends State<GroupPage> {
   bool _didApplyMatches = false;
 
-  static const String _groupName = 'Cassandra Crew';
   static const int _matchdayNumber = 20;
 
   // Fallback demo: stabile, creato una volta.
@@ -43,6 +50,20 @@ class _GroupPageState extends State<GroupPage> {
   String _pendingSignature = '';
 
   int _segment = 0; // 0 = classifica, 1 = giornate (placeholder)
+
+  // Firestore state
+  List<GroupMember>? _firestoreMembers;
+  Map<String, Map<String, PickOption>>? _firestorePicksByMemberId;
+  bool _firestoreLoading = false;
+
+  bool _isEnglish(AppState app) {
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
+  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   @override
   void initState() {
@@ -89,9 +110,47 @@ class _GroupPageState extends State<GroupPage> {
     });
   }
 
-  String _matchdayLabelFor(int matchdayNumber, List<PredictionMatch> matches) {
-    final days = formatMatchdayDaysItalian(matches.map((m) => m.kickoff));
-    return 'giornata $matchdayNumber - $days';
+  Future<void> _refreshFromFirestore() async {
+    final appState = CassandraScope.of(context);
+    if (appState.activeGroupId == null) return;
+
+    setState(() => _firestoreLoading = true);
+    try {
+      final members = await appState.fetchFirestoreGroupMembers();
+      if (members.isEmpty) {
+        setState(() => _firestoreLoading = false);
+        return;
+      }
+
+      final uids = members.map((m) => m.id).toList();
+      final picks = await appState.fetchFirestorePicksForMatchday(
+        dayNumber: appState.uiMatchdayNumber,
+        uids: uids,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _firestoreMembers = members;
+        _firestorePicksByMemberId = picks;
+        _firestoreLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _firestoreLoading = false);
+    }
+  }
+
+  String _matchdayLabelFor(
+    int matchdayNumber,
+    List<PredictionMatch> matches, {
+    required bool english,
+  }) {
+    final days = formatMatchdayDays(
+      matches.map((m) => m.kickoff),
+      english: english,
+    );
+    return english
+        ? 'matchday $matchdayNumber - $days'
+        : 'giornata $matchdayNumber - $days';
   }
 
   Color _avatarColorFromSeed(int seed) {
@@ -102,6 +161,13 @@ class _GroupPageState extends State<GroupPage> {
   @override
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
+
+    if (!appState.hasGroup) {
+      return CreateGroupPage(onGroupCreated: () => setState(() {}));
+    }
+
+    final en = _isEnglish(appState);
+    final groupName = appState.groupName ?? 'Cassandra Crew';
 
     // Storico reale: picks/outcomes salvati per giornata
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -133,18 +199,24 @@ class _GroupPageState extends State<GroupPage> {
       return !o.isPending;
     }).length;
 
-    final resultsLabel = gradedCount == totalMatches
-        ? 'risultati: $gradedCount/$totalMatches'
-        : 'risultati: $gradedCount/$totalMatches (parziale)';
+    final resultsLabel = en
+        ? (gradedCount == totalMatches
+              ? 'results: $gradedCount/$totalMatches'
+              : 'results: $gradedCount/$totalMatches (partial)')
+        : (gradedCount == totalMatches
+              ? 'risultati: $gradedCount/$totalMatches'
+              : 'risultati: $gradedCount/$totalMatches (parziale)');
 
-    final dataLabel = appState.cachedPredictionMatchesAreReal
-        ? 'dati: reali (API)'
-        : 'dati: demo';
+    final dataLabel = _firestoreLoading
+        ? _t(appState, 'aggiornamento...', 'refreshing...')
+        : appState.cachedPredictionMatchesAreReal
+        ? _t(appState, 'dati: reali (API)', 'data: real (API)')
+        : _t(appState, 'dati: demo', 'data: demo');
 
     final updatedLabel =
         (appState.cachedPredictionMatchesAreReal &&
             appState.cachedPredictionMatchesUpdatedAt != null)
-        ? ' • agg. ${formatKickoff(appState.cachedPredictionMatchesUpdatedAt!)}'
+        ? ' \u2022 ${en ? 'upd.' : 'agg.'} ${formatKickoff(appState.cachedPredictionMatchesUpdatedAt!)}'
         : '';
 
     final overrideMember = GroupMember(
@@ -155,7 +227,9 @@ class _GroupPageState extends State<GroupPage> {
       favoriteTeam: appState.profile.favoriteTeam,
     );
 
-    final members = mockGroupMembers(overrideMember: overrideMember);
+    // Use Firestore members if available, fallback to mock
+    final members =
+        _firestoreMembers ?? mockGroupMembers(overrideMember: overrideMember);
 
     appState.ensureCurrentUserPicksLoaded();
     appState.ensureMemberPicksLoaded();
@@ -165,10 +239,19 @@ class _GroupPageState extends State<GroupPage> {
         ? appState.currentUserPicksForMatchday(_matchdayNumber)
         : appState.currentUserPicksByMatchId;
 
-    final overridePicksByMemberId = {
-      ...appState.memberPicksByMemberId,
-      overrideMember.id: currentUserPicksForDay,
-    };
+    // Use Firestore picks if available, fallback to mock
+    final Map<String, Map<String, PickOption>> overridePicksByMemberId;
+    if (_firestorePicksByMemberId != null) {
+      overridePicksByMemberId = {
+        ..._firestorePicksByMemberId!,
+        overrideMember.id: currentUserPicksForDay,
+      };
+    } else {
+      overridePicksByMemberId = {
+        ...appState.memberPicksByMemberId,
+        overrideMember.id: currentUserPicksForDay,
+      };
+    }
 
     final entries = buildSortedMockGroupLeaderboard(
       matches: _matches,
@@ -200,7 +283,35 @@ class _GroupPageState extends State<GroupPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Il mio gruppo'),
+        title: Text(_t(appState, 'Il mio gruppo', 'My group')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.group_add),
+            tooltip: _t(appState, 'Unisciti a un gruppo', 'Join a group'),
+            onPressed: () {
+              Navigator.of(context, rootNavigator: true).push(
+                MaterialPageRoute(
+                  builder: (_) => JoinGroupPage(
+                    onJoined: () {
+                      Navigator.of(context, rootNavigator: true).pop();
+                      setState(() {});
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () {
+              final code = appState.groupInviteCode ?? '';
+              final text = en
+                  ? 'Join my group "$groupName" on Cassandra! Code: $code'
+                  : 'Unisciti al mio gruppo «$groupName» su Cassandra! Codice: $code';
+              SharePlus.instance.share(ShareParams(text: text));
+            },
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(24),
           child: Padding(
@@ -218,19 +329,47 @@ class _GroupPageState extends State<GroupPage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (_firestoreMembers == null)
+              DemoBanner(
+                label: _t(
+                  appState,
+                  'Dati di esempio \u2014 unisciti a un gruppo per vedere dati reali',
+                  'Sample data \u2014 join a group to see real data',
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    _groupName,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _matchdayLabelFor(appState.uiMatchdayNumber, _matches),
-                    style: Theme.of(context).textTheme.bodySmall,
+                  Row(
+                    children: [
+                      GroupImageDisplay(
+                        imagePath: appState.groupImagePath,
+                        radius: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              groupName,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _matchdayLabelFor(
+                                appState.uiMatchdayNumber,
+                                _matches,
+                                english: en,
+                              ),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -241,9 +380,15 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   const SizedBox(height: 10),
                   SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text('classifica')),
-                      ButtonSegment(value: 1, label: Text('giornate')),
+                    segments: [
+                      ButtonSegment(
+                        value: 0,
+                        label: Text(_t(appState, 'classifica', 'standings')),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text(_t(appState, 'giornate', 'matchdays')),
+                      ),
                     ],
                     selected: {_segment},
                     onSelectionChanged: (s) =>
@@ -255,144 +400,166 @@ class _GroupPageState extends State<GroupPage> {
             const Divider(height: 1),
             Expanded(
               child: _segment == 1
-                  ? ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      itemCount: seasonMatchdaysDesc.length + 1,
-                      itemBuilder: (context, i) {
-                        if (i == 0) {
-                          return const Card(
-                            child: Padding(
-                              padding: EdgeInsets.all(12),
-                              child: Text(
-                                'Storico giornate (DEMO)'
-                                'Qui mostriamo 16–19 dai mock. Appena abbiamo storico reale via API, lo rendiamo “vero”.',
+                  ? RefreshIndicator(
+                      onRefresh: _refreshFromFirestore,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                        itemCount: seasonMatchdaysDesc.length + 1,
+                        itemBuilder: (context, i) {
+                          if (i == 0) {
+                            return Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  _t(
+                                    appState,
+                                    'Storico giornate (DEMO)\n'
+                                        'Qui mostriamo 16–19 dai mock. Appena abbiamo storico reale via API, lo rendiamo "vero".',
+                                    'Matchday history (DEMO)\n'
+                                        'Showing 16–19 from mocks. Once we have real history via API, we\'ll make it live.',
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          final md = seasonMatchdaysDesc[i - 1];
+
+                          final daysLabel = formatMatchdayDays(
+                            md.matches.map((m) => m.kickoff),
+                            english: en,
+                          );
+
+                          final graded = md.matches.where((m) {
+                            final o = md.outcomesByMatchId[m.id];
+                            return o != null && o != MatchOutcome.pending;
+                          }).length;
+
+                          final total = md.matches.length;
+                          final mdResultsLabel = en
+                              ? (graded == total
+                                    ? '$graded/$total'
+                                    : '$graded/$total (partial)')
+                              : (graded == total
+                                    ? '$graded/$total'
+                                    : '$graded/$total (parziale)');
+
+                          final mdTitle = en
+                              ? 'Matchday ${md.dayNumber}'
+                              : 'Giornata ${md.dayNumber}';
+
+                          final mdResultsPrefix = en ? 'results' : 'risultati';
+
+                          return Card(
+                            child: ListTile(
+                              title: Text(mdTitle),
+                              subtitle: Text(
+                                '$daysLabel\n$mdResultsPrefix: $mdResultsLabel',
+                              ),
+                              isThreeLine: true,
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => GroupMatchdayPage(
+                                      matchday: md,
+                                      members: members,
+                                      groupName: groupName,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _refreshFromFirestore,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                        itemCount: entries.length,
+                        itemBuilder: (context, i) {
+                          final e = entries[i];
+
+                          final badges =
+                              CassandraBadgeEngine.badgesForGroupMatchday(
+                                member: e.member,
+                                rank: i + 1,
+                                totalPlayers: entries.length,
+                                matches: _matches,
+                                picksByMatchId: e.picksByMatchId,
+                                outcomesByMatchId: outcomesByMatchId,
+                                day: e.day,
+                              );
+
+                          final pts = formatOdds(e.day.total);
+
+                          return Card(
+                            child: ListTile(
+                              onTap: () {
+                                final md = MatchdayData(
+                                  dayNumber: _matchdayNumber,
+                                  matches: _matches,
+                                  outcomesByMatchId: outcomesByMatchId,
+                                );
+
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => UserHubPage(
+                                      member: e.member,
+                                      matchday: md,
+                                      picksByMatchId: e.picksByMatchId,
+                                      initialTabIndex: 0,
+                                    ),
+                                  ),
+                                );
+                              },
+                              leading: SizedBox(
+                                width: 64,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 22,
+                                      child: Text(
+                                        '${i + 1}',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: CassandraColors.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    AvatarWithBadges(
+                                      radius: 18,
+                                      backgroundColor: _avatarColorFromSeed(
+                                        e.member.avatarSeed,
+                                      ),
+                                      text: e.member.displayName
+                                          .substring(0, 1)
+                                          .toUpperCase(),
+                                      badges: badges,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              title: Text(e.member.displayName),
+                              subtitle: Text(e.member.teamName),
+                              trailing: Text(
+                                pts,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: e.day.total >= 0
+                                      ? CassandraColors.primary
+                                      : CassandraColors.slate,
+                                ),
                               ),
                             ),
                           );
-                        }
-
-                        final md = seasonMatchdaysDesc[i - 1];
-
-                        final daysLabel = formatMatchdayDaysItalian(
-                          md.matches.map((m) => m.kickoff),
-                        );
-
-                        final graded = md.matches.where((m) {
-                          final o = md.outcomesByMatchId[m.id];
-                          return o != null && o != MatchOutcome.pending;
-                        }).length;
-
-                        final total = md.matches.length;
-                        final resultsLabel = graded == total
-                            ? '$graded/$total'
-                            : '$graded/$total (parziale)';
-
-                        return Card(
-                          child: ListTile(
-                            title: Text('Giornata ${md.dayNumber}'),
-                            subtitle: Text(
-                              '$daysLabel\nrisultati: $resultsLabel',
-                            ),
-                            isThreeLine: true,
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              Navigator.of(context, rootNavigator: true).push(
-                                MaterialPageRoute(
-                                  builder: (_) => GroupMatchdayPage(
-                                    matchday: md,
-                                    members: members,
-                                    groupName: _groupName,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      itemCount: entries.length,
-                      itemBuilder: (context, i) {
-                        final e = entries[i];
-
-                        final badges =
-                            CassandraBadgeEngine.badgesForGroupMatchday(
-                              member: e.member,
-                              rank: i + 1,
-                              totalPlayers: entries.length,
-                              matches: _matches,
-                              picksByMatchId: e.picksByMatchId,
-                              outcomesByMatchId: outcomesByMatchId,
-                              day: e.day,
-                            );
-
-                        final pts = formatOdds(e.day.total);
-
-                        return Card(
-                          child: ListTile(
-                            onTap: () {
-                              final md = MatchdayData(
-                                dayNumber: _matchdayNumber,
-                                matches: _matches,
-                                outcomesByMatchId: outcomesByMatchId,
-                              );
-
-                              Navigator.of(context, rootNavigator: true).push(
-                                MaterialPageRoute(
-                                  builder: (_) => UserHubPage(
-                                    member: e.member,
-                                    matchday: md,
-                                    picksByMatchId: e.picksByMatchId,
-                                    initialTabIndex: 0,
-                                  ),
-                                ),
-                              );
-                            },
-                            leading: SizedBox(
-                              width: 64,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SizedBox(
-                                    width: 22,
-                                    child: Text(
-                                      '${i + 1}',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: CassandraColors.primary,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  AvatarWithBadges(
-                                    radius: 18,
-                                    backgroundColor: _avatarColorFromSeed(
-                                      e.member.avatarSeed,
-                                    ),
-                                    text: e.member.displayName
-                                        .substring(0, 1)
-                                        .toUpperCase(),
-                                    badges: badges,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            title: Text(e.member.displayName),
-                            subtitle: Text(e.member.teamName),
-                            trailing: Text(
-                              pts,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: e.day.total >= 0
-                                    ? CassandraColors.primary
-                                    : CassandraColors.slate,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                        },
+                      ),
                     ),
             ),
           ],

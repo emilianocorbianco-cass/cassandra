@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/state/app_settings.dart';
+import '../../app/state/app_state.dart';
+import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../predictions/models/formatters.dart';
 import 'models/matchday_data.dart';
@@ -31,8 +34,18 @@ class MatchdayLeaderboardPage extends StatelessWidget {
     return null;
   }
 
+  bool _isEnglish(BuildContext context, AppState app) {
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+    final en = _isEnglish(context, app);
+
     final rows =
         <({SeasonLeaderboardEntry entry, MemberMatchdayScore score})>[];
 
@@ -55,12 +68,19 @@ class MatchdayLeaderboardPage extends StatelessWidget {
       return a.entry.member.teamName.compareTo(b.entry.member.teamName);
     });
 
-    final daysLabel = formatMatchdayDaysItalian(
+    final daysLabel = formatMatchdayDays(
       matchday.matches.map((m) => m.kickoff),
+      english: en,
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text('Giornata ${matchday.dayNumber}')),
+      appBar: AppBar(
+        title: Text(
+          en
+              ? 'Matchday ${matchday.dayNumber}'
+              : 'Giornata ${matchday.dayNumber}',
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -72,7 +92,7 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                   Text(daysLabel, style: Theme.of(context).textTheme.bodySmall),
                   const SizedBox(height: 6),
                   Text(
-                    'Giocatori: ${rows.length}',
+                    '${en ? 'Players' : 'Giocatori'}: ${rows.length}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

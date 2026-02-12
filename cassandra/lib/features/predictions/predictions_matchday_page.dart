@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/state/app_settings.dart';
+import '../../app/state/cassandra_scope.dart';
 import '../../app/widgets/team_name.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
@@ -69,16 +71,29 @@ class PredictionsMatchdayPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+    final langCode = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    final en = langCode.toLowerCase().startsWith('en');
+
     final DayScoreBreakdown day = CassandraScoringEngine.computeDayScore(
       matches: matches,
       picksByMatchId: picksByMatchId,
       outcomesByMatchId: outcomesByMatchId,
     );
 
-    final daysLabel = formatMatchdayDaysItalian(matches.map((m) => m.kickoff));
+    final daysLabel = formatMatchdayDays(
+      matches.map((m) => m.kickoff),
+      english: en,
+    );
 
     return Scaffold(
-      appBar: AppBar(title: Text('Giornata $matchdayNumber')),
+      appBar: AppBar(
+        title: Text(
+          en ? 'Matchday $matchdayNumber' : 'Giornata $matchdayNumber',
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
         children: [
@@ -94,7 +109,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Totale',
+                          en ? 'Total' : 'Totale',
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                       ),
@@ -120,7 +135,11 @@ class PredictionsMatchdayPage extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Expanded(child: Text('Quota media giocata')),
+                      Expanded(
+                        child: Text(
+                          en ? 'Avg. odds played' : 'Quota media giocata',
+                        ),
+                      ),
                       Text(
                         (day.averageOddsPlayed == null)
                             ? '—'
@@ -131,8 +150,10 @@ class PredictionsMatchdayPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     isDemoData
-                        ? 'Dati: DEMO (fixture non storicizzate)'
-                        : 'Dati: salvati',
+                        ? (en
+                              ? 'Data: DEMO (fixtures not saved)'
+                              : 'Dati: DEMO (fixture non storicizzate)')
+                        : (en ? 'Data: saved' : 'Dati: salvati'),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -149,7 +170,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
                 : (_isCorrect(pick, outcome) ? '✅' : '❌');
 
             final outcomeLabel = outcome.isPending
-                ? 'in attesa'
+                ? (en ? 'pending' : 'in attesa')
                 : (outcome == MatchOutcome.home
                       ? '1'
                       : outcome == MatchOutcome.draw
@@ -177,7 +198,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
                   ],
                 ),
                 subtitle: Text(
-                  'Pick: ${_pickLabel(pick)} • Esito: $outcomeLabel',
+                  'Pick: ${_pickLabel(pick)} • ${en ? 'Outcome' : 'Esito'}: $outcomeLabel',
                 ),
                 trailing: Text(status),
               ),

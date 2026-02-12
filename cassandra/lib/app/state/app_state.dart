@@ -1,17 +1,27 @@
+import 'dart:io';
 import 'dart:ui';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
 import 'user_profile.dart';
+import '../../features/group/models/group_member.dart';
 import '../../features/scoring/models/match_outcome.dart';
+import '../../features/scoring/models/score_breakdown.dart';
+import '../../features/scoring/scoring_engine.dart';
+import '../../services/firestore/models/group_document.dart';
+import '../../services/firestore/models/picks_document.dart';
+import '../../services/auth/auth_service.dart';
+import '../../services/firestore/firestore_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../../features/predictions/models/pick_option.dart';
 import 'dart:math';
 
 import '../../features/predictions/models/prediction_match.dart';
+import '../../services/api_football/models/api_football_odds.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
@@ -31,21 +41,140 @@ class AppState extends ChangeNotifier {
   static const _kOriginKickoffsByMatchIdV1 =
       'fixtures.originKickoffsByMatchId.v1';
 
+  static const _kGroupNameV1 = 'group.name.v1';
+  static const _kGroupInviteCodeV1 = 'group.inviteCode.v1';
+  static const _kGroupImagePathV1 = 'group.imagePath.v1';
+  static const _kGroupAdminApprovalV1 = 'group.adminApproval.v1';
+
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
   static const _kFavoriteTeamLegacy = 'favoriteTeam';
+
+  static const _kProfileId = 'profile.id.v1';
+  static const _kProfileDisplayName = 'profile.displayName.v1';
+  static const _kProfileEmail = 'profile.email.v1';
+  static const _kProfilePhotoUrl = 'profile.photoUrl.v1';
 
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
 
   static const UserProfile _defaultProfile = UserProfile(
-    id: 'u6',
-    displayName: 'Emiliano',
-    teamName: 'FC Cassandra',
-    favoriteTeam: 'Milan',
+    id: '',
+    displayName: '',
+    teamName: '',
   );
 
   final SharedPreferences? _prefs;
+
+  AuthService? _authService;
+  FirestoreService? _firestoreService;
+
+  AuthService? get authService => _authService;
+  FirestoreService? get firestoreService => _firestoreService;
+
+  void setAuthService(AuthService service) {
+    _authService = service;
+  }
+
+  void setFirestoreService(FirestoreService service) {
+    _firestoreService = service;
+  }
+
+  /// Merge profilo letto da Firestore con stato locale.
+  /// Usato all'avvio per ripristinare dati da cloud su device nuovo.
+  void mergeFirestoreProfile(Map<String, dynamic> data) {
+    bool changed = false;
+
+    final remoteTeamName = data['teamName'] as String?;
+    if (remoteTeamName != null &&
+        remoteTeamName.isNotEmpty &&
+        _profile.teamName == _defaultProfile.teamName &&
+        remoteTeamName != _profile.teamName) {
+      _profile = _profile.copyWith(teamName: remoteTeamName);
+      _prefs?.setString(_kProfileTeamName, remoteTeamName);
+      changed = true;
+    }
+
+    final remoteFavoriteTeam = data['favoriteTeam'] as String?;
+    if (remoteFavoriteTeam != null &&
+        remoteFavoriteTeam.isNotEmpty &&
+        _profile.favoriteTeam == null) {
+      _profile = _profile.copyWith(favoriteTeam: remoteFavoriteTeam);
+      _prefs?.setString(_kProfileFavoriteTeam, remoteFavoriteTeam);
+      changed = true;
+    }
+
+    final remoteLang = data['language'] as String?;
+    if (remoteLang != null) {
+      final parsed = cassandraLanguageFromStorage(remoteLang);
+      if (parsed != _language) {
+        _language = parsed;
+        _prefs?.setString(_kLanguage, remoteLang);
+        changed = true;
+      }
+    }
+
+    final remoteVis = data['defaultVisibility'] as String?;
+    if (remoteVis != null) {
+      final parsed = predictionVisibilityFromStorage(remoteVis);
+      if (parsed != _defaultVisibility) {
+        _defaultVisibility = parsed;
+        _prefs?.setString(_kDefaultVisibility, remoteVis);
+        changed = true;
+      }
+    }
+
+    // Restore groupIds for multi-group support
+    final remoteGroupIds = (data['groupIds'] as List<dynamic>?)
+        ?.cast<String>()
+        .toList();
+    if (remoteGroupIds != null && remoteGroupIds.isNotEmpty) {
+      _firestoreGroupIds = remoteGroupIds;
+      changed = true;
+    }
+
+    if (changed) notifyListeners();
+  }
+
+  // Firestore group IDs (multi-group)
+  List<String> _firestoreGroupIds = [];
+  List<String> get firestoreGroupIds => _firestoreGroupIds;
+
+  /// Fire-and-forget: sync full user profile to Firestore.
+  void _syncProfileToFirestore() {
+    final fs = _firestoreService;
+    if (fs == null || !isAuthenticated) return;
+    final uid = _profile.id;
+    if (uid.isEmpty) return;
+    unawaited(
+      fs
+          .setUserProfile(
+            uid: uid,
+            profile: _profile,
+            language: _language,
+            defaultVisibility: _defaultVisibility,
+            avatarSeed: currentUserAvatarSeed,
+          )
+          .catchError((_) {}),
+    );
+  }
+
+  /// Fire-and-forget: sync a single field to Firestore.
+  void _syncFieldToFirestore(Map<String, dynamic> fields) {
+    final fs = _firestoreService;
+    if (fs == null || !isAuthenticated) return;
+    final uid = _profile.id;
+    if (uid.isEmpty) return;
+    unawaited(fs.updateUserField(uid, fields).catchError((_) {}));
+  }
+
+  bool get isAuthenticated => _authService?.isSignedIn ?? false;
+
+  /// Serie A season key: agosto-maggio → anno di inizio.
+  String get currentSeasonKey {
+    final now = DateTime.now();
+    return (now.month >= 8 ? now.year : now.year - 1).toString();
+  }
 
   int? _cassandraMatchdayCursor;
 
@@ -209,6 +338,183 @@ class AppState extends ChangeNotifier {
 
   int _demoSeed;
 
+  // ===== GRUPPO =====
+  String? _groupName;
+  String? _groupInviteCode;
+  String? _groupImagePath;
+  bool _groupAdminApproval = false;
+
+  String? get groupName => _groupName;
+  String? get groupInviteCode => _groupInviteCode;
+  String? get groupImagePath => _groupImagePath;
+  bool get groupAdminApproval => _groupAdminApproval;
+  bool get hasGroup => _groupName != null;
+
+  Future<void> updateGroupImagePath(String? path) async {
+    _groupImagePath = path;
+    if (path != null) {
+      await _prefs?.setString(_kGroupImagePathV1, path);
+    } else {
+      await _prefs?.remove(_kGroupImagePathV1);
+    }
+    notifyListeners();
+  }
+
+  Future<void> updateGroupAdminApproval(bool value) async {
+    _groupAdminApproval = value;
+    await _prefs?.setBool(_kGroupAdminApprovalV1, value);
+    notifyListeners();
+  }
+
+  void _deleteGroupImageFile() {
+    final path = _groupImagePath;
+    if (path == null) return;
+    try {
+      final file = File(path);
+      if (file.existsSync()) file.deleteSync();
+    } catch (_) {
+      // ignore: best-effort cleanup
+    }
+  }
+
+  Future<void> createGroup(String name) async {
+    final cleaned = name.trim();
+    if (cleaned.isEmpty) return;
+
+    _groupName = cleaned;
+    await _prefs?.setString(_kGroupNameV1, cleaned);
+
+    // Genera codice invito CASS-XXXX (con check unicità su Firestore)
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final rng = Random.secure();
+    String code;
+    final fs = _firestoreService;
+    do {
+      final suffix = List.generate(
+        4,
+        (_) => chars[rng.nextInt(chars.length)],
+      ).join();
+      code = 'CASS-$suffix';
+    } while (fs != null && await fs.isInviteCodeTaken(code));
+
+    _groupInviteCode = code;
+    await _prefs?.setString(_kGroupInviteCodeV1, code);
+
+    // Scrivi gruppo su Firestore
+    if (fs != null && isAuthenticated) {
+      try {
+        final uid = _profile.id;
+        final groupId = await fs.createGroup(
+          name: cleaned,
+          adminUid: uid,
+          inviteCode: code,
+        );
+        // Aggiungi admin come primo membro
+        await fs.joinGroup(
+          groupId: groupId,
+          uid: uid,
+          displayName: _profile.displayName,
+          teamName: _profile.teamName,
+          avatarSeed: currentUserAvatarSeed,
+          favoriteTeam: _profile.favoriteTeam,
+        );
+        _firestoreGroupIds = [..._firestoreGroupIds, groupId];
+        _activeGroupId = groupId;
+      } catch (_) {
+        // Firestore fallito, il gruppo resta locale
+      }
+    }
+
+    notifyListeners();
+  }
+
+  /// Gruppo Firestore attivo (primo per default)
+  String? _activeGroupId;
+  String? get activeGroupId =>
+      _activeGroupId ??
+      (_firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null);
+
+  void setActiveGroupId(String? id) {
+    _activeGroupId = id;
+    notifyListeners();
+  }
+
+  /// Join a Firestore group by invite code. Returns error string or null on success.
+  Future<String?> joinGroupByInviteCode(String code) async {
+    final fs = _firestoreService;
+    if (fs == null || !isAuthenticated) return 'Not authenticated';
+
+    final group = await fs.getGroupByInviteCode(code.trim().toUpperCase());
+    if (group == null) return 'Invalid code';
+
+    final uid = _profile.id;
+
+    // Check se già membro
+    if (_firestoreGroupIds.contains(group.id)) return 'Already a member';
+
+    await fs.joinGroup(
+      groupId: group.id,
+      uid: uid,
+      displayName: _profile.displayName,
+      teamName: _profile.teamName,
+      avatarSeed: currentUserAvatarSeed,
+      favoriteTeam: _profile.favoriteTeam,
+    );
+
+    _firestoreGroupIds = [..._firestoreGroupIds, group.id];
+    _activeGroupId = group.id;
+
+    // Salva anche localmente per compatibilità
+    _groupName = group.name;
+    _groupInviteCode = group.inviteCode;
+    await _prefs?.setString(_kGroupNameV1, group.name);
+    await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
+
+    notifyListeners();
+    return null;
+  }
+
+  /// Leave a Firestore group.
+  Future<void> leaveFirestoreGroup(String groupId) async {
+    final fs = _firestoreService;
+    if (fs == null || !isAuthenticated) return;
+
+    final uid = _profile.id;
+    await fs.leaveGroup(groupId: groupId, uid: uid);
+
+    _firestoreGroupIds = _firestoreGroupIds
+        .where((id) => id != groupId)
+        .toList();
+    if (_activeGroupId == groupId) {
+      _activeGroupId = _firestoreGroupIds.isNotEmpty
+          ? _firestoreGroupIds.first
+          : null;
+    }
+
+    // Se non ha più gruppi, pulisci anche locale
+    if (_firestoreGroupIds.isEmpty) {
+      _groupName = null;
+      _groupInviteCode = null;
+      _deleteGroupImageFile();
+      _groupImagePath = null;
+      await _prefs?.remove(_kGroupNameV1);
+      await _prefs?.remove(_kGroupInviteCodeV1);
+      await _prefs?.remove(_kGroupImagePathV1);
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> updateGroupName(String name) async {
+    final cleaned = name.trim();
+    if (cleaned.isEmpty) return;
+    if (cleaned == _groupName) return;
+
+    _groupName = cleaned;
+    await _prefs?.setString(_kGroupNameV1, cleaned);
+    notifyListeners();
+  }
+
   // ===== MATCHDAY FINALIZATION (finalDone) =====
   bool _finalizedMatchdaysLoaded = false;
   final Set<int> _finalizedMatchdays = <int>{};
@@ -276,13 +582,22 @@ class AppState extends ChangeNotifier {
     );
     final demoSeed = prefs.getInt(_kDemoSeedV1) ?? 0;
 
+    final groupName = prefs.getString(_kGroupNameV1);
+    final groupInviteCode = prefs.getString(_kGroupInviteCodeV1);
+    final groupImagePath = prefs.getString(_kGroupImagePathV1);
+    final groupAdminApproval = prefs.getBool(_kGroupAdminApprovalV1) ?? false;
+
     return AppState._(
-      prefs,
-      profile: profile,
-      language: language,
-      defaultVisibility: visibility,
-      demoSeed: demoSeed,
-    );
+        prefs,
+        profile: profile,
+        language: language,
+        defaultVisibility: visibility,
+        demoSeed: demoSeed,
+      )
+      .._groupName = groupName
+      .._groupInviteCode = groupInviteCode
+      .._groupImagePath = groupImagePath
+      .._groupAdminApproval = groupAdminApproval;
   }
 
   /// In-memory (per i test)
@@ -311,6 +626,7 @@ class AppState extends ChangeNotifier {
     await _prefs?.setString(_kProfileTeamName, cleaned);
     // scrivo anche la legacy per compatibilità
     await _prefs?.setString(_kTeamNameLegacy, cleaned);
+    _syncFieldToFirestore({'teamName': cleaned});
   }
 
   Future<void> updateFavoriteTeam(String value) async {
@@ -334,6 +650,7 @@ class AppState extends ChangeNotifier {
       await _prefs.setString(_kProfileFavoriteTeam, stored);
       await _prefs.setString(_kFavoriteTeamLegacy, stored);
     }
+    _syncFieldToFirestore({'favoriteTeam': stored});
   }
 
   Future<void> updateLanguage(CassandraLanguage value) async {
@@ -341,6 +658,7 @@ class AppState extends ChangeNotifier {
     _language = value;
     notifyListeners();
     await _prefs?.setString(_kLanguage, cassandraLanguageToStorage(value));
+    _syncFieldToFirestore({'language': cassandraLanguageToStorage(value)});
   }
 
   Future<void> updateDefaultVisibility(PredictionVisibility value) async {
@@ -351,12 +669,92 @@ class AppState extends ChangeNotifier {
       _kDefaultVisibility,
       predictionVisibilityToStorage(value),
     );
+    _syncFieldToFirestore({
+      'defaultVisibility': predictionVisibilityToStorage(value),
+    });
+  }
+
+  void setProfileFromFirebaseUser(User user) {
+    final existingTeamName =
+        _prefs?.getString(_kProfileTeamName) ??
+        _prefs?.getString(_kTeamNameLegacy);
+    final existingFavoriteTeam =
+        _prefs?.getString(_kProfileFavoriteTeam) ??
+        _prefs?.getString(_kFavoriteTeamLegacy);
+
+    _profile = UserProfile.fromFirebaseUser(
+      user,
+      existingTeamName: existingTeamName,
+      existingFavoriteTeam: existingFavoriteTeam,
+    );
+
+    _prefs?.setString(_kProfileId, user.uid);
+    _prefs?.setString(_kProfileDisplayName, _profile.displayName);
+    if (_profile.email != null) {
+      _prefs?.setString(_kProfileEmail, _profile.email!);
+    }
+    if (_profile.photoUrl != null) {
+      _prefs?.setString(_kProfilePhotoUrl, _profile.photoUrl!);
+    }
+
+    _syncProfileToFirestore();
+    notifyListeners();
+  }
+
+  Future<void> signOut() async {
+    await _authService?.signOut();
+
+    _prefs?.remove(_kProfileId);
+    _prefs?.remove(_kProfileDisplayName);
+    _prefs?.remove(_kProfileEmail);
+    _prefs?.remove(_kProfilePhotoUrl);
+    _prefs?.remove(_kGroupNameV1);
+    _prefs?.remove(_kGroupInviteCodeV1);
+    _prefs?.remove(_kGroupImagePathV1);
+    _prefs?.remove(_kGroupAdminApprovalV1);
+
+    _deleteGroupImageFile();
+
+    _profile = _defaultProfile;
+    _groupName = null;
+    _groupInviteCode = null;
+    _groupImagePath = null;
+    _groupAdminApproval = false;
+    notifyListeners();
+  }
+
+  Future<void> deleteAccount() async {
+    await _authService?.deleteAccount();
+
+    _prefs?.remove(_kProfileId);
+    _prefs?.remove(_kProfileDisplayName);
+    _prefs?.remove(_kProfileEmail);
+    _prefs?.remove(_kProfilePhotoUrl);
+    _prefs?.remove(_kGroupNameV1);
+    _prefs?.remove(_kGroupInviteCodeV1);
+    _prefs?.remove(_kGroupImagePathV1);
+    _prefs?.remove(_kGroupAdminApprovalV1);
+
+    _deleteGroupImageFile();
+
+    _groupName = null;
+    _groupInviteCode = null;
+    _groupImagePath = null;
+    _groupAdminApproval = false;
+
+    await resetAll();
+    notifyListeners();
   }
 
   Future<void> resetAll() async {
     _profile = _defaultProfile;
     _language = CassandraLanguage.system;
     _defaultVisibility = PredictionVisibility.friends;
+    _groupName = null;
+    _groupInviteCode = null;
+    _deleteGroupImageFile();
+    _groupImagePath = null;
+    _groupAdminApproval = false;
     notifyListeners();
 
     if (_prefs == null) return;
@@ -369,6 +767,11 @@ class AppState extends ChangeNotifier {
 
     await _prefs.remove(_kLanguage);
     await _prefs.remove(_kDefaultVisibility);
+
+    await _prefs.remove(_kGroupNameV1);
+    await _prefs.remove(_kGroupInviteCodeV1);
+    await _prefs.remove(_kGroupImagePathV1);
+    await _prefs.remove(_kGroupAdminApprovalV1);
   }
 
   // ===== Runtime cache (NON persistita) =====
@@ -378,6 +781,15 @@ class AppState extends ChangeNotifier {
   List<PredictionMatch>? _cachedPredictionMatches;
   bool _cachedPredictionMatchesAreReal = false;
   DateTime? _cachedPredictionMatchesUpdatedAt;
+
+  // Quote reali (runtime cache per evitare ri-fetch ad ogni apertura)
+  Map<int, ApiFootballFixtureOdds>? _cachedRealOdds;
+
+  Map<int, ApiFootballFixtureOdds>? get cachedRealOdds => _cachedRealOdds;
+
+  void setCachedRealOdds(Map<int, ApiFootballFixtureOdds> odds) {
+    _cachedRealOdds = Map.unmodifiable(odds);
+  }
 
   List<PredictionMatch>? get cachedPredictionMatches =>
       _cachedPredictionMatches;
@@ -644,6 +1056,159 @@ class AppState extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  /// Fire-and-forget: upload picks per questa giornata su Firestore.
+  void submitPicksToFirestore({
+    required int dayNumber,
+    required Map<String, PickOption> picksByMatchId,
+    required String visibility,
+    DayScoreBreakdown? score,
+  }) {
+    final fs = _firestoreService;
+    if (fs == null || !isAuthenticated) return;
+    unawaited(
+      fs
+          .savePicks(
+            uid: _profile.id,
+            seasonKey: currentSeasonKey,
+            dayNumber: dayNumber,
+            picksByMatchId: picksByMatchId,
+            visibility: visibility,
+            score: score,
+          )
+          .catchError((_) {}),
+    );
+  }
+
+  // ===== FIRESTORE GROUP LEADERBOARD =====
+
+  /// Fetch group members from Firestore for active group.
+  /// Returns list of GroupMember (domain model).
+  Future<List<GroupMember>> fetchFirestoreGroupMembers() async {
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs == null || groupId == null) return [];
+
+    final docs = await fs.getGroupMembers(groupId);
+    return docs
+        .map(
+          (d) => GroupMember(
+            id: d.uid,
+            displayName: d.displayName,
+            teamName: d.teamName,
+            avatarSeed: d.avatarSeed,
+            favoriteTeam: d.favoriteTeam,
+          ),
+        )
+        .toList();
+  }
+
+  /// Fetch picks from Firestore for a list of UIDs + matchday.
+  /// Returns map: uid -> picksByMatchId.
+  Future<Map<String, Map<String, PickOption>>> fetchFirestorePicksForMatchday({
+    required int dayNumber,
+    required List<String> uids,
+  }) async {
+    final fs = _firestoreService;
+    if (fs == null) return {};
+
+    final docs = await fs.getPicksForMatchday(
+      seasonKey: currentSeasonKey,
+      dayNumber: dayNumber,
+      uids: uids,
+    );
+
+    return {for (final d in docs) d.uid: d.picksByMatchId};
+  }
+
+  /// Fetch active group metadata from Firestore.
+  Future<GroupDocument?> fetchActiveGroupDocument() async {
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs == null || groupId == null) return null;
+    return fs.getGroup(groupId);
+  }
+
+  /// Fetch all season picks for a user from Firestore.
+  /// Returns list of PicksDocument for the current season.
+  Future<List<PicksDocument>> fetchSeasonPicksForUser(String uid) async {
+    final fs = _firestoreService;
+    if (fs == null) return [];
+    return fs.getPicksForUser(uid: uid, seasonKey: currentSeasonKey);
+  }
+
+  // ===== LOCAL → FIRESTORE MIGRATION =====
+  static const _kFirestoreMigrationV1Done = 'firestore_migration_v1_done';
+
+  /// One-time migration: upload local picks + outcomes to Firestore.
+  /// Runs once per device, flagged via SharedPreferences.
+  Future<void> migrateLocalDataToFirestoreIfNeeded() async {
+    final prefs = _prefs;
+    final fs = _firestoreService;
+    if (prefs == null || fs == null || !isAuthenticated) return;
+    if (prefs.getBool(_kFirestoreMigrationV1Done) == true) return;
+
+    final uid = _profile.id;
+    if (uid.isEmpty) return;
+
+    try {
+      // 1. Sync profile
+      _syncProfileToFirestore();
+
+      // 2. Migrate picks
+      ensureCurrentUserPicksHistoryLoaded();
+      ensureOutcomesHistoryLoaded();
+
+      final season = currentSeasonKey;
+      for (final entry in _currentUserPicksByMatchday.entries) {
+        final dayNumber = entry.key;
+        final picks = entry.value;
+        if (picks.isEmpty) continue;
+
+        // Compute score if outcomes available
+        DayScoreBreakdown? score;
+        final outcomes = _outcomesByMatchday[dayNumber];
+        final matches =
+            _matchesByMatchday[dayNumber] ?? _matchdayMatchesByDay[dayNumber];
+        if (outcomes != null && matches != null && matches.isNotEmpty) {
+          score = CassandraScoringEngine.computeDayScore(
+            matches: matches,
+            picksByMatchId: picks,
+            outcomesByMatchId: outcomes,
+          );
+        }
+
+        await fs.savePicks(
+          uid: uid,
+          seasonKey: season,
+          dayNumber: dayNumber,
+          picksByMatchId: picks,
+          visibility: predictionVisibilityToStorage(_defaultVisibility),
+          score: score,
+        );
+      }
+
+      // 3. Migrate matchday data (matches + outcomes)
+      ensureMatchdayMatchesLoaded();
+      for (final entry in _matchdayMatchesByDay.entries) {
+        final dayNumber = entry.key;
+        final matches = entry.value;
+        if (matches.isEmpty) continue;
+
+        final outcomes = _outcomesByMatchday[dayNumber] ?? {};
+        await fs.saveMatchdayData(
+          seasonKey: season,
+          dayNumber: dayNumber,
+          matches: matches,
+          outcomesByMatchId: outcomes,
+        );
+      }
+
+      await prefs.setBool(_kFirestoreMigrationV1Done, true);
+    } catch (_) {
+      // Migration failed — will retry next launch
+    }
   }
 
   // ===== OUTCOMES STORICO (per matchday) =====
@@ -925,59 +1490,8 @@ class AppState extends ChangeNotifier {
     await prefs.setString(_kMemberPicksByMemberIdV1, jsonEncode(outer));
   }
 
-  // ===== OUTCOMES SIMULATI (solo test, non persistiti) =====
-  bool _useSimulatedOutcomes = false;
-  Map<String, MatchOutcome>? _simulatedOutcomesByMatchId;
-
-  bool get useSimulatedOutcomes => _useSimulatedOutcomes;
-
-  Map<String, MatchOutcome>? get simulatedOutcomesByMatchId =>
-      _simulatedOutcomesByMatchId;
-
-  /// Outcomes usati dall'app: se la simulazione è ON usa quelli simulati,
-  /// altrimenti usa la cache reale.
-  Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId {
-    final sim = _simulatedOutcomesByMatchId;
-    if (_useSimulatedOutcomes && sim != null && sim.isNotEmpty) return sim;
-    return cachedPredictionOutcomesByMatchId;
-  }
-
-  void setUseSimulatedOutcomes(bool value) {
-    if (_useSimulatedOutcomes == value) return;
-    _useSimulatedOutcomes = value;
-    notifyListeners();
-  }
-
-  void clearSimulatedOutcomes() {
-    _simulatedOutcomesByMatchId = null;
-    _useSimulatedOutcomes = false;
-    notifyListeners();
-  }
-
-  // ===== DEBUG =====
-  // Simula risultati (tutti graded) per la matchday in cache: utile per testare leaderboard
-  // ===== DEBUG =====
-  // Crea outcomes simulati (tutti graded) per la matchday in cache: utile per testare leaderboard.
-  // Non sovrascrive la cache reale: puoi fare ON/OFF e ripristinare in un click.
-  void debugSimulateOutcomesForCachedMatches({
-    int seed = 777,
-    bool enable = true,
-  }) {
-    final matches = _cachedPredictionMatches;
-    if (matches == null || matches.isEmpty) return;
-
-    final rnd = Random(seed);
-    const outs = [MatchOutcome.home, MatchOutcome.draw, MatchOutcome.away];
-
-    final map = <String, MatchOutcome>{};
-    for (final m in matches) {
-      map[m.id] = outs[rnd.nextInt(outs.length)];
-    }
-
-    _simulatedOutcomesByMatchId = map;
-    if (enable) _useSimulatedOutcomes = true;
-    notifyListeners();
-  }
+  Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId =>
+      cachedPredictionOutcomesByMatchId;
 
   Future<void> bumpDemoSeed() async {
     _demoSeed = _demoSeed + 1;
@@ -1106,45 +1620,5 @@ class AppState extends ChangeNotifier {
         homeAway: (odds['homeAway'] as num).toDouble(),
       ),
     );
-  }
-
-  int _devEpoch = 0;
-
-  // DEV: tracking fixtures posticipate/iniettate dalla DevDebugPage (simulazione recuperi/rinvii)
-  final Map<Object, bool> _devPostponedIsVoidByMatchId = {};
-  final Map<Object, int> _devPostponedDeltaMinutesByMatchId = {};
-
-  void devClearPostponed() {
-    _devPostponedIsVoidByMatchId.clear();
-    _devPostponedDeltaMinutesByMatchId.clear();
-    notifyListeners();
-  }
-
-  void devMarkPostponed(
-    Object matchId, {
-    required int deltaMinutes,
-    required bool isVoid,
-  }) {
-    _devPostponedIsVoidByMatchId[matchId] = isVoid;
-    _devPostponedDeltaMinutesByMatchId[matchId] = deltaMinutes;
-    notifyListeners();
-  }
-
-  int get devPostponedUnder48Count =>
-      _devPostponedIsVoidByMatchId.values.where((v) => v == false).length;
-
-  int get devPostponedOver48Count =>
-      _devPostponedIsVoidByMatchId.values.where((v) => v == true).length;
-
-  int? devPostponedDeltaMinutesFor(Object matchId) =>
-      _devPostponedDeltaMinutesByMatchId[matchId];
-
-  bool? devPostponedIsVoidFor(Object matchId) =>
-      _devPostponedIsVoidByMatchId[matchId];
-  int get devEpoch => _devEpoch;
-
-  void bumpDevEpoch() {
-    _devEpoch++;
-    notifyListeners();
   }
 }

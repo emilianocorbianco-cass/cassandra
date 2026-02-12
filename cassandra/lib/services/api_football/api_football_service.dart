@@ -1,11 +1,22 @@
+import 'package:flutter/foundation.dart';
+
 import 'api_football_client.dart';
 import 'models/api_football_fixture.dart';
+import 'models/api_football_odds.dart';
 import 'models/api_football_standing.dart';
 
 class ApiFootballService {
   ApiFootballService(this._client);
 
   final ApiFootballClient _client;
+
+  /// Bookmaker preferiti (ordine di priorità).
+  static const _preferredBookmakerIds = [
+    8,
+    6,
+    11,
+    1,
+  ]; // Bet365, Bwin, 1xBet, 10Bet
 
   int? _cachedSerieALeagueId;
 
@@ -175,10 +186,7 @@ class ApiFootballService {
 
     final json = await _client.getJson(
       'standings',
-      query: {
-        'league': '$leagueId',
-        'season': '$season',
-      },
+      query: {'league': '$leagueId', 'season': '$season'},
     );
 
     final response = json['response'];
@@ -222,5 +230,46 @@ class ApiFootballService {
     );
 
     return _fixturesFromJson(json);
+  }
+
+  /// Recupera le quote pre-match reali per una lista di fixture ID.
+  ///
+  /// Ritorna mappa fixtureId → [ApiFootballFixtureOdds].
+  /// Best-effort: se una fixture fallisce, continua con le altre.
+  Future<Map<int, ApiFootballFixtureOdds>> getOddsForFixtures(
+    List<int> fixtureIds,
+  ) async {
+    final result = <int, ApiFootballFixtureOdds>{};
+    for (final id in fixtureIds) {
+      try {
+        final json = await _client.getJson('odds', query: {'fixture': '$id'});
+        final response = json['response'];
+        if (response is! List || response.isEmpty) continue;
+        final entry = response.first;
+        if (entry is! Map) continue;
+        final bookmakers = entry['bookmakers'];
+        if (bookmakers is! List || bookmakers.isEmpty) continue;
+
+        // Cerca bookmaker preferito, fallback al primo disponibile
+        Map<dynamic, dynamic>? chosen;
+        for (final prefId in _preferredBookmakerIds) {
+          chosen = bookmakers
+              .whereType<Map>()
+              .where((b) => b['id'] == prefId)
+              .firstOrNull;
+          if (chosen != null) break;
+        }
+        chosen ??= bookmakers.first as Map<dynamic, dynamic>?;
+        if (chosen == null) continue;
+
+        result[id] = ApiFootballFixtureOdds.fromBookmakerJson(id, chosen);
+      } catch (e) {
+        debugPrint('[odds] Failed for fixture $id: $e');
+      }
+    }
+    if (kDebugMode && result.isNotEmpty) {
+      debugPrint('[odds] loaded for ${result.length} fixtures');
+    }
+    return result;
   }
 }

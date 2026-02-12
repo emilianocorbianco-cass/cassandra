@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/state/app_settings.dart';
+import '../../app/state/app_state.dart';
+import '../../app/state/cassandra_scope.dart';
 import '../predictions/models/formatters.dart';
 import 'models/season_leaderboard_entry.dart';
 
@@ -10,8 +13,18 @@ class MemberSeasonPage extends StatelessWidget {
 
   const MemberSeasonPage({super.key, required this.entry});
 
+  bool _isEnglish(BuildContext context, AppState app) {
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+    final en = _isEnglish(context, app);
+
     final days = entry.matchdays.toList()
       ..sort((a, b) => b.matchday.dayNumber.compareTo(a.matchday.dayNumber));
 
@@ -46,14 +59,20 @@ class MemberSeasonPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'Totale: $totalLabel',
+                        '${en ? 'Total' : 'Totale'}: $totalLabel',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
-                      Text('Media/giornata: $avgLabel'),
-                      Text('Giornate giocate: ${entry.daysPlayed}'),
+                      Text(
+                        '${en ? 'Avg/matchday' : 'Media/giornata'}: $avgLabel',
+                      ),
+                      Text(
+                        '${en ? 'Matchdays played' : 'Giornate giocate'}: ${entry.daysPlayed}',
+                      ),
                       const SizedBox(height: 6),
-                      Text('Quota media: $avgOddsLabel'),
+                      Text(
+                        '${en ? 'Avg. odds' : 'Quota media'}: $avgOddsLabel',
+                      ),
                     ],
                   ),
                 ),
@@ -66,8 +85,9 @@ class MemberSeasonPage extends StatelessWidget {
                 itemCount: days.length,
                 itemBuilder: (context, i) {
                   final d = days[i];
-                  final dayLabel = formatMatchdayDaysItalian(
+                  final dayLabel = formatMatchdayDays(
                     d.matchday.matches.map((m) => m.kickoff),
+                    english: en,
                   );
 
                   final pts = d.day.total;
@@ -76,9 +96,13 @@ class MemberSeasonPage extends StatelessWidget {
 
                   return Card(
                     child: ListTile(
-                      title: Text('Giornata ${d.matchday.dayNumber}'),
+                      title: Text(
+                        en
+                            ? 'Matchday ${d.matchday.dayNumber}'
+                            : 'Giornata ${d.matchday.dayNumber}',
+                      ),
                       subtitle: Text(
-                        '$dayLabel\nesatti: ${d.day.correctCount}/10 • bonus: ${d.day.bonusPoints}',
+                        '$dayLabel\n${en ? 'correct' : 'esatti'}: ${d.day.correctCount}/10 • bonus: ${d.day.bonusPoints}',
                       ),
                       isThreeLine: true,
                       trailing: Text(

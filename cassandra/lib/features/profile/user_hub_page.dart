@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../badges/models/badge_counts.dart';
 import '../badges/trophy_engine.dart';
@@ -10,14 +10,11 @@ import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../leaderboards/models/season_leaderboard_entry.dart';
 import '../predictions/models/pick_option.dart';
-import '../predictions/models/prediction_match.dart';
-
 import 'widgets/user_picks_view.dart';
 import 'widgets/user_stats_view.dart';
 import 'widgets/user_trophies_view.dart';
 import 'package:cassandra/features/predictions/models/formatters.dart';
 import 'package:cassandra/features/scoring/models/match_outcome.dart';
-import '../dev/dev_debug_page.dart';
 
 class UserHubPage extends StatefulWidget {
   final GroupMember member;
@@ -50,6 +47,16 @@ class _UserHubPageState extends State<UserHubPage> {
 
   bool _initialized = false;
   int? _lastDemoSeed;
+
+  bool _isEnglish() {
+    final app = CassandraScope.of(context);
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
+  String _t(String it, String en) => _isEnglish() ? en : it;
 
   @override
   void didChangeDependencies() {
@@ -101,219 +108,6 @@ class _UserHubPageState extends State<UserHubPage> {
     );
   }
 
-  Future<void> _resetHistory(dynamic app) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset storico'),
-        content: const Text(
-          'Cancella i pick salvati e i risultati salvati (outcomes).\n\n'
-          'Utile per testare da zero.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annulla'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-
-    if (ok != true) return;
-    app.clearAllHistory();
-    app.clearCachedPredictionMatches();
-    app.setUiMatchdayNumber(null);
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Storico resettato')));
-  }
-
-  Future<void> _regenDemo(dynamic app) async {
-    await app.bumpDemoSeed();
-
-    final matchdays = mockSeasonMatchdays(
-      startDay: 16,
-      count: 5,
-      demoSeed: app.demoSeed,
-    );
-
-    final demo = matchdays.last;
-
-    app.setUiMatchdayNumber(demo.dayNumber);
-    app.setCachedPredictionMatches(
-      demo.matches,
-      isReal: false,
-      updatedAt: DateTime.now(),
-    );
-    app.setCachedPredictionOutcomesByMatchId(demo.outcomesByMatchId);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Demo caricata (seed: ${app.demoSeed})')),
-    );
-  }
-
-  Future<void> _devAddPostponedMatch(
-    dynamic app, {
-    required bool within48,
-  }) async {
-    final matchdays = mockSeasonMatchdays(
-      startDay: 16,
-      count: 5,
-      demoSeed: app.demoSeed,
-    );
-    final demo = matchdays.last;
-
-    // Origini stabili da calendario demo (kickoff previsto)
-    final originById = <String, DateTime>{
-      for (final m in demo.matches) m.id: m.kickoff,
-    };
-
-    // Usa la cache demo se già attiva, altrimenti la demo pulita
-    final cached = app.cachedPredictionMatches;
-    final usingDemoCache =
-        cached != null && !app.cachedPredictionMatchesAreReal;
-    final baseMatches = usingDemoCache ? cached : demo.matches;
-
-    // Registra le origini in AppState (serve per originKickoffFor)
-    final dyn = app as dynamic;
-    try {
-      dyn.registerOriginKickoffs(demo.matches);
-    } catch (_) {
-      try {
-        dyn.registerOriginKickoff(demo.matches);
-      } catch (_) {}
-    }
-
-    // Prendi il prossimo match "non ancora toccato" (kickoff == origin)
-    PredictionMatch? target;
-    DateTime? targetOrigin;
-
-    for (final m in baseMatches) {
-      final origin = originById[m.id] ?? m.kickoff;
-      final untouched = m.kickoff.isAtSameMomentAs(origin);
-      if (!untouched) continue;
-
-      if (target == null || origin.isBefore(targetOrigin!)) {
-        target = m;
-        targetOrigin = origin;
-      }
-    }
-
-    if (target == null || targetOrigin == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nessun altro match da modificare')),
-      );
-      return;
-    }
-
-    final o = targetOrigin;
-
-    final shift = within48
-        ? const Duration(hours: 24)
-        : const Duration(hours: 72);
-    final newKickoff = o.add(shift);
-
-    final updatedMatches = baseMatches.map((m) {
-      if (m.id != target!.id) return m;
-      return PredictionMatch(
-        id: m.id,
-        homeTeam: m.homeTeam,
-        awayTeam: m.awayTeam,
-        kickoff: newKickoff,
-        odds: m.odds,
-      );
-    }).toList()..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-
-    // Outcomes: mantieni quelli già presenti (cache o demo)
-    final cachedOutcomes = app.cachedPredictionOutcomesByMatchId;
-    final outcomes = (cachedOutcomes is Map && cachedOutcomes.isNotEmpty)
-        ? cachedOutcomes
-        : demo.outcomesByMatchId;
-
-    app.setUiMatchdayNumber(demo.dayNumber);
-    app.setCachedPredictionMatches(
-      updatedMatches,
-      isReal: false,
-      updatedAt: DateTime.now(),
-    );
-    app.setCachedPredictionOutcomesByMatchId(outcomes);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          within48
-              ? 'Aggiunto 1 recupero <48h'
-              : 'Aggiunto 1 partita nulla >48h',
-        ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  Future<void> _applyDemoScenario(
-    dynamic app, {
-    required int hoursAgo,
-    required int voidCount,
-  }) async {
-    final matchdays = mockSeasonMatchdays(
-      startDay: 16,
-      count: 5,
-      demoSeed: app.demoSeed,
-    );
-    final demo = matchdays.last;
-
-    final now = DateTime.now();
-    final shiftedKickoff = now.subtract(Duration(hours: hoursAgo));
-
-    final sorted = [...demo.matches]
-      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-    final target = sorted.take(voidCount).toList();
-    final targetIds = {for (final m in target) m.id};
-
-    final matchesOverride = demo.matches.map((m) {
-      if (!targetIds.contains(m.id)) return m;
-      return PredictionMatch(
-        id: m.id,
-        homeTeam: m.homeTeam,
-        awayTeam: m.awayTeam,
-        kickoff: shiftedKickoff,
-        odds: m.odds,
-      );
-    }).toList();
-
-    final outcomesOverride = Map<String, MatchOutcome>.from(
-      demo.outcomesByMatchId,
-    );
-    for (final id in targetIds) {
-      outcomesOverride[id] = MatchOutcome.pending;
-    }
-
-    app.setUiMatchdayNumber(demo.dayNumber);
-    app.setCachedPredictionMatches(
-      matchesOverride,
-      isReal: false,
-      updatedAt: DateTime.now(),
-    );
-    app.setCachedPredictionOutcomesByMatchId(outcomesOverride);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Scenario DEMO: $voidCount match pending con kickoff ${hoursAgo}h fa',
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final totalMatches = widget.matchday.matches.length;
@@ -323,17 +117,17 @@ class _UserHubPageState extends State<UserHubPage> {
     }).length;
 
     final resultsLabel = (gradedCount == totalMatches)
-        ? 'risultati: $gradedCount/$totalMatches'
-        : 'risultati: $gradedCount/$totalMatches (parziale)';
+        ? '${_t('risultati', 'results')}: $gradedCount/$totalMatches'
+        : '${_t('risultati', 'results')}: $gradedCount/$totalMatches (${_t('parziale', 'partial')})';
 
     final app = CassandraScope.of(context);
     final dataLabel = app.cachedPredictionMatchesAreReal
-        ? 'dati: reali (API)'
-        : 'dati: demo';
+        ? _t('dati: reali (API)', 'data: real (API)')
+        : _t('dati: demo', 'data: demo');
     final updatedLabel =
         (app.cachedPredictionMatchesAreReal &&
             app.cachedPredictionMatchesUpdatedAt != null)
-        ? ' • agg. ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
+        ? ' \u2022 ${_t('agg.', 'upd.')} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
         : '';
 
     final initial = widget.initialTabIndex.clamp(0, 2);
@@ -347,30 +141,6 @@ class _UserHubPageState extends State<UserHubPage> {
           appBar: AppBar(
             primary: true,
             centerTitle: true,
-            actions: [
-              if (kDebugMode)
-                IconButton(
-                  tooltip: 'Debug',
-                  icon: const Icon(Icons.bug_report_outlined),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => DevDebugPage(
-                          onResetHistory: () => _resetHistory(app),
-                          onRegenDemo: () => _regenDemo(app),
-                          onAddRecovered: () async {
-                            _devAddPostponedMatch(app, within48: true);
-                          },
-                          onAddVoid: () async {
-                            _devAddPostponedMatch(app, within48: false);
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-            ],
-
             title: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -394,11 +164,11 @@ class _UserHubPageState extends State<UserHubPage> {
               preferredSize: Size.fromHeight(kTextTabBarHeight + 112),
               child: Column(
                 children: [
-                  const TabBar(
+                  TabBar(
                     tabs: [
-                      Tab(text: 'Pronostici'),
-                      Tab(text: 'Stats'),
-                      Tab(text: 'Trofei'),
+                      Tab(text: _t('Pronostici', 'Predictions')),
+                      const Tab(text: 'Stats'),
+                      Tab(text: _t('Trofei', 'Trophies')),
                     ],
                   ),
                   Padding(

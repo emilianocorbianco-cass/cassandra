@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/state/app_settings.dart';
+import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/team_name.dart';
@@ -86,9 +88,17 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     }
   }
 
+  bool _isEnglish(BuildContext context, AppState app) {
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
+    final en = _isEnglish(context, appState);
 
     // safe (non notificano)
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -105,7 +115,10 @@ class GroupMatchdayMemberPage extends StatelessWidget {
       outcomesByMatchId: outcomes,
     );
 
-    final daysLabel = formatMatchdayDaysItalian(matches.map((m) => m.kickoff));
+    final daysLabel = formatMatchdayDays(
+      matches.map((m) => m.kickoff),
+      english: en,
+    );
 
     final totalMatches = matches.length;
     final gradedCount = matches.where((m) {
@@ -114,8 +127,8 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     }).length;
 
     final resultsLabel = gradedCount == totalMatches
-        ? 'risultati: $gradedCount/$totalMatches'
-        : 'risultati: $gradedCount/$totalMatches (parziale)';
+        ? '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches'
+        : '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches (${en ? 'partial' : 'parziale'})';
 
     final savedPicks =
         appState.hasSavedPicksForMatchday(matchday.dayNumber) &&
@@ -129,7 +142,9 @@ class GroupMatchdayMemberPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('${member.teamName} • Giornata ${matchday.dayNumber}'),
+        title: Text(
+          '${member.teamName} • ${en ? 'Matchday' : 'Giornata'} ${matchday.dayNumber}',
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -165,7 +180,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _Metric(
-                              label: 'Totale',
+                              label: en ? 'Total' : 'Totale',
                               value: formatOdds(day.total),
                             ),
                           ),
@@ -185,12 +200,12 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'quota media giocata: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
+                        '${en ? 'avg. odds played' : 'quota media giocata'}: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'esatti: ${day.correctCount}/$totalMatches',
+                        '${en ? 'correct' : 'esatti'}: ${day.correctCount}/$totalMatches',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -245,8 +260,8 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                         ],
                       ),
                       subtitle: Text(
-                        'pick: ${_pickLabel(pick)} • esito: ${_outcomeLabel(outcome)}\n'
-                        '${mb.note}${mb.playedOdds == null ? '' : ' • quota: ${formatOdds(mb.playedOdds!)}'}',
+                        'pick: ${_pickLabel(pick)} • ${en ? 'outcome' : 'esito'}: ${_outcomeLabel(outcome)}\n'
+                        '${mb.note}${mb.playedOdds == null ? '' : ' • ${en ? 'odds' : 'quota'}: ${formatOdds(mb.playedOdds!)}'}',
                       ),
                       isThreeLine: true,
                       trailing: Column(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
@@ -18,6 +19,16 @@ class PredictionsHistoryPage extends StatefulWidget {
 
 class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
   bool _initialized = false;
+
+  bool _isEnglish() {
+    final app = CassandraScope.of(context);
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
+  String _t(String it, String en) => _isEnglish() ? en : it;
 
   @override
   void didChangeDependencies() {
@@ -57,27 +68,37 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
       ..sort((a, b) => b.compareTo(a));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Storico pronostici')),
+      appBar: AppBar(
+        title: Text(_t('Storico pronostici', 'Predictions history')),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
         children: [
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
               child: Text(
-                'Qui trovi le giornate che hai salvato/inviato.\n'
-                'Se non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.',
+                _t(
+                  'Qui trovi le giornate che hai salvato/inviato.\n'
+                      'Se non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.',
+                  'Here you can find the matchdays you saved/submitted.\n'
+                      'If we don\'t have historical fixtures via API, we use a DEMO fallback to show details anyway.',
+                ),
               ),
             ),
           ),
           const SizedBox(height: 8),
           if (savedDays.isEmpty)
-            const Card(
+            Card(
               child: Padding(
-                padding: EdgeInsets.all(12),
+                padding: const EdgeInsets.all(12),
                 child: Text(
-                  'Nessuna giornata salvata.\n'
-                  'Vai su Pronostici e “invia” almeno una giornata per vederla qui.',
+                  _t(
+                    'Nessuna giornata salvata.\n'
+                        'Vai su Pronostici e "invia" almeno una giornata per vederla qui.',
+                    'No matchday saved.\n'
+                        'Go to Predictions and submit at least one matchday to see it here.',
+                  ),
                 ),
               ),
             ),
@@ -109,8 +130,10 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
                         }
                       : md.outcomesByMatchId);
 
-            final daysLabel = formatMatchdayDaysItalian(
+            final en = _isEnglish();
+            final daysLabel = formatMatchdayDays(
               matches.map((m) => m.kickoff),
+              english: en,
             );
 
             final totalMatches = matches.length;
@@ -120,8 +143,8 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
             }).length;
 
             final resultsLabel = gradedCount == totalMatches
-                ? 'risultati: $gradedCount/$totalMatches'
-                : 'risultati: $gradedCount/$totalMatches (parziale)';
+                ? '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches'
+                : '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches (${en ? 'partial' : 'parziale'})';
 
             final tag = canUseSaved
                 ? 'SALVATI'
@@ -129,7 +152,7 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
 
             return Card(
               child: ListTile(
-                title: Text('Giornata $dayNumber'),
+                title: Text(en ? 'Matchday $dayNumber' : 'Giornata $dayNumber'),
                 subtitle: Text('$daysLabel\n$resultsLabel'),
                 trailing: Text(tag),
                 onTap: () {

@@ -1,9 +1,11 @@
 import 'package:cassandra/features/predictions/models/prediction_match.dart';
 import 'package:cassandra/services/api_football/models/api_football_fixture.dart';
+import 'package:cassandra/services/api_football/models/api_football_odds.dart';
 
 /// Converte fixtures (API-FOOTBALL) in match pronosticabili.
 ///
-/// Per ora le quote sono mock/deterministiche.
+/// Se [realOdds] è presente usa le quote reali dal bookmaker; altrimenti
+/// genera quote deterministiche (fallback).
 /// Nota importante: di default assegna id "m1..m10" per restare compatibile
 /// con i mock e ridurre il rischio di rompere stato interno dei pronostici.
 List<PredictionMatch> predictionMatchesFromFixtures(
@@ -11,6 +13,7 @@ List<PredictionMatch> predictionMatchesFromFixtures(
   int take = 10,
   bool useMockIds = true,
   int? matchdayNumber,
+  Map<int, ApiFootballFixtureOdds>? realOdds,
 }) {
   final sorted = List<ApiFootballFixture>.of(fixtures)
     ..sort((a, b) => a.kickoffUtc.compareTo(b.kickoffUtc));
@@ -34,49 +37,66 @@ List<PredictionMatch> predictionMatchesFromFixtures(
       predictionMatchFromFixture(
         picked[i],
         idOverride: useMockIds ? 'm${i + 1}' : null,
+        realOdds: realOdds?[picked[i].fixtureId],
       ),
   ];
 }
 
 /// Converte un singolo fixture in PredictionMatch.
-/// Quote: 1 / X / 2 generate deterministicamente.
-/// Doppie chance: derivate in modo plausibile da 1/X/2.
+///
+/// Se [realOdds] ha quote Match Winner, le usa; altrimenti genera
+/// quote deterministiche. Doppie chance: reali se disponibili,
+/// altrimenti derivate probabilisticamente dalle singole.
 PredictionMatch predictionMatchFromFixture(
   ApiFootballFixture f, {
   String? idOverride,
+  ApiFootballFixtureOdds? realOdds,
 }) {
-  final seed = f.fixtureId;
+  // --- 1/X/2 ---
+  late final double home, draw, away;
+  if (realOdds != null && realOdds.hasMatchWinner) {
+    home = realOdds.home!;
+    draw = realOdds.draw!;
+    away = realOdds.away!;
+  } else {
+    // Fallback: quote deterministiche
+    final seed = f.fixtureId;
+    home = _odds(seed, 1.35, 3.10);
+    draw = _odds(seed * 7 + 13, 2.70, 4.60);
+    away = _odds(seed * 11 + 29, 1.35, 3.40);
+  }
 
-  final home = _odds(seed, 1.35, 3.10); // 1
-  final draw = _odds(seed * 7 + 13, 2.70, 4.60); // X
-  final away = _odds(seed * 11 + 29, 1.35, 3.40); // 2
+  // --- Doppie chance ---
+  late final double homeDraw, drawAway, homeAway;
+  if (realOdds != null && realOdds.hasDoubleChance) {
+    homeDraw = realOdds.homeDraw!;
+    drawAway = realOdds.drawAway!;
+    homeAway = realOdds.homeAway!;
+  } else {
+    // Derivate probabilisticamente dalle singole (formula esistente)
+    final p1 = 1.0 / home;
+    final pX = 1.0 / draw;
+    final p2 = 1.0 / away;
+    final s = p1 + pX + p2;
 
-  // Probabilità implicite p=1/odds, normalizzate (somma=1)
-  final p1 = 1.0 / home;
-  final pX = 1.0 / draw;
-  final p2 = 1.0 / away;
-  final s = p1 + pX + p2;
+    double dc(double a, double b) => _round2(s / (a + b));
 
-  double dc(double a, double b) => _round2(s / (a + b));
-
-  // Doppie chance: clamp per mantenerle "plausibili"
-  final homeDraw = _clamp(
-    dc(p1, pX),
-    min: 1.05,
-    max: _round2(_min(home, draw) - 0.01),
-  );
-
-  final drawAway = _clamp(
-    dc(pX, p2),
-    min: 1.05,
-    max: _round2(_min(draw, away) - 0.01),
-  );
-
-  final homeAway = _clamp(
-    dc(p1, p2),
-    min: 1.05,
-    max: _round2(_min(home, away) - 0.01),
-  );
+    homeDraw = _clamp(
+      dc(p1, pX),
+      min: 1.05,
+      max: _round2(_min(home, draw) - 0.01),
+    );
+    drawAway = _clamp(
+      dc(pX, p2),
+      min: 1.05,
+      max: _round2(_min(draw, away) - 0.01),
+    );
+    homeAway = _clamp(
+      dc(p1, p2),
+      min: 1.05,
+      max: _round2(_min(home, away) - 0.01),
+    );
+  }
 
   return PredictionMatch(
     id: idOverride ?? f.fixtureId.toString(),

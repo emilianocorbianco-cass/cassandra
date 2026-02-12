@@ -8,7 +8,7 @@ String formatKickoff(DateTime dt) {
   return '${twoDigits(dt.day)}/${twoDigits(dt.month)} ${twoDigits(dt.hour)}:${twoDigits(dt.minute)}';
 }
 
-// --- Helpers IT (poi li renderemo bilingue con intl) ---
+// --- Helpers bilingue IT / EN ---
 
 const List<String> _itWeekdays = [
   '',
@@ -37,10 +37,48 @@ const List<String> _itMonths = [
   'dicembre',
 ];
 
+const List<String> _enWeekdays = [
+  '',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const List<String> _enMonths = [
+  '',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 String italianWeekdayName(int weekday) => _itWeekdays[weekday];
 String italianMonthName(int month) => _itMonths[month];
+String englishWeekdayName(int weekday) => _enWeekdays[weekday];
+String englishMonthName(int month) => _enMonths[month];
 
-String formatMatchdayDaysItalian(Iterable<DateTime> kickoffs) {
+String _weekdayName(int weekday, {required bool english}) =>
+    english ? _enWeekdays[weekday] : _itWeekdays[weekday];
+String _monthName(int month, {required bool english}) =>
+    english ? _enMonths[month] : _itMonths[month];
+
+/// Retrocompatibile: chiama la versione bilingue con english=false.
+String formatMatchdayDaysItalian(Iterable<DateTime> kickoffs) =>
+    formatMatchdayDays(kickoffs, english: false);
+
+String formatMatchdayDays(Iterable<DateTime> kickoffs, {bool english = false}) {
   final days =
       kickoffs.map((dt) => DateTime(dt.year, dt.month, dt.day)).toSet().toList()
         ..sort((a, b) => a.compareTo(b));
@@ -53,14 +91,14 @@ String formatMatchdayDaysItalian(Iterable<DateTime> kickoffs) {
 
   if (sameMonth) {
     final parts = days
-        .map((d) => '${italianWeekdayName(d.weekday)} ${d.day}')
+        .map((d) => '${_weekdayName(d.weekday, english: english)} ${d.day}')
         .join(', ');
-    return '$parts ${italianMonthName(days.first.month)}';
+    return '$parts ${_monthName(days.first.month, english: english)}';
   } else {
     return days
         .map(
           (d) =>
-              '${italianWeekdayName(d.weekday)} ${d.day} ${italianMonthName(d.month)}',
+              '${_weekdayName(d.weekday, english: english)} ${d.day} ${_monthName(d.month, english: english)}',
         )
         .join(', ');
   }

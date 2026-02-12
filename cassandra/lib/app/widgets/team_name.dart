@@ -46,7 +46,8 @@ class TeamName extends StatelessWidget {
         width: logoSize,
         height: logoSize,
         fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => SizedBox(width: logoSize, height: logoSize),
+        errorBuilder: (context, error, stackTrace) =>
+            SizedBox(width: logoSize, height: logoSize),
       ),
     );
 
@@ -66,9 +67,7 @@ class TeamName extends StatelessWidget {
       mainAxisAlignment: reversed
           ? MainAxisAlignment.end
           : MainAxisAlignment.start,
-      children: reversed
-          ? [text, gap, logo]
-          : [logo, gap, text],
+      children: reversed ? [text, gap, logo] : [logo, gap, text],
     );
   }
 }

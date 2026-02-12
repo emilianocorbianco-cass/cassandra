@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../app/state/app_settings.dart';
+import '../../../app/state/cassandra_scope.dart';
 import '../../../app/widgets/team_name.dart';
 import '../models/pick_option.dart';
 import '../models/prediction_match.dart';
@@ -23,6 +25,12 @@ class PredictionMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+    final langCode = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    final en = langCode.toLowerCase().startsWith('en');
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Padding(
@@ -86,7 +94,10 @@ class PredictionMatchCard extends StatelessWidget {
             ),
 
             const SizedBox(height: 8),
-            Text('Doppia chance', style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              en ? 'Double chance' : 'Doppia chance',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 6),
 
             // Doppie
@@ -122,7 +133,7 @@ class PredictionMatchCard extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: locked ? null : onClear,
-                  child: const Text('Azzera scelta'),
+                  child: Text(en ? 'Clear pick' : 'Azzera scelta'),
                 ),
               ),
             ],

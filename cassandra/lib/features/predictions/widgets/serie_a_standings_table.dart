@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:cassandra/app/state/app_settings.dart';
+import 'package:cassandra/app/state/app_state.dart';
+import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/app/widgets/team_name.dart';
 import 'package:cassandra/services/api_football/models/api_football_standing.dart';
 
@@ -8,8 +11,17 @@ class SerieAStandingsTable extends StatelessWidget {
 
   final List<ApiFootballStanding> standings;
 
+  bool _isEnglish(BuildContext context, AppState app) {
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+    final en = _isEnglish(context, app);
     final textTheme = Theme.of(context).textTheme;
     final headerStyle = textTheme.labelSmall?.copyWith(
       fontWeight: FontWeight.w700,
@@ -24,7 +36,7 @@ class SerieAStandingsTable extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Classifica Serie A',
+              en ? 'Serie A Standings' : 'Classifica Serie A',
               style: textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
@@ -38,41 +50,43 @@ class SerieAStandingsTable extends StatelessWidget {
                 dataRowMaxHeight: 36,
                 columns: [
                   DataColumn(label: Text('#', style: headerStyle)),
-                  DataColumn(label: Text('Squadra', style: headerStyle)),
                   DataColumn(
-                    label: Text('PG', style: headerStyle),
+                    label: Text(en ? 'Team' : 'Squadra', style: headerStyle),
+                  ),
+                  DataColumn(
+                    label: Text(en ? 'MP' : 'PG', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('V', style: headerStyle),
+                    label: Text(en ? 'W' : 'V', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('P', style: headerStyle),
+                    label: Text(en ? 'D' : 'P', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('S', style: headerStyle),
+                    label: Text(en ? 'L' : 'S', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('GF', style: headerStyle),
+                    label: Text(en ? 'GF' : 'GF', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('GS', style: headerStyle),
+                    label: Text(en ? 'GA' : 'GS', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('DR', style: headerStyle),
+                    label: Text(en ? 'GD' : 'DR', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('Pt', style: headerStyle),
+                    label: Text(en ? 'Pts' : 'Pt', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text('Ultime 5', style: headerStyle),
+                    label: Text(en ? 'Last 5' : 'Ultime 5', style: headerStyle),
                   ),
                 ],
                 rows: standings.map((s) {
@@ -154,10 +168,7 @@ class _FormDots extends StatelessWidget {
           child: Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
         );
       }).toList(),

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../app/navigation/home_shell.dart';
+import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../auth/login_page.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -20,9 +22,24 @@ class _SplashScreenState extends State<SplashScreen> {
     // Splash più lunga: 900ms + 500ms = 1400ms
     _timer = Timer(const Duration(milliseconds: 1400), () {
       if (!mounted) return;
+
+      final app = CassandraScope.of(context);
+      final Widget destination;
+
+      if (app.authService == null) {
+        // dev mode: Firebase non configurato → vai diretto a HomeShell
+        destination = const HomeShell();
+      } else if (app.isAuthenticated) {
+        // sessione persistita → vai a HomeShell
+        destination = const HomeShell();
+      } else {
+        // non autenticato → mostra LoginPage
+        destination = const LoginPage();
+      }
+
       Navigator.of(
         context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+      ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
     });
   }
 

@@ -81,12 +81,8 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
                   const SizedBox(width: 6),
                   AvatarWithBadges(
                     radius: 18,
-                    backgroundColor: _avatarColorFromSeed(
-                      e.member.avatarSeed,
-                    ),
-                    text: e.member.displayName
-                        .substring(0, 1)
-                        .toUpperCase(),
+                    backgroundColor: _avatarColorFromSeed(e.member.avatarSeed),
+                    text: e.member.displayName.substring(0, 1).toUpperCase(),
                     badges: badges,
                   ),
                 ],

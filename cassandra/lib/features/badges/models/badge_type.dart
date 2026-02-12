@@ -32,4 +32,18 @@ extension BadgeTypeX on BadgeType {
         return 'Loser';
     }
   }
+
+  String title({required bool english}) {
+    if (!english) return titleIt;
+    switch (this) {
+      case BadgeType.crown:
+        return 'King\'s Crown';
+      case BadgeType.eyes:
+        return 'Cassandra\'s Eyes';
+      case BadgeType.owl:
+        return 'Owl';
+      case BadgeType.loser:
+        return 'Loser';
+    }
+  }
 }
