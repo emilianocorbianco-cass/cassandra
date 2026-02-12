@@ -9,6 +9,7 @@ import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
+import '../scoring/ranking_rules.dart';
 import '../scoring/scoring_engine.dart';
 import '../scoring/models/score_breakdown.dart';
 import 'mock_group_data.dart';
@@ -115,15 +116,14 @@ class GroupMatchdayPage extends StatelessWidget {
     }).toList();
 
     rows.sort((a, b) {
-      final t = b.day.total.compareTo(a.day.total);
-      if (t != 0) return t;
-
-      final aAvg = a.day.averageOddsPlayed ?? -1;
-      final bAvg = b.day.averageOddsPlayed ?? -1;
-      final o = bAvg.compareTo(aAvg);
-      if (o != 0) return o;
-
-      return a.member.teamName.compareTo(b.member.teamName);
+      return compareCassandraRanking(
+        aTotal: a.day.total,
+        bTotal: b.day.total,
+        aAverageOddsPlayed: a.day.averageOddsPlayed,
+        bAverageOddsPlayed: b.day.averageOddsPlayed,
+        aTeamName: a.member.teamName,
+        bTeamName: b.member.teamName,
+      );
     });
 
     final uid = appState.profile.id;

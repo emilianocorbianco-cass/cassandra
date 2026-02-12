@@ -1,5 +1,6 @@
 import '../leaderboards/models/member_matchday_score.dart';
 import '../leaderboards/models/season_leaderboard_entry.dart';
+import '../scoring/ranking_rules.dart';
 import 'badge_engine.dart';
 import 'models/badge_counts.dart';
 
@@ -46,15 +47,14 @@ class CassandraTrophyEngine {
 
       // Ranking della giornata: totale desc, poi quota media desc, poi teamName
       participants.sort((a, b) {
-        final t = b.score.day.total.compareTo(a.score.day.total);
-        if (t != 0) return t;
-
-        final aOdds = a.score.day.averageOddsPlayed ?? -1;
-        final bOdds = b.score.day.averageOddsPlayed ?? -1;
-        final oddsCmp = bOdds.compareTo(aOdds);
-        if (oddsCmp != 0) return oddsCmp;
-
-        return a.entry.member.teamName.compareTo(b.entry.member.teamName);
+        return compareCassandraRanking(
+          aTotal: a.score.day.total,
+          bTotal: b.score.day.total,
+          aAverageOddsPlayed: a.score.day.averageOddsPlayed,
+          bAverageOddsPlayed: b.score.day.averageOddsPlayed,
+          aTeamName: a.entry.member.teamName,
+          bTeamName: b.entry.member.teamName,
+        );
       });
 
       // Matchday (uguale per tutti i partecipanti)

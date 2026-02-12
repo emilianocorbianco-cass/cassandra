@@ -3,6 +3,7 @@ import 'dart:math';
 import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
+import '../scoring/ranking_rules.dart';
 import '../scoring/scoring_engine.dart';
 
 import 'models/group_leaderboard_entry.dart';
@@ -158,15 +159,14 @@ List<GroupLeaderboardEntry> buildSortedMockGroupLeaderboard({
   }).toList();
 
   entries.sort((a, b) {
-    final t = b.day.total.compareTo(a.day.total);
-    if (t != 0) return t;
-
-    final aAvg = a.day.averageOddsPlayed ?? -1;
-    final bAvg = b.day.averageOddsPlayed ?? -1;
-    final avgCmp = bAvg.compareTo(aAvg);
-    if (avgCmp != 0) return avgCmp;
-
-    return a.member.teamName.compareTo(b.member.teamName);
+    return compareCassandraRanking(
+      aTotal: a.day.total,
+      bTotal: b.day.total,
+      aAverageOddsPlayed: a.day.averageOddsPlayed,
+      bAverageOddsPlayed: b.day.averageOddsPlayed,
+      aTeamName: a.member.teamName,
+      bTeamName: b.member.teamName,
+    );
   });
 
   return entries;

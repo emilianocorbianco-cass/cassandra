@@ -11,6 +11,7 @@ import '../group/mock_group_data.dart';
 import '../group/models/group_member.dart';
 import '../predictions/models/formatters.dart';
 import '../scoring/models/score_breakdown.dart';
+import '../scoring/ranking_rules.dart';
 import 'matchday_leaderboard_page.dart';
 import 'member_season_page.dart';
 import 'mock_season_data.dart';
@@ -153,15 +154,14 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
 
     list.sort((a, b) {
       if (_generalMode == _GeneralMode.points) {
-        final t = b.totalPoints.compareTo(a.totalPoints);
-        if (t != 0) return t;
-
-        final ao = a.averageOddsPlayed ?? -1;
-        final bo = b.averageOddsPlayed ?? -1;
-        final o = bo.compareTo(ao);
-        if (o != 0) return o;
-
-        return a.member.teamName.compareTo(b.member.teamName);
+        return compareCassandraRanking(
+          aTotal: a.totalPoints,
+          bTotal: b.totalPoints,
+          aAverageOddsPlayed: a.averageOddsPlayed,
+          bAverageOddsPlayed: b.averageOddsPlayed,
+          aTeamName: a.member.teamName,
+          bTeamName: b.member.teamName,
+        );
       } else {
         final t = b.averagePerMatchday.compareTo(a.averagePerMatchday);
         if (t != 0) return t;

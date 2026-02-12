@@ -11,6 +11,7 @@ import 'models/member_matchday_score.dart';
 import '../badges/badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
 import '../profile/user_hub_page.dart';
+import '../scoring/ranking_rules.dart';
 
 class MatchdayLeaderboardPage extends StatelessWidget {
   final MatchdayData matchday;
@@ -57,15 +58,14 @@ class MatchdayLeaderboardPage extends StatelessWidget {
     }
 
     rows.sort((a, b) {
-      final t = b.score.day.total.compareTo(a.score.day.total);
-      if (t != 0) return t;
-
-      final aAvg = a.score.day.averageOddsPlayed ?? -1;
-      final bAvg = b.score.day.averageOddsPlayed ?? -1;
-      final avgCmp = bAvg.compareTo(aAvg);
-      if (avgCmp != 0) return avgCmp;
-
-      return a.entry.member.teamName.compareTo(b.entry.member.teamName);
+      return compareCassandraRanking(
+        aTotal: a.score.day.total,
+        bTotal: b.score.day.total,
+        aAverageOddsPlayed: a.score.day.averageOddsPlayed,
+        bAverageOddsPlayed: b.score.day.averageOddsPlayed,
+        aTeamName: a.entry.member.teamName,
+        bTeamName: b.entry.member.teamName,
+      );
     });
 
     final daysLabel = formatMatchdayDays(
