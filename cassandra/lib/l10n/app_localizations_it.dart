@@ -21,13 +21,15 @@ class AppLocalizationsIt extends AppLocalizations {
   String get loginSignInError => 'Errore di accesso. Riprova.';
 
   @override
-  String get loginPrivacyNotice => 'Usiamo solo il minimo necessario per identificarti.';
+  String get loginPrivacyNotice =>
+      'Usiamo solo il minimo necessario per identificarti.';
 
   @override
   String get createGroupTitle => 'Crea il tuo gruppo';
 
   @override
-  String get createGroupSubtitle => 'Sfida i tuoi amici sui pronostici di Serie A';
+  String get createGroupSubtitle =>
+      'Sfida i tuoi amici sui pronostici di Serie A';
 
   @override
   String get createGroupTapAddPhoto => 'Tocca per aggiungere foto';
@@ -68,7 +70,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get joinGroupTitle => 'Unisciti a un gruppo';
 
   @override
-  String get joinGroupEnterInviteCode => 'Inserisci il codice invito del gruppo';
+  String get joinGroupEnterInviteCode =>
+      'Inserisci il codice invito del gruppo';
 
   @override
   String get joinGroupInviteCode => 'Codice invito';
@@ -98,7 +101,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupDefaultName => 'Cassandra Crew';
 
   @override
-  String get groupSampleDataBanner => 'Dati di esempio - unisciti a un gruppo per vedere dati reali';
+  String get groupSampleDataBanner =>
+      'Dati di esempio - unisciti a un gruppo per vedere dati reali';
 
   @override
   String get groupDataRefreshing => 'aggiornamento...';
@@ -134,7 +138,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupMatchdays => 'giornate';
 
   @override
-  String get groupHistoryDemoCard => 'Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.';
+  String get groupHistoryDemoCard =>
+      'Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.';
 
   @override
   String groupMatchdayTitle(Object dayNumber) {
@@ -164,10 +169,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsResetDone => 'Ripristinato';
 
   @override
-  String get settingsBackendNotConfigured => 'Backend non configurato su questo device';
+  String get settingsBackendNotConfigured =>
+      'Backend non configurato su questo device';
 
   @override
-  String get settingsNoBackendDataCurrentMatchday => 'Nessun dato backend disponibile per la giornata corrente';
+  String get settingsNoBackendDataCurrentMatchday =>
+      'Nessun dato backend disponibile per la giornata corrente';
 
   @override
   String get settingsCacheRefreshedFromBackend => 'Cache aggiornata da backend';
@@ -176,7 +183,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsCacheRefreshError => 'Errore aggiornando da backend';
 
   @override
-  String get settingsDevModeNoFirebase => 'Modalita sviluppo - Firebase non configurato';
+  String get settingsDevModeNoFirebase =>
+      'Modalita sviluppo - Firebase non configurato';
 
   @override
   String get settingsSignOut => 'Esci';
@@ -197,7 +205,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsCancel => 'Annulla';
 
   @override
-  String get settingsDeleteAccountQuestion => 'Questa azione e irreversibile. Vuoi continuare?';
+  String get settingsDeleteAccountQuestion =>
+      'Questa azione e irreversibile. Vuoi continuare?';
 
   @override
   String get settingsDelete => 'Elimina';
@@ -316,7 +325,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsAdminApprovalTitle => 'Approvazione admin';
 
   @override
-  String get settingsAdminApprovalSubtitle => 'Solo l\'admin puo accettare nuovi membri';
+  String get settingsAdminApprovalSubtitle =>
+      'Solo l\'admin puo accettare nuovi membri';
 
   @override
   String get settingsAccount => 'Account';
@@ -334,7 +344,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsLanguageEn => 'EN';
 
   @override
-  String get settingsTranslationNote => 'Nota: le traduzioni vengono aggiornate continuamente.';
+  String get settingsTranslationNote =>
+      'Nota: le traduzioni vengono aggiornate continuamente.';
 
   @override
   String get settingsPicksPrivacyDefault => 'Privacy pronostici (default)';
@@ -349,7 +360,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsPrivacyPrivate => 'Privato';
 
   @override
-  String get settingsPrivacyNote => 'Questa preferenza verra usata quando collegheremo invio pronostici + backend.';
+  String get settingsPrivacyNote =>
+      'Questa preferenza verra usata quando collegheremo invio pronostici + backend.';
 
   @override
   String get settingsDiagnostics => 'Diagnostica';
@@ -361,13 +373,15 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsRefreshCacheNowTitle => 'Aggiorna cache ora';
 
   @override
-  String get settingsRefreshCacheNowSubtitle => 'Legge la matchday corrente dalla cache backend.';
+  String get settingsRefreshCacheNowSubtitle =>
+      'Legge la matchday corrente dalla cache backend.';
 
   @override
   String get settingsClearFixturesCacheTitle => 'Svuota cache fixtures';
 
   @override
-  String get settingsClearFixturesCacheSubtitle => 'Torna ai dati demo locali fino al prossimo refresh.';
+  String get settingsClearFixturesCacheSubtitle =>
+      'Torna ai dati demo locali fino al prossimo refresh.';
 
   @override
   String get settingsCacheCleared => 'Cache svuotata';
@@ -376,7 +390,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsBackendDiagnosticsTitle => 'Diagnostica backend';
 
   @override
-  String get settingsBackendDiagnosticsSubtitle => 'Verifica cache matchday letta da Firestore.';
+  String get settingsBackendDiagnosticsSubtitle =>
+      'Verifica cache matchday letta da Firestore.';
 
   @override
   String get settingsSave => 'Salva';
@@ -397,10 +412,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predHistoryTitle => 'Storico pronostici';
 
   @override
-  String get predHistoryInfo => 'Qui trovi le giornate che hai salvato/inviato.\nSe non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.';
+  String get predHistoryInfo =>
+      'Qui trovi le giornate che hai salvato/inviato.\nSe non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.';
 
   @override
-  String get predHistoryEmpty => 'Nessuna giornata salvata.\nVai su Pronostici e invia almeno una giornata per vederla qui.';
+  String get predHistoryEmpty =>
+      'Nessuna giornata salvata.\nVai su Pronostici e invia almeno una giornata per vederla qui.';
 
   @override
   String get predHistoryTagSaved => 'SALVATI';
@@ -447,7 +464,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get leaderboardsTitle => 'Classifiche';
 
   @override
-  String get leaderboardsDemoBanner => 'Dati di esempio - i dati reali appariranno dopo il primo invio';
+  String get leaderboardsDemoBanner =>
+      'Dati di esempio - i dati reali appariranno dopo il primo invio';
 
   @override
   String get leaderboardsDataRefreshing => 'aggiornamento...';
@@ -656,7 +674,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsInvalidStatus => 'non valida';
 
   @override
-  String get predictionsPickLockedSnack => 'Partita gia iniziata: pick bloccato';
+  String get predictionsPickLockedSnack =>
+      'Partita gia iniziata: pick bloccato';
 
   @override
   String predictionsMissingConfirm(Object missing) {
@@ -723,7 +742,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsTagRecoveries => 'RECUPERI';
 
   @override
-  String get predictionsHistoryDemoInfo => 'Storico pronostici (DEMO)\nQui mostriamo 16-19 dai mock. La giornata corrente e visibile sopra (LIVE/DEMO).';
+  String get predictionsHistoryDemoInfo =>
+      'Storico pronostici (DEMO)\nQui mostriamo 16-19 dai mock. La giornata corrente e visibile sopra (LIVE/DEMO).';
 
   @override
   String get predictionsPicksLocked => 'giocate bloccate';
@@ -734,7 +754,14 @@ class AppLocalizationsIt extends AppLocalizations {
   }
 
   @override
-  String predictionsScoreSummary(Object total, Object base, Object bonus, Object correct, Object count, Object avgOdds) {
+  String predictionsScoreSummary(
+    Object total,
+    Object base,
+    Object bonus,
+    Object correct,
+    Object count,
+    Object avgOdds,
+  ) {
     return 'punti: $total (base $base • bonus $bonus) • corretti $correct/$count • quota media $avgOdds';
   }
 
@@ -751,7 +778,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsForceDemoData => 'Forza dati demo';
 
   @override
-  String get predictionsSampleDataBanner => 'Dati di esempio - attendi sincronizzazione backend';
+  String get predictionsSampleDataBanner =>
+      'Dati di esempio - attendi sincronizzazione backend';
 
   @override
   String get predictionsPastSegment => 'pronostici passati';
@@ -760,7 +788,11 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsUpcomingSegment => 'pronostici futuri';
 
   @override
-  String predictionsDebugShifted(Object shifted, Object under48, Object over48) {
+  String predictionsDebugShifted(
+    Object shifted,
+    Object under48,
+    Object over48,
+  ) {
     return 'debug: shiftate $shifted • <48h $under48 • >48h $over48';
   }
 
@@ -792,7 +824,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsBaseLabel => 'Base';
 
   @override
-  String get predictionsDataDemoFixturesNotSaved => 'Dati: DEMO (fixture non storicizzate)';
+  String get predictionsDataDemoFixturesNotSaved =>
+      'Dati: DEMO (fixture non storicizzate)';
 
   @override
   String get predictionsDataSaved => 'Dati: salvati';
@@ -801,10 +834,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsOutcomePending => 'in attesa';
 
   @override
-  String get settingsDiagNoMatchdayDoc => 'Nessun documento matchday trovato in Firestore.';
+  String get settingsDiagNoMatchdayDoc =>
+      'Nessun documento matchday trovato in Firestore.';
 
   @override
-  String get settingsDiagSourceFirestore => 'Sorgente: Firestore /seasons/<season>/matchdays/<day>';
+  String get settingsDiagSourceFirestore =>
+      'Sorgente: Firestore /seasons/<season>/matchdays/<day>';
 
   @override
   String settingsDiagSeasonKey(Object value) {
