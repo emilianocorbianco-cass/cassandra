@@ -4,14 +4,12 @@ import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:flutter/material.dart';
 
 import 'api_football_diagnostics_page.dart';
-import 'package:cassandra/app/config/env.dart';
-import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
+import 'package:cassandra/features/auth/login_page.dart';
 import 'package:cassandra/features/predictions/models/formatters.dart';
-import 'package:cassandra/services/api_football/api_football_client.dart';
-import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/features/group/mock_group_data.dart';
 import 'package:cassandra/features/group/models/group_member.dart';
 import 'package:cassandra/features/predictions/models/pick_option.dart';
+import 'package:cassandra/features/group/widgets/group_image_picker.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -101,58 +99,223 @@ class _SettingsPageState extends State<SettingsPage> {
 
     setState(() => _fixturesRefreshing = true);
 
-    String? key;
-    try {
-      key = Env.apiFootballKey;
-    } catch (_) {
-      key = null;
-    }
-
-    if (key == null || key.trim().isEmpty) {
+    final fs = app.firestoreService;
+    if (fs == null) {
       messenger.showSnackBar(
-        SnackBar(content: Text(_t(app, 'API key mancante', 'Missing API key'))),
+        SnackBar(
+          content: Text(
+            _t(
+              app,
+              'Backend non configurato su questo device',
+              'Backend not configured on this device',
+            ),
+          ),
+        ),
       );
       if (mounted) setState(() => _fixturesRefreshing = false);
       return;
     }
 
-    final client = ApiFootballClient(
-      apiKey: key,
-      baseUrl: Env.baseUrl,
-      useRapidApi: Env.useRapidApi,
-      rapidApiHost: Env.rapidApiHost,
-    );
-
     try {
-      final service = ApiFootballService(client);
-      final fixtures = await service.getNextSerieAFixtures(count: 10);
-      final matches = predictionMatchesFromFixtures(
-        fixtures,
-        useMockIds: false,
+      final doc = await fs.getMatchdayData(
+        seasonKey: app.currentSeasonKey,
+        dayNumber: app.cassandraMatchdayCursor,
       );
+      if (doc == null || doc.matches.isEmpty) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              _t(
+                app,
+                'Nessun dato backend disponibile per la giornata corrente',
+                'No backend data available for the current matchday',
+              ),
+            ),
+          ),
+        );
+        return;
+      }
 
       app.setCachedPredictionMatches(
-        matches,
+        doc.matches,
         isReal: true,
-        updatedAt: DateTime.now(),
+        updatedAt: doc.updatedAt,
       );
+      app.setCachedPredictionOutcomesByMatchId(doc.outcomesByMatchId);
 
       messenger.showSnackBar(
         SnackBar(
-          content: Text(_t(app, 'Fixtures aggiornate', 'Fixtures updated')),
+          content: Text(
+            _t(
+              app,
+              'Cache aggiornata da backend',
+              'Cache refreshed from backend',
+            ),
+          ),
         ),
       );
     } catch (_) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            _t(app, 'Errore aggiornando fixtures', 'Error refreshing fixtures'),
+            _t(
+              app,
+              'Errore aggiornando da backend',
+              'Error refreshing from backend',
+            ),
           ),
         ),
       );
     } finally {
-      client.close();
       if (mounted) setState(() => _fixturesRefreshing = false);
+    }
+  }
+
+  Widget _buildAccountSection(AppState app) {
+    // Firebase non configurato (dev mode)
+    if (app.authService == null) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.info_outline),
+          title: Text(
+            _t(
+              app,
+              'Modalita\u0027 sviluppo — Firebase non configurato',
+              'Dev mode — Firebase not configured',
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Autenticato
+    if (app.isAuthenticated) {
+      return Card(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: Text(app.profile.displayName),
+              subtitle: app.profile.email != null
+                  ? Text(app.profile.email!)
+                  : null,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: Text(_t(app, 'Esci', 'Sign out')),
+              onTap: () => _confirmSignOut(app),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.delete_forever, color: Colors.red),
+              title: Text(
+                _t(app, 'Elimina account', 'Delete account'),
+                style: const TextStyle(color: Colors.red),
+              ),
+              onTap: () => _confirmDeleteAccount(app),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Non autenticato ma Firebase configurato
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.login),
+        title: Text(_t(app, 'Accedi', 'Sign in')),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const LoginPage()));
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmSignOut(AppState app) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_t(app, 'Conferma', 'Confirm')),
+        content: Text(
+          _t(app, 'Vuoi uscire dal tuo account?', 'Sign out of your account?'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(_t(app, 'Annulla', 'Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(_t(app, 'Esci', 'Sign out')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await app.signOut();
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
+  Future<void> _confirmDeleteAccount(AppState app) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_t(app, 'Elimina account', 'Delete account')),
+        content: Text(
+          _t(
+            app,
+            'Questa azione e\u0027 irreversibile. Vuoi continuare?',
+            'This action is irreversible. Continue?',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(_t(app, 'Annulla', 'Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text(_t(app, 'Elimina', 'Delete')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await app.deleteAccount();
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              app,
+              'Errore: riaccedi e riprova.',
+              'Error: sign in again and retry.',
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -163,7 +326,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final dataLabel = !hasFixturesCache
         ? _t(app, 'cache: vuota', 'cache: empty')
         : (app.cachedPredictionMatchesAreReal
-              ? _t(app, 'dati: reali (API)', 'data: real (API)')
+              ? _t(app, 'dati: cache backend', 'data: backend cache')
               : _t(app, 'dati: demo', 'data: demo'));
     final updatedLabel = app.cachedPredictionMatchesUpdatedAt != null
         ? ' • ${_t(app, 'agg.', 'upd.')} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
@@ -186,7 +349,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   final outcomesCount =
                       app.cachedPredictionOutcomesByMatchId.length;
                   final kind = app.cachedPredictionMatchesAreReal
-                      ? 'reali (API)'
+                      ? 'cache backend'
                       : (matchCount > 0 ? 'demo' : 'vuota');
                   final updated = app.cachedPredictionMatchesUpdatedAt;
                   String fmt(DateTime dt) {
@@ -264,111 +427,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                   const SizedBox(height: 8),
                                   Text(
                                     'picks simulati salvati: ${app.memberPicksByMemberId.length}',
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Card(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Builder(
-                                        builder: (context) {
-                                          final app = CassandraScope.of(
-                                            context,
-                                          );
-                                          final matches =
-                                              app.cachedPredictionMatches;
-                                          final canSim =
-                                              matches != null &&
-                                              matches.isNotEmpty;
-                                          final simCount =
-                                              app
-                                                  .simulatedOutcomesByMatchId
-                                                  ?.length ??
-                                              0;
-                                          final on =
-                                              app.useSimulatedOutcomes &&
-                                              simCount > 0;
-
-                                          void snack(String msg) {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(content: Text(msg)),
-                                            );
-                                          }
-
-                                          return Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'Simulazione risultati',
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.titleMedium,
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                'simulati: $simCount • stato: ${on ? 'ON' : 'OFF'}',
-                                              ),
-                                              const SizedBox(height: 12),
-                                              Wrap(
-                                                spacing: 8,
-                                                runSpacing: 8,
-                                                children: [
-                                                  FilledButton.tonal(
-                                                    onPressed: canSim
-                                                        ? () {
-                                                            app.debugSimulateOutcomesForCachedMatches(
-                                                              enable: true,
-                                                            );
-                                                            snack(
-                                                              'Outcomes simulati creati (TEST)',
-                                                            );
-                                                          }
-                                                        : null,
-                                                    child: const Text(
-                                                      'Crea simulazione',
-                                                    ),
-                                                  ),
-                                                  FilledButton.tonal(
-                                                    onPressed: simCount > 0
-                                                        ? () {
-                                                            app.setUseSimulatedOutcomes(
-                                                              !app.useSimulatedOutcomes,
-                                                            );
-                                                            snack(
-                                                              app.useSimulatedOutcomes
-                                                                  ? 'Simulazione ON'
-                                                                  : 'Simulazione OFF',
-                                                            );
-                                                          }
-                                                        : null,
-                                                    child: Text(
-                                                      app.useSimulatedOutcomes
-                                                          ? 'Simulazione: ON'
-                                                          : 'Simulazione: OFF',
-                                                    ),
-                                                  ),
-                                                  FilledButton.tonal(
-                                                    onPressed: simCount > 0
-                                                        ? () {
-                                                            app.clearSimulatedOutcomes();
-                                                            snack(
-                                                              'Ripristinati outcomes reali',
-                                                            );
-                                                          }
-                                                        : null,
-                                                    child: const Text(
-                                                      'Ripristina reali',
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                    ),
                                   ),
                                   const SizedBox(height: 12),
                                   Wrap(
@@ -462,16 +520,6 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                             child: const Text('Svuota outcomes'),
                           ),
-                          FilledButton.tonal(
-                            onPressed: matchCount > 0
-                                ? () {
-                                    app.debugSimulateOutcomesForCachedMatches();
-                                    snack('Risultati simulati (TEST)');
-                                  }
-                                : null,
-                            child: const Text('Simula risultati'),
-                          ),
-
                           FilledButton(
                             onPressed: () {
                               app.clearAllPredictionCache();
@@ -510,6 +558,64 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
+          if (app.hasGroup) ...[
+            const SizedBox(height: 24),
+            Text(
+              _t(app, 'Gruppo', 'Group'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: GroupImageDisplay(
+                      imagePath: app.groupImagePath,
+                      radius: 20,
+                    ),
+                    title: Text(_t(app, 'Immagine del gruppo', 'Group image')),
+                    subtitle: Text(
+                      _t(
+                        app,
+                        'Tocca per cambiare la foto',
+                        'Tap to change the photo',
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      final path =
+                          await GroupImageHelper.pickAndSaveGroupImage();
+                      if (path != null) {
+                        app.updateGroupImagePath(path);
+                      }
+                    },
+                  ),
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    title: Text(
+                      _t(app, 'Approvazione admin', 'Admin approval'),
+                    ),
+                    subtitle: Text(
+                      _t(
+                        app,
+                        'Solo l\'admin può accettare nuovi membri',
+                        'Only the admin can accept new members',
+                      ),
+                    ),
+                    value: app.groupAdminApproval,
+                    onChanged: (value) {
+                      app.updateGroupAdminApproval(value);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 24),
+          Text('Account', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          _buildAccountSection(app),
           const SizedBox(height: 24),
           Text(
             _t(app, 'Lingua', 'Language'),
@@ -601,13 +707,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   leading: const Icon(Icons.refresh),
                   title: Text(
-                    _t(app, 'Aggiorna fixtures ora', 'Refresh fixtures now'),
+                    _t(app, 'Aggiorna cache ora', 'Refresh cache now'),
                   ),
                   subtitle: Text(
                     _t(
                       app,
-                      'Scarica i prossimi 10 match di Serie A e aggiorna la cache.',
-                      'Fetch next 10 Serie A matches and update cache.',
+                      'Legge la matchday corrente dalla cache backend.',
+                      'Reads current matchday from backend cache.',
                     ),
                   ),
                   trailing: _fixturesRefreshing
@@ -628,8 +734,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: Text(
                     _t(
                       app,
-                      'Torna ai dati demo fino al prossimo refresh.',
-                      'Fallback to demo data until next refresh.',
+                      'Torna ai dati demo locali fino al prossimo refresh.',
+                      'Fallback to local demo data until next refresh.',
                     ),
                   ),
                   onTap: () {
@@ -649,12 +755,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
           Card(
             child: ListTile(
-              title: Text(_t(app, 'Test API-FOOTBALL', 'Test API-FOOTBALL')),
+              title: Text(
+                _t(app, 'Diagnostica backend', 'Backend diagnostics'),
+              ),
               subtitle: Text(
                 _t(
                   app,
-                  'Verifica chiave e chiamate base (fixtures).',
-                  'Verify key and basic calls (fixtures).',
+                  'Verifica cache matchday letta da Firestore.',
+                  'Verify matchday cache loaded from Firestore.',
                 ),
               ),
               trailing: const Icon(Icons.chevron_right),

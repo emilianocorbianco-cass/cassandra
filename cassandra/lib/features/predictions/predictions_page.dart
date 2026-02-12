@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../app/widgets/demo_banner.dart';
 import '../../app/widgets/team_name.dart';
 import 'models/mock_prediction_data.dart';
 import 'models/pick_option.dart';
@@ -10,21 +11,15 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/scoring_engine.dart';
-import 'package:cassandra/app/config/env.dart';
-import 'package:cassandra/services/api_football/api_football_client.dart';
-import 'package:cassandra/services/api_football/api_football_service.dart';
-import 'package:cassandra/services/api_football/models/api_football_standing.dart';
-import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
+import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show computeMatchdayProgress;
-import '../scoring/adapters/api_football_outcome_adapter.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
 import 'predictions_matchday_page.dart';
 import 'predictions_history_page.dart';
 import '../scoring/models/score_breakdown.dart';
-import 'widgets/serie_a_standings_table.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -40,10 +35,18 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   bool _isLoadingRealFixtures = false;
 
-  List<ApiFootballStanding>? _standings;
-
   @override
   bool get wantKeepAlive => true;
+
+  bool _isEnglish() {
+    final app = CassandraScope.of(context);
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
+  String _t(String it, String en) => _isEnglish() ? en : it;
 
   bool _didLoadRealFixtures = false;
 
@@ -59,14 +62,15 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (cached != null && !appState.cachedPredictionMatchesAreReal) {
       return cached;
     }
-    return _matches;
+    if (_matches.isNotEmpty) return _matches;
+    return cached ?? _matches;
   }
 
   String get matchdayLabel {
     final appState = CassandraScope.of(context);
     if (demoActive) {
-      return 'giornata ${appState.uiMatchdayNumber} - '
-          '${formatMatchdayDaysItalian(matches.map((m) => m.kickoff))}';
+      return '${_t('giornata', 'matchday')} ${appState.uiMatchdayNumber} - '
+          '${formatMatchdayDays(matches.map((m) => m.kickoff), english: _isEnglish())}';
     }
     return _matchdayLabel;
   }
@@ -77,6 +81,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (demoActive) return CassandraScope.of(context).uiMatchdayNumber;
     return _shownMatchdayNumber ?? _matchdayNumber;
   }
+
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
   bool _loadingFixtures = false;
@@ -108,8 +113,20 @@ class _PredictionsPageState extends State<PredictionsPage>
     super.didChangeDependencies();
     if (_didLoadRealFixtures) return;
     _didLoadRealFixtures = true;
+
+    // Se home_shell ha già caricato dati reali in cache, sincronizziamo subito
+    // lo stato locale così il badge "dati: reali" appare immediatamente.
+    final scope = CassandraScope.of(context);
+    final cached = scope.cachedPredictionMatches;
+    if (cached != null &&
+        cached.isNotEmpty &&
+        scope.cachedPredictionMatchesAreReal) {
+      _usingRealFixtures = true;
+      _fixturesUpdatedAt =
+          scope.cachedPredictionMatchesUpdatedAt ?? DateTime.now();
+    }
+
     if (_didLoadFixtures) return;
-    _didLoadFixtures = true;
     _tryLoadRealFixturesOnce();
   }
 
@@ -122,14 +139,19 @@ class _PredictionsPageState extends State<PredictionsPage>
     return appState.currentUserPicksByMatchId[matchId] ?? PickOption.none;
   }
 
-  int get _pickedCount => _matches.where((m) => !_pickFor(m.id).isNone).length;
-  int get _missingCount => _matches.length - _pickedCount;
-  DateTime get _firstKickoff =>
-      _matches.map((m) => m.kickoff).reduce((a, b) => a.isBefore(b) ? a : b);
-  DateTime get _lockTime => _firstKickoff.subtract(const Duration(minutes: 30));
-  bool get _locked => DateTime.now().isAfter(_lockTime);
+  int get _pickedCount => matches.where((m) => !_pickFor(m.id).isNone).length;
+  int get _missingCount => matches.length - _pickedCount;
+  DateTime? get _firstKickoff => matches.isEmpty
+      ? null
+      : matches.map((m) => m.kickoff).reduce((a, b) => a.isBefore(b) ? a : b);
+  DateTime? get _lockTime =>
+      _firstKickoff?.subtract(const Duration(minutes: 30));
+  bool get _locked => _lockTime != null && DateTime.now().isAfter(_lockTime!);
   String get _matchdayLabel {
-    final daysLabel = formatMatchdayDaysItalian(_matches.map((m) => m.kickoff));
+    final daysLabel = formatMatchdayDays(
+      matches.map((m) => m.kickoff),
+      english: _isEnglish(),
+    );
     final appState = CassandraScope.of(context);
     final progress = appState.matchdayProgressFor(_effectiveMatchdayNumber);
     final status = progress == null
@@ -138,9 +160,9 @@ class _PredictionsPageState extends State<PredictionsPage>
               ' • P:${progress.primaryDone ? "OK" : "..."}'
               ' • F:${progress.finalDone ? "OK" : "..."}'
               ' • ${progress.playedFixtures}/${progress.totalFixtures}'
-              '${progress.voidFixtures > 0 ? " • nulle ${progress.voidFixtures}" : ""}'
-              ' • ${progress.isValidMatchday ? "valida" : "non valida"}';
-    return 'giornata $_effectiveMatchdayNumber - $daysLabel$status';
+              '${progress.voidFixtures > 0 ? " • ${_t('nulle', 'void')} ${progress.voidFixtures}" : ""}'
+              ' • ${progress.isValidMatchday ? _t("valida", "valid") : _t("non valida", "invalid")}';
+    return '${_t('giornata', 'matchday')} $_effectiveMatchdayNumber - $daysLabel$status';
   }
 
   double? _oddsForPick(PredictionMatch match, PickOption pick) {
@@ -176,13 +198,20 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   void _setPick(String matchId, PickOption pick) {
     // Lock: non permettere modifiche ai pick se la partita è già iniziata.
-    final PredictionMatch? match = _matches.cast<PredictionMatch?>().firstWhere(
+    final PredictionMatch? match = matches.cast<PredictionMatch?>().firstWhere(
       (m) => m?.id == matchId,
       orElse: () => null,
     );
     if (match != null && DateTime.now().isAfter(match.kickoff)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Partita già iniziata: pick bloccato')),
+        SnackBar(
+          content: Text(
+            _t(
+              'Partita già iniziata: pick bloccato',
+              'Match already started: pick locked',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -201,14 +230,20 @@ class _PredictionsPageState extends State<PredictionsPage>
       builder: (context) {
         return AlertDialog(
           content: Text(
-            'Hai lasciato $missing partite senza pronostico.\n\n'
-            'Regola Cassandra: per ogni partita non giocata verrà applicata '
-            'una penalità pari a -quota più alta (tra 1/X/2) in fase di calcolo.\n\n'
-            'Vuoi inviare comunque?',
+            _t(
+              'Hai lasciato $missing partite senza pronostico.\n\n'
+                  'Regola Cassandra: per ogni partita non giocata verrà applicata '
+                  'una penalità pari a -quota più alta (tra 1/X/2) in fase di calcolo.\n\n'
+                  'Vuoi inviare comunque?',
+              'You left $missing matches without a prediction.\n\n'
+                  'Cassandra rule: for each unplayed match a penalty equal to '
+                  '-highest odds (among 1/X/2) will be applied when scoring.\n\n'
+                  'Submit anyway?',
+            ),
           ),
           actions: [
             IconButton(
-              tooltip: 'Storico',
+              tooltip: _t('Storico', 'History'),
               icon: const Icon(Icons.history),
               onPressed: () {
                 Navigator.of(context).push(
@@ -220,11 +255,11 @@ class _PredictionsPageState extends State<PredictionsPage>
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Annulla'),
+              child: Text(_t('Annulla', 'Cancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Invia comunque'),
+              child: Text(_t('Invia comunque', 'Submit anyway')),
             ),
           ],
         );
@@ -247,10 +282,17 @@ class _PredictionsPageState extends State<PredictionsPage>
       _submittedAt = DateTime.now();
     });
     final label = visibility == VisibilityChoice.public
-        ? 'pubblica'
-        : 'privata';
+        ? _t('pubblica', 'public')
+        : _t('privata', 'private');
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Schedina inviata (visibilità: $label)')),
+      SnackBar(
+        content: Text(
+          _t(
+            'Schedina inviata (visibilità: $label)',
+            'Slip submitted (visibility: $label)',
+          ),
+        ),
+      ),
     );
     // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
     final appState = CassandraScope.of(context);
@@ -263,12 +305,12 @@ class _PredictionsPageState extends State<PredictionsPage>
     );
     await appState.saveMatchdayMatchesSnapshot(
       matchdayNumber: _effectiveMatchdayNumber,
-      matches: _matches,
+      matches: matches,
     );
     appState.ensureMatchesHistoryLoaded();
     appState.saveMatchesHistory(
       matchdayNumber: _effectiveMatchdayNumber,
-      matches: _matches,
+      matches: matches,
     );
     // Se abbiamo outcomes disponibili, salvali anche nello storico (per punteggi stabili)
     final outcomesNow = <String, MatchOutcome>{
@@ -282,6 +324,25 @@ class _PredictionsPageState extends State<PredictionsPage>
         outcomesByMatchId: outcomesNow,
       );
     }
+
+    // Firestore sync (fire-and-forget)
+    DayScoreBreakdown? scoreCache;
+    if (outcomesNow.isNotEmpty) {
+      scoreCache = CassandraScoringEngine.computeDayScore(
+        matches: matches,
+        picksByMatchId: _picks,
+        outcomesByMatchId: outcomesNow,
+      );
+    }
+    final visLabel = visibility == VisibilityChoice.public
+        ? 'public'
+        : 'private';
+    appState.submitPicksToFirestore(
+      dayNumber: _effectiveMatchdayNumber,
+      picksByMatchId: _picks,
+      visibility: visLabel,
+      score: scoreCache,
+    );
   }
 
   Future<void> _showDebugScorePreview() async {
@@ -391,31 +452,16 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   Future<void> _tryLoadRealFixtures({bool showLoader = false}) async {
-    final key = Env.apiFootballKey;
-    if (key == null) {
-      if (kDebugMode) {
-        debugPrint('[fixtures] API_FOOTBALL_KEY is null -> using mock');
-      }
-      return; // in test o senza key restiamo sui mock
-    }
-    if (kDebugMode) {
-      final tail = key.length >= 4 ? key.substring(key.length - 4) : key;
-      debugPrint('[fixtures] key present (…$tail). loading…');
-    }
+    final appState = CassandraScope.of(context);
+    final fs = appState.firestoreService;
+
     if (showLoader && mounted) {
       setState(() => _loadingFixtures = true);
     }
-    final client = ApiFootballClient(
-      apiKey: key,
-      baseUrl: Env.baseUrl,
-      useRapidApi: Env.useRapidApi,
-      rapidApiHost: Env.rapidApiHost,
-    );
-    Future<List<ApiFootballStanding>>? standingsFuture;
+
     try {
-      final service = ApiFootballService(client);
-      final scope = CassandraScope.of(context);
-      // DEV: se abbiamo cache DEMO (isReal=false), non sovrascrivere con fetch LIVE
+      final scope = appState;
+      // DEV: se abbiamo cache DEMO (isReal=false), non sovrascrivere con backend cache
       final cached = scope.cachedPredictionMatches;
       if (cached != null && !scope.cachedPredictionMatchesAreReal) {
         if (mounted) {
@@ -457,141 +503,30 @@ class _PredictionsPageState extends State<PredictionsPage>
         return;
       }
 
-      final appState = CassandraScope.of(context);
-      var dayNumber = appState.cassandraMatchdayCursor;
-      // Intorno di partite (passate recenti + future) per scegliere la giornata corretta
-      final past = await service.getLastSerieAFixtures(count: 40);
-      final next = await service.getNextSerieAFixtures(count: 80);
-
-      // Carica standings in parallelo (best-effort, await prima del client.close)
-      standingsFuture = service.getSerieAStandings().catchError((_) => <ApiFootballStanding>[]);
-
-      final fixtures = [...past, ...next];
-      if (kDebugMode) {
-        debugPrint('[fixtures] got ${fixtures.length} fixtures (past+next)');
-      }
-      // Dedup per ID (se l'API restituisce doppioni)
-      final seen = <Object?>{};
-      final uniqueFixtures = fixtures
-          .where((f) => seen.add(f.fixtureId))
-          .toList();
-      final outcomes = outcomesByMatchIdFromFixtures(uniqueFixtures);
-      int? matchdayFromRound(String? round) {
-        if (round == null) return null;
-        final m = RegExp(r'(\d{1,2})\s*$').firstMatch(round.trim());
-        if (m == null) return null;
-        return int.tryParse(m.group(1)!);
-      }
-
-      // ignore: unused_element
-      int? mostRepresentedMatchday(Iterable fixtures) {
-        final counts = <int, int>{};
-        for (final f in fixtures) {
-          final md = matchdayFromRound((f as dynamic).round?.toString());
-          if (md == null) continue;
-          counts[md] = (counts[md] ?? 0) + 1;
-        }
-        if (counts.isEmpty) return null;
-        var bestMd = counts.keys.first;
-        var bestCount = counts[bestMd]!;
-        for (final e in counts.entries) {
-          if (e.value > bestCount) {
-            bestMd = e.key;
-            bestCount = e.value;
-          }
-        }
-        return bestMd;
-      }
-
-      Duration distanceToInterval(DateTime now, DateTime start, DateTime end) {
-        if (now.isBefore(start)) return start.difference(now);
-        if (now.isAfter(end)) return now.difference(end);
-        return Duration.zero; // siamo dentro l'intervallo della giornata
-      }
-
-      int? bestMatchdayByTime(Iterable fixtures) {
-        final now = DateTime.now();
-        // Cache runtime per lo storico: matchdays reali presenti nella finestra fixtures (past+next).
-        final allMds = <int>{};
-        for (final f in uniqueFixtures) {
-          final md = matchdayFromRound((f as dynamic).round?.toString());
-          if (md != null) allMds.add(md);
-        }
-        final recentMatchesByMd = <int, List<PredictionMatch>>{};
-        final recentOutcomesByMd = <int, Map<String, MatchOutcome>>{};
-        for (final md in allMds) {
-          final ms = predictionMatchesFromFixtures(
-            uniqueFixtures,
-            matchdayNumber: md,
-            useMockIds: false,
-          );
-          if (ms.isEmpty) continue;
-          recentMatchesByMd[md] = ms;
-          recentOutcomesByMd[md] = {
-            for (final m in ms)
-              if (outcomes[m.id] != null) m.id: outcomes[m.id]!,
-          };
-        }
-        final candidates = <int>{};
-        for (final f in fixtures) {
-          final md = matchdayFromRound((f as dynamic).round?.toString());
-          if (md != null) candidates.add(md);
-        }
-        if (candidates.isEmpty) return null;
-        int? bestMd;
-        Duration? bestDist;
-        for (final md in candidates) {
-          final ms = predictionMatchesFromFixtures(
-            uniqueFixtures,
-            matchdayNumber: md,
-            useMockIds: false,
-          );
-          if (ms.isEmpty) continue;
-          final first = ms
-              .map((m) => m.kickoff)
-              .reduce((a, b) => a.isBefore(b) ? a : b);
-          final last = ms
-              .map((m) => m.kickoff)
-              .reduce((a, b) => a.isAfter(b) ? a : b);
-          final dist = distanceToInterval(now, first, last);
-          if (bestDist == null || dist < bestDist) {
-            bestDist = dist;
-            bestMd = md;
-          }
-        }
-        return bestMd;
-      }
-
-      final inferredByTime = bestMatchdayByTime(uniqueFixtures);
-      if (inferredByTime != null && inferredByTime > dayNumber) {
+      if (fs == null) {
         if (kDebugMode) {
-          debugPrint(
-            '[fixtures] sync cursor=$dayNumber -> $inferredByTime (closest by time)',
-          );
+          debugPrint('[fixtures] firestore unavailable -> using local/demo');
         }
-        await appState.setCassandraMatchdayCursor(inferredByTime);
-        dayNumber = inferredByTime;
+        return;
       }
-      var matches = predictionMatchesFromFixtures(
-        uniqueFixtures,
-        matchdayNumber: dayNumber,
-        useMockIds: false,
+
+      final dayNumber = appState.cassandraMatchdayCursor;
+      final doc = await fs.getMatchdayData(
+        seasonKey: appState.currentSeasonKey,
+        dayNumber: dayNumber,
       );
-      if (kDebugMode && matches.isNotEmpty) {
-        final first = matches
-            .map((m) => m.kickoff)
-            .reduce((a, b) => a.isBefore(b) ? a : b);
-        final last = matches
-            .map((m) => m.kickoff)
-            .reduce((a, b) => a.isAfter(b) ? a : b);
-        debugPrint(
-          '[fixtures] day=$dayNumber matches=${matches.length} range=${first.toIso8601String()}..${last.toIso8601String()} now=${DateTime.now().toIso8601String()}',
-        );
+
+      if (doc == null || doc.matches.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('[fixtures] no firestore data for day=$dayNumber');
+        }
+        return;
       }
-      if (matches.isEmpty) return;
-      // === MatchdayProgress (48h void / primaryDone / finalDone / >=6) ===
+
+      final matches = doc.matches;
+      final outcomes = doc.outcomesByMatchId;
       final now = DateTime.now();
-      // Registra origin kickoff (prima volta che vediamo questa fixtureId)
+
       appState.ensureOriginKickoffsLoaded();
       for (final m in matches) {
         appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
@@ -608,157 +543,43 @@ class _PredictionsPageState extends State<PredictionsPage>
         ),
         statusShort: (m) => statusFor(m),
       );
-      var matchesToShow = matches;
-      // Progress da mostrare (coerente con matchesToShow e dayNumber attuale)
-      final progressToShow = computeMatchdayProgress<PredictionMatch>(
-        matchesToShow,
-        now: now,
-        kickoff: (m) => m.kickoff,
-        originKickoff: (m) => appState.originKickoffFor(
-          matchId: m.id,
-          fallbackKickoff: m.kickoff,
-        ),
-        statusShort: (m) => statusFor(m),
-      );
+      await appState.persistOriginKickoffs();
       appState.setMatchdayProgress(
-        matchdayNumber: dayNumber,
-        progress: progressToShow,
+        matchdayNumber: doc.dayNumber,
+        progress: progress,
       );
-      var advanced = false;
-      final fromMatchday = dayNumber;
-      // Dopo primaryDone la matchday successiva è giocabile (decisione Cassandra)
-      // // AUTO-BUMP: primaryDone
-      // if (progress.primaryDone && progress.isValidMatchday && dayNumber == appState.cassandraMatchdayCursor) {
-      //   await appState.setCassandraMatchdayCursor(dayNumber + 1);
-      // }
 
-      // Finalizzazione: quando finalDone e matchday valida (>=6),
-      // salviamo snapshot + storico per leaderboard stabile anche con recuperi.
-      if (progress.finalDone && progress.isValidMatchday) {
-        final voidedIds = <String>{};
-        for (final m in matches) {
-          final out = outcomes[m.id] ?? MatchOutcome.pending;
-          final origin = appState.originKickoffFor(
-            matchId: m.id,
-            fallbackKickoff: m.kickoff,
-          );
-          final deadline = origin.add(const Duration(hours: 48));
-
-          // Regola 2: se giocata oltre 48h dal kickoff originario => NULLA (anche se FT)
-          if (out.isGraded && m.kickoff.isAfter(deadline)) {
-            voidedIds.add(m.id);
-            continue;
-          }
-
-          // Se non final entro 48h => NULLA
-          if (!out.isGraded && now.isAfter(deadline)) {
-            voidedIds.add(m.id);
-          }
-        }
-        final effectiveMatches = matches
-            .where((m) => !voidedIds.contains(m.id))
-            .toList(growable: false);
-        final effectiveOutcomes = <String, MatchOutcome>{
-          for (final e in outcomes.entries)
-            if (!voidedIds.contains(e.key)) e.key: e.value,
-        };
-        await appState.maybeFinalizeMatchday(
-          matchdayNumber: fromMatchday,
-          matches: effectiveMatches,
-          outcomesByMatchId: effectiveOutcomes,
-        );
-      }
-      if (progress.primaryDone) {
-        final nextMatches = predictionMatchesFromFixtures(
-          uniqueFixtures,
-          matchdayNumber: dayNumber + 1,
-          useMockIds: false,
-        );
-        if (nextMatches.isNotEmpty) {
-          for (final m in nextMatches) {
-            appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
-          }
-          await appState.persistOriginKickoffs();
-          dayNumber = fromMatchday + 1;
-          matchesToShow = nextMatches;
-          advanced = true;
-        }
-      } else {
-        await appState.persistOriginKickoffs();
-      }
       if (kDebugMode) {
         debugPrint(
-          '[fixtures] progress day=$fromMatchday '
+          '[fixtures] progress day=${doc.dayNumber} '
           'primaryDone=${progress.primaryDone} finalDone=${progress.finalDone} '
           'played=${progress.playedFixtures} void=${progress.voidFixtures}',
         );
       }
-      // TODO: cablare MatchdayProgress (primaryDone/finalDone) prima di bumpare il cursor automaticamente.
+
       if (!mounted) return;
       setState(() {
-        _shownMatchdayNumber = dayNumber;
-        _matches = matchesToShow;
+        _shownMatchdayNumber = doc.dayNumber;
+        _matches = matches;
         _usingRealFixtures = true;
-        _fixturesUpdatedAt = DateTime.now();
-        if (advanced) {
-          _picks.clear();
-          _submittedAt = null;
-          _submittedVisibility = null;
-        }
+        _fixturesUpdatedAt = doc.updatedAt;
       });
-      // Salviamo le fixture reali in cache runtime (per Gruppo / User pages)
-      // Aggiorna cache runtime per lo storico (passati)
-      // Costruisce cache runtime per storico (passati) nello STESSO scope della call.
-      final allMds = <int>{};
-      for (final f in uniqueFixtures) {
-        final md = matchdayFromRound((f as dynamic).round?.toString());
-        if (md != null) allMds.add(md);
-      }
-      final recentMatchesByMd = <int, List<PredictionMatch>>{};
-      final recentOutcomesByMd = <int, Map<String, MatchOutcome>>{};
-      for (final md in allMds) {
-        final ms = predictionMatchesFromFixtures(
-          uniqueFixtures,
-          matchdayNumber: md,
-          useMockIds: false,
-        );
-        if (ms.isEmpty) continue;
-        recentMatchesByMd[md] = ms;
-        recentOutcomesByMd[md] = {
-          for (final m in ms)
-            if (outcomes[m.id] != null) m.id: outcomes[m.id]!,
-        };
-      }
-      appState.setRecentMatchdayDataBulk(
-        matchesByMatchday: recentMatchesByMd,
-        outcomesByMatchday: recentOutcomesByMd,
-      );
-      // DEV: se nel frattempo è stata attivata DEMO, non sovrascrivere con LIVE
-      if (scope.cachedPredictionMatches != null &&
-          !scope.cachedPredictionMatchesAreReal) {
-        return;
-      }
-
       scope.setCachedPredictionMatches(
-        matchesToShow,
+        matches,
         isReal: true,
-        updatedAt: _fixturesUpdatedAt,
+        updatedAt: doc.updatedAt,
       );
       scope.setCachedPredictionOutcomesByMatchId(outcomes);
+      appState.setRecentMatchdayDataBulk(
+        matchesByMatchday: {doc.dayNumber: matches},
+        outcomesByMatchday: {doc.dayNumber: outcomes},
+      );
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[fixtures] load failed: $e');
         debugPrint('$st');
       }
     } finally {
-      // Attendi standings prima di chiudere il client HTTP
-      if (standingsFuture != null) {
-        try {
-          final s = await standingsFuture;
-          if (mounted && s.isNotEmpty) setState(() => _standings = s);
-        } catch (_) {}
-      }
-      client.close();
       if (showLoader && mounted) {
         setState(() => _loadingFixtures = false);
       }
@@ -825,8 +646,10 @@ class _PredictionsPageState extends State<PredictionsPage>
       Map<String, PickOption> picks, {
       String? tag,
     }) {
-      final daysLabel = formatMatchdayDaysItalian(
+      final en = _isEnglish();
+      final daysLabel = formatMatchdayDays(
         md.matches.map((m) => m.kickoff),
+        english: en,
       );
       final total = md.matches.length;
       final graded = md.matches.where((m) {
@@ -834,11 +657,12 @@ class _PredictionsPageState extends State<PredictionsPage>
         return !o.isPending;
       }).length;
       final resultsLabel = graded == total
-          ? 'risultati: $graded/$total'
-          : 'risultati: $graded/$total (parziale)';
+          ? '${en ? 'results' : 'risultati'}: $graded/$total'
+          : '${en ? 'results' : 'risultati'}: $graded/$total (${en ? 'partial' : 'parziale'})';
+      final mdLabel = en ? 'Matchday' : 'Giornata';
       final title = tag == null
-          ? 'Giornata ${md.dayNumber}'
-          : 'Giornata ${md.dayNumber} ($tag)';
+          ? '$mdLabel ${md.dayNumber}'
+          : '$mdLabel ${md.dayNumber} ($tag)';
       final appState = CassandraScope.of(context);
       final savedMatches = appState.matchesByMatchday[md.dayNumber];
       final matchesEffective = (savedMatches != null && savedMatches.isNotEmpty)
@@ -890,8 +714,12 @@ class _PredictionsPageState extends State<PredictionsPage>
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              'Storico pronostici (DEMO)\n'
-              'Qui mostriamo 16–19 dai mock. La giornata corrente è visibile sopra (LIVE/DEMO).',
+              _t(
+                'Storico pronostici (DEMO)\n'
+                    'Qui mostriamo 16–19 dai mock. La giornata corrente è visibile sopra (LIVE/DEMO).',
+                'Predictions history (DEMO)\n'
+                    'Showing 16–19 from mocks. Current matchday is visible above (LIVE/DEMO).',
+              ),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -969,6 +797,18 @@ class _PredictionsPageState extends State<PredictionsPage>
     super.build(context);
 
     final appState = CassandraScope.of(context);
+
+    // Mentre i dati reali si caricano, mostra spinner
+    if (matches.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          title: Text(_t('Pronostici', 'Predictions')),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final voidedByPostponement = <String>{};
     for (final m in matches) {
       final origin = appState.originKickoffFor(
@@ -984,11 +824,16 @@ class _PredictionsPageState extends State<PredictionsPage>
         .where((m) => !voidedByPostponement.contains(m.id))
         .toList(growable: false);
     final pickedCountForScoring = scoringMatches
-        .where((m) => _pickFor(m.id) != null)
+        .where((m) => !_pickFor(m.id).isNone)
         .length;
     final lockLabel = _locked
-        ? 'giocate bloccate'
-        : 'modificabile fino alle ${formatKickoff(_lockTime)}';
+        ? _t('giocate bloccate', 'picks locked')
+        : _lockTime != null
+        ? _t(
+            'modificabile fino alle ${formatKickoff(_lockTime!)}',
+            'editable until ${formatKickoff(_lockTime!)}',
+          )
+        : '';
     final scoreOutcomesByMatchId = <String, MatchOutcome>{
       for (final m in scoringMatches)
         if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
@@ -1007,26 +852,31 @@ class _PredictionsPageState extends State<PredictionsPage>
     final scoreAvgLabel = dayScore.averageOddsPlayed == null
         ? '—'
         : formatOdds(dayScore.averageOddsPlayed!);
-    final scoreLabel =
-        'punti: ${formatOdds(dayScore.total)} (base ${formatOdds(dayScore.baseTotal)} • bonus $bonusSigned)'
-        ' • corretti ${dayScore.correctCount}/${dayScore.matchBreakdowns.length}'
-        ' • quota media $scoreAvgLabel';
+    final scoreLabel = _isEnglish()
+        ? 'points: ${formatOdds(dayScore.total)} (base ${formatOdds(dayScore.baseTotal)} • bonus $bonusSigned)'
+              ' • correct ${dayScore.correctCount}/${dayScore.matchBreakdowns.length}'
+              ' • avg odds $scoreAvgLabel'
+        : 'punti: ${formatOdds(dayScore.total)} (base ${formatOdds(dayScore.baseTotal)} • bonus $bonusSigned)'
+              ' • corretti ${dayScore.correctCount}/${dayScore.matchBreakdowns.length}'
+              ' • quota media $scoreAvgLabel';
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
     final dataLabel = (demoActive || _forceDemoFixtures)
-        ? 'dati: demo'
-        : (_usingRealFixtures ? 'dati: reali (API)' : 'dati: demo');
+        ? _t('dati: demo', 'data: demo')
+        : (_usingRealFixtures
+              ? _t('dati: reali (cache backend)', 'data: real (backend cache)')
+              : _t('dati: demo', 'data: demo'));
     final updatedLabel =
         (_usingRealFixtures && !demoActive && _fixturesUpdatedAt != null)
-        ? ' • agg. ${formatKickoff(_fixturesUpdatedAt!)}'
+        ? ' • ${_t('agg.', 'upd.')} ${formatKickoff(_fixturesUpdatedAt!)}'
         : '';
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('Pronostici'),
+        title: Text(_t('Pronostici', 'Predictions')),
         actions: [
           IconButton(
-            tooltip: 'Aggiorna match',
+            tooltip: _t('Aggiorna match', 'Refresh matches'),
             onPressed: (_loadingFixtures || demoActive || _forceDemoFixtures)
                 ? null
                 : () => _tryLoadRealFixturesOnce(showLoader: true, force: true),
@@ -1041,8 +891,8 @@ class _PredictionsPageState extends State<PredictionsPage>
           if (kDebugMode)
             IconButton(
               tooltip: _forceDemoFixtures
-                  ? 'Usa dati reali (API)'
-                  : 'Forza dati demo',
+                  ? _t('Usa cache backend', 'Use backend cache')
+                  : _t('Forza dati demo', 'Force demo data'),
               icon: Icon(_forceDemoFixtures ? Icons.public : Icons.science),
               onPressed: () async {
                 final enableDemo = !_forceDemoFixtures;
@@ -1068,20 +918,31 @@ class _PredictionsPageState extends State<PredictionsPage>
       body: SafeArea(
         child: Column(
           children: [
+            if (!_usingRealFixtures)
+              DemoBanner(
+                label: _t(
+                  'Dati di esempio \u2014 attendi sincronizzazione backend',
+                  'Sample data \u2014 wait for backend sync',
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SegmentedButton<int>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: 1,
-                        label: Text('i pronostici passati'),
+                        label: Text(
+                          _t('i pronostici passati', 'past predictions'),
+                        ),
                       ),
                       ButtonSegment(
                         value: 0,
-                        label: Text('i pronostici futuri'),
+                        label: Text(
+                          _t('i pronostici futuri', 'upcoming predictions'),
+                        ),
                       ),
                     ],
                     selected: {_segment},
@@ -1146,7 +1007,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                     ),
                   const SizedBox(height: 6),
                   Text(
-                    'scelte: $pickedCountForScoring/${scoringMatches.length}  •  quota media: $avgLabel',
+                    '${_t('scelte', 'picks')}: $pickedCountForScoring/${scoringMatches.length}  •  ${_t('quota media', 'avg odds')}: $avgLabel',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: CassandraColors.slate,
                     ),
@@ -1154,8 +1015,8 @@ class _PredictionsPageState extends State<PredictionsPage>
                   if (_submittedVisibility != null && _submittedAt != null) ...[
                     const SizedBox(height: 6),
                     Text(
-                      'ultimo invio: ${formatKickoff(_submittedAt!)} '
-                      '(${_submittedVisibility == VisibilityChoice.public ? 'pubblica' : 'privata'})',
+                      '${_t('ultimo invio', 'last submit')}: ${formatKickoff(_submittedAt!)} '
+                      '(${_submittedVisibility == VisibilityChoice.public ? _t('pubblica', 'public') : _t('privata', 'private')})',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: CassandraColors.slate,
                       ),
@@ -1170,20 +1031,17 @@ class _PredictionsPageState extends State<PredictionsPage>
                   ? _buildHistory(context)
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: matches.length + (_standings != null ? 1 : 0),
+                      itemCount: matches.length,
                       itemBuilder: (context, i) {
-                        if (i < matches.length) {
-                          final match = matches[i];
-                          final pick = _pickFor(match.id);
-                          return PredictionMatchCard(
-                            match: match,
-                            pick: pick,
-                            locked: _locked,
-                            onPick: (p) => _setPick(match.id, p),
-                            onClear: () => _clearPick(match.id),
-                          );
-                        }
-                        return SerieAStandingsTable(standings: _standings!);
+                        final match = matches[i];
+                        final pick = _pickFor(match.id);
+                        return PredictionMatchCard(
+                          match: match,
+                          pick: pick,
+                          locked: _locked,
+                          onPick: (p) => _setPick(match.id, p),
+                          onClear: () => _clearPick(match.id),
+                        );
                       },
                     ),
             ),
@@ -1209,7 +1067,9 @@ class _PredictionsPageState extends State<PredictionsPage>
                           foregroundColor: CassandraColors.primary,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: const Text('invia senza mostrare'),
+                        child: Text(
+                          _t('invia senza mostrare', 'submit without showing'),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1223,7 +1083,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                           foregroundColor: CassandraColors.bg,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: const Text('invia e mostra'),
+                        child: Text(_t('invia e mostra', 'submit and show')),
                       ),
                     ),
                   ],

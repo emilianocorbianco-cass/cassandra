@@ -6,11 +6,9 @@ import '../../features/group/group_page.dart';
 import '../../features/stats/stats_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
-import 'package:cassandra/app/config/env.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
-import 'package:cassandra/features/predictions/adapters/api_football_fixture_adapter.dart';
-import 'package:cassandra/services/api_football/api_football_client.dart';
-import 'package:cassandra/services/api_football/api_football_service.dart';
+import 'package:flutter/foundation.dart';
+import '../state/app_settings.dart';
 import '../theme/app_colors.dart';
 
 class HomeShell extends StatefulWidget {
@@ -41,43 +39,52 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _prefetchNextFixtures() async {
-    // Nei test può succedere che dotenv non sia inizializzato.
-    String? key;
-    try {
-      key = Env.apiFootballKey;
-    } catch (_) {
-      return;
-    }
-    if (key == null) return;
     final app = CassandraScope.of(context);
 
-    final client = ApiFootballClient(
-      apiKey: key,
-      baseUrl: Env.baseUrl,
-      useRapidApi: Env.useRapidApi,
-      rapidApiHost: Env.rapidApiHost,
-    );
+    // ── Firestore fast path: try cached matchday data first ──
+    final fs = app.firestoreService;
+    if (fs != null) {
+      try {
+        final doc = await fs.getMatchdayData(
+          seasonKey: app.currentSeasonKey,
+          dayNumber: app.cassandraMatchdayCursor,
+        );
+        if (doc != null && doc.matches.isNotEmpty) {
+          app.setCachedPredictionMatches(
+            doc.matches,
+            isReal: true,
+            updatedAt: doc.updatedAt,
+          );
+          app.setCachedPredictionOutcomesByMatchId(doc.outcomesByMatchId);
 
-    try {
-      final service = ApiFootballService(client);
-      final fixtures = await service.getNextSerieAFixtures(count: 10);
-      if (fixtures.isEmpty) return;
-
-      final matches = predictionMatchesFromFixtures(
-        fixtures,
-        useMockIds: false,
-      );
-
-      app.setCachedPredictionMatches(
-        matches,
-        isReal: true,
-        updatedAt: DateTime.now(),
-      );
-    } catch (_) {
-      // Silenzioso: fallback su mock nelle pagine.
-    } finally {
-      client.close();
+          // If data is fresh (< 65 min), skip API call
+          if (DateTime.now().difference(doc.updatedAt).inMinutes < 65) {
+            if (kDebugMode) {
+              debugPrint(
+                '[prefetch] Firestore data fresh '
+                '(${doc.matches.length} matches, '
+                '${DateTime.now().difference(doc.updatedAt).inMinutes}min old)',
+              );
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[prefetch] Firestore read failed: $e');
+        }
+      }
     }
+
+    // Backend-only mode: niente fallback API lato client.
+  }
+
+  bool _isEnglish() {
+    final app = CassandraScope.of(context);
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
   }
 
   int _index = 0;
@@ -116,18 +123,24 @@ class _HomeShellState extends State<HomeShell> {
         child: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: const [
+          destinations: [
             NavigationDestination(
-              icon: Icon(Icons.sports_soccer),
-              label: 'Pronostici',
+              icon: const Icon(Icons.sports_soccer),
+              label: _isEnglish() ? 'Predictions' : 'Pronostici',
             ),
-            NavigationDestination(icon: Icon(Icons.groups), label: 'Gruppo'),
             NavigationDestination(
-              icon: Icon(Icons.format_list_bulleted),
+              icon: const Icon(Icons.groups),
+              label: _isEnglish() ? 'Group' : 'Gruppo',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.format_list_bulleted),
               label: 'Live',
             ),
-            NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
             NavigationDestination(
+              icon: const Icon(Icons.bar_chart),
+              label: 'Stats',
+            ),
+            const NavigationDestination(
               icon: Icon(Icons.settings),
               label: 'Settings',
             ),

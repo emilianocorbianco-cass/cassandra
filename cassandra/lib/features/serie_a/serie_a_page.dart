@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../app/config/env.dart';
+import '../../app/state/app_settings.dart';
+import '../../app/state/app_state.dart';
 import '../../app/widgets/team_name.dart';
-import '../../services/api_football/api_football_client.dart';
-import '../../services/api_football/api_football_service.dart';
-import '../../services/api_football/models/api_football_fixture.dart';
 import '../group/mock_group_data.dart';
 import '../group/models/group_member.dart';
 import '../group/widgets/group_matchday_leaderboard.dart';
@@ -12,7 +10,6 @@ import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
-import 'adapters/fixture_result_adapter.dart';
 import '../../app/state/cassandra_scope.dart';
 
 class SerieAPage extends StatefulWidget {
@@ -25,60 +22,91 @@ class SerieAPage extends StatefulWidget {
 class _SerieAPageState extends State<SerieAPage> {
   int _segment = 0; // 0 = risultati (last), 1 = classifica gruppo
   DateTime? _updatedAt;
+  bool _didLoad = false;
 
   late Future<_SerieAData> _future;
+
+  bool _isEnglish(AppState app) {
+    final code = app.language == CassandraLanguage.system
+        ? Localizations.localeOf(context).languageCode
+        : (app.language == CassandraLanguage.en ? 'en' : 'it');
+    return code.toLowerCase().startsWith('en');
+  }
+
+  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoad) return;
+    _didLoad = true;
     _future = _load();
   }
 
-  String? _safeApiKey() {
-    // In test env dotEnv può non essere inizializzato → non dobbiamo crashare.
-    try {
-      final raw = Env.apiFootballKey;
-      final k = raw?.trim();
-      if (k == null || k.isEmpty) return null;
-      return k;
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<_SerieAData> _load() async {
-    final key = _safeApiKey();
-    if (key == null) {
-      return const _SerieAData(
-        last: [],
-        next: [],
-        errorMessage: 'API key mancante (Settings → env).',
+    final app = CassandraScope.of(context);
+
+    if (app.cachedPredictionMatches != null &&
+        app.cachedPredictionMatches!.isNotEmpty &&
+        app.cachedPredictionMatchesAreReal) {
+      _updatedAt = app.cachedPredictionMatchesUpdatedAt;
+      return _SerieAData(
+        matches: app.cachedPredictionMatches!,
+        outcomesByMatchId: {
+          for (final m in app.cachedPredictionMatches!)
+            if (app.effectivePredictionOutcomesByMatchId[m.id] != null)
+              m.id: app.effectivePredictionOutcomesByMatchId[m.id]!,
+        },
+        fromBackend: true,
       );
     }
 
-    final client = ApiFootballClient(
-      apiKey: key,
-      baseUrl: Env.baseUrl,
-      useRapidApi: Env.useRapidApi,
-      rapidApiHost: Env.rapidApiHost,
-    );
+    final fs = app.firestoreService;
+    if (fs == null) {
+      return const _SerieAData(
+        matches: [],
+        outcomesByMatchId: {},
+        fromBackend: false,
+      );
+    }
 
     try {
-      final service = ApiFootballService(client);
+      final doc = await fs.getMatchdayData(
+        seasonKey: app.currentSeasonKey,
+        dayNumber: app.cassandraMatchdayCursor,
+      );
+      if (doc == null || doc.matches.isEmpty) {
+        return const _SerieAData(
+          matches: [],
+          outcomesByMatchId: {},
+          fromBackend: false,
+        );
+      }
 
-      final last = await service.getLastSerieAFixtures(count: 10);
-      final next = await service.getNextSerieAFixtures(count: 10);
-
-      _updatedAt = DateTime.now();
-      return _SerieAData(last: last, next: next);
+      _updatedAt = doc.updatedAt;
+      app.setCachedPredictionMatches(
+        doc.matches,
+        isReal: true,
+        updatedAt: doc.updatedAt,
+      );
+      app.setCachedPredictionOutcomesByMatchId(doc.outcomesByMatchId);
+      return _SerieAData(
+        matches: doc.matches,
+        outcomesByMatchId: doc.outcomesByMatchId,
+        fromBackend: true,
+      );
     } catch (e) {
       return _SerieAData(
-        last: const [],
-        next: const [],
-        errorMessage: 'Errore caricando fixture: $e',
+        matches: const [],
+        outcomesByMatchId: const {},
+        fromBackend: false,
+        errorMessage: e.toString(),
       );
-    } finally {
-      client.close();
     }
   }
 
@@ -93,6 +121,8 @@ class _SerieAPageState extends State<SerieAPage> {
 
   @override
   Widget build(BuildContext context) {
+    final app = CassandraScope.of(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Live')),
       body: SafeArea(
@@ -101,14 +131,13 @@ class _SerieAPageState extends State<SerieAPage> {
           builder: (context, snap) {
             final data = snap.data;
 
-            final appState = CassandraScope.of(context);
-            final demoMatches = appState.cachedPredictionMatches;
+            final demoMatches = app.cachedPredictionMatches;
             final demoActive =
-                demoMatches != null && !appState.cachedPredictionMatchesAreReal;
+                demoMatches != null && !app.cachedPredictionMatchesAreReal;
 
             final updatedLabel = _updatedAt == null
                 ? ''
-                : ' • agg. ${formatKickoff(_updatedAt!)}';
+                : ' \u2022 ${_t(app, 'agg.', 'upd.')} ${formatKickoff(_updatedAt!)}';
 
             return Column(
               children: [
@@ -118,9 +147,15 @@ class _SerieAPageState extends State<SerieAPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: 0, label: Text('risultati')),
-                          ButtonSegment(value: 1, label: Text('classifica')),
+                        segments: [
+                          ButtonSegment(
+                            value: 0,
+                            label: Text(_t(app, 'risultati', 'results')),
+                          ),
+                          ButtonSegment(
+                            value: 1,
+                            label: Text(_t(app, 'classifica', 'standings')),
+                          ),
                         ],
                         selected: {_segment},
                         onSelectionChanged: (s) =>
@@ -129,12 +164,20 @@ class _SerieAPageState extends State<SerieAPage> {
                       const SizedBox(height: 8),
                       Text(
                         demoActive
-                            ? 'dati: demo'
+                            ? _t(app, 'dati: demo', 'data: demo')
                             : (data?.errorMessage != null
-                                  ? data!.errorMessage!
-                                  : (demoActive
-                                        ? 'dati: demo'
-                                        : 'dati: reali (API)$updatedLabel')),
+                                  ? _t(
+                                      app,
+                                      'Errore caricando cache backend: ${data?.errorMessage}',
+                                      'Error loading backend cache: ${data?.errorMessage}',
+                                    )
+                                  : (data?.fromBackend == true
+                                        ? _t(
+                                            app,
+                                            'dati: cache backend$updatedLabel',
+                                            'data: backend cache$updatedLabel',
+                                          )
+                                        : _t(app, 'dati: demo', 'data: demo'))),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -143,7 +186,7 @@ class _SerieAPageState extends State<SerieAPage> {
                 const Divider(height: 1),
                 Expanded(
                   child: _segment == 1
-                      ? _buildGroupLeaderboard(context, appState)
+                      ? _buildGroupLeaderboard(context, app)
                       : RefreshIndicator(
                           onRefresh: demoActive ? () async {} : _reload,
                           child: demoActive
@@ -151,9 +194,19 @@ class _SerieAPageState extends State<SerieAPage> {
                                   context,
                                   _segment,
                                   demoMatches,
-                                  appState.cachedPredictionOutcomesByMatchId,
+                                  app.cachedPredictionOutcomesByMatchId,
+                                  app,
                                 )
-                              : _buildList(context, snap),
+                              : _buildList(
+                                  context,
+                                  data ??
+                                      const _SerieAData(
+                                        matches: [],
+                                        outcomesByMatchId: {},
+                                        fromBackend: false,
+                                      ),
+                                  app,
+                                ),
                         ),
                 ),
               ],
@@ -164,10 +217,18 @@ class _SerieAPageState extends State<SerieAPage> {
     );
   }
 
-  Widget _buildGroupLeaderboard(BuildContext context, dynamic appState) {
-    final cachedMatches = appState.cachedPredictionMatches as List<PredictionMatch>?;
+  Widget _buildGroupLeaderboard(BuildContext context, AppState appState) {
+    final cachedMatches = appState.cachedPredictionMatches;
     if (cachedMatches == null || cachedMatches.isEmpty) {
-      return const Center(child: Text('Nessun dato partite disponibile'));
+      return Center(
+        child: Text(
+          _t(
+            appState,
+            'Nessun dato partite disponibile',
+            'No match data available',
+          ),
+        ),
+      );
     }
 
     final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
@@ -179,11 +240,11 @@ class _SerieAPageState extends State<SerieAPage> {
         : <String, MatchOutcome>{};
 
     final overrideMember = GroupMember(
-      id: appState.profile.id as String,
-      displayName: appState.profile.displayName as String,
-      teamName: appState.profile.teamName as String,
-      avatarSeed: appState.currentUserAvatarSeed as int,
-      favoriteTeam: appState.profile.favoriteTeam as String?,
+      id: appState.profile.id,
+      displayName: appState.profile.displayName,
+      teamName: appState.profile.teamName,
+      avatarSeed: appState.currentUserAvatarSeed,
+      favoriteTeam: appState.profile.favoriteTeam,
     );
 
     final members = mockGroupMembers(overrideMember: overrideMember);
@@ -191,11 +252,10 @@ class _SerieAPageState extends State<SerieAPage> {
     appState.ensureCurrentUserPicksLoaded();
     appState.ensureMemberPicksLoaded();
 
-    final currentUserPicks =
-        appState.currentUserPicksByMatchId as Map<String, PickOption>;
+    final currentUserPicks = appState.currentUserPicksByMatchId;
 
     final overridePicksByMemberId = <String, Map<String, PickOption>>{
-      ...(appState.memberPicksByMemberId as Map<String, Map<String, PickOption>>),
+      ...appState.memberPicksByMemberId,
       overrideMember.id: currentUserPicks,
     };
 
@@ -207,54 +267,30 @@ class _SerieAPageState extends State<SerieAPage> {
     );
   }
 
-  Widget _buildList(BuildContext context, AsyncSnapshot<_SerieAData> snap) {
-    if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+  Widget _buildList(BuildContext context, _SerieAData data, AppState app) {
+    final matches = List<PredictionMatch>.of(data.matches)
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
+    if (matches.isEmpty) {
       return ListView(
-        children: const [
-          SizedBox(height: 240),
-          Center(child: CircularProgressIndicator()),
-        ],
-      );
-    }
-
-    final data =
-        snap.data ??
-        const _SerieAData(last: [], next: [], errorMessage: 'Nessun dato.');
-
-    final fixtures = _segment == 0 ? data.last : data.next;
-
-    if (fixtures.isEmpty) {
-      return ListView(
-        children: const [
-          SizedBox(height: 120),
-          Center(child: Text('Nessuna partita da mostrare')),
+        children: [
+          const SizedBox(height: 120),
+          Center(
+            child: Text(
+              _t(app, 'Nessuna partita da mostrare', 'No matches to show'),
+            ),
+          ),
         ],
       );
     }
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-      itemCount: fixtures.length,
+      itemCount: matches.length,
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
-        final f = fixtures[i];
-
-        final score = fixtureScoreLabel(f);
-        final out = fixtureOutcomeLabel(f); // 1/X/2 oppure ""
-        final trailing = out.isEmpty ? score : '$score\n$out';
-
-        final kickoffLocal = f.kickoffUtc.toLocal();
-
-        final extra = <String>[];
-        if (f.round != null && f.round!.trim().isNotEmpty) {
-          extra.add(f.round!.trim());
-        }
-        // Nei "risultati" è utile vedere lo status (FT, AET, ecc.)
-        if (_segment == 0 && f.statusShort.trim().isNotEmpty) {
-          extra.add(f.statusShort.trim());
-        }
-
-        final extraLabel = extra.isEmpty ? '' : ' • ${extra.join(' • ')}';
+        final m = matches[i];
+        final o = data.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
+        final trailing = o.isPending ? '—' : o.label.toUpperCase();
 
         return Card(
           child: ListTile(
@@ -262,16 +298,16 @@ class _SerieAPageState extends State<SerieAPage> {
               children: [
                 Expanded(
                   child: TeamName(
-                    name: f.homeName,
-                    logoUrl: f.homeLogo,
+                    name: m.homeTeam,
+                    logoUrl: m.homeTeamLogo,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
                 const Text('  vs  '),
                 Expanded(
                   child: TeamName(
-                    name: f.awayName,
-                    logoUrl: f.awayLogo,
+                    name: m.awayTeam,
+                    logoUrl: m.awayTeamLogo,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                     reversed: true,
                   ),
@@ -279,7 +315,7 @@ class _SerieAPageState extends State<SerieAPage> {
               ],
             ),
             subtitle: Text(
-              'Kickoff: ${formatKickoff(kickoffLocal)}$extraLabel',
+              '${_t(app, 'Kickoff', 'Kickoff')}: ${formatKickoff(m.kickoff)}',
             ),
             trailing: Text(
               trailing,
@@ -294,22 +330,35 @@ class _SerieAPageState extends State<SerieAPage> {
 }
 
 class _SerieAData {
-  final List<ApiFootballFixture> last;
-  final List<ApiFootballFixture> next;
+  final List<PredictionMatch> matches;
+  final Map<String, MatchOutcome> outcomesByMatchId;
+  final bool fromBackend;
   final String? errorMessage;
 
   const _SerieAData({
-    required this.last,
-    required this.next,
+    required this.matches,
+    required this.outcomesByMatchId,
+    required this.fromBackend,
     this.errorMessage,
   });
 }
+
+bool _isEnglishTop(BuildContext context, AppState app) {
+  final code = app.language == CassandraLanguage.system
+      ? Localizations.localeOf(context).languageCode
+      : (app.language == CassandraLanguage.en ? 'en' : 'it');
+  return code.toLowerCase().startsWith('en');
+}
+
+String _tTop(BuildContext context, AppState app, String it, String en) =>
+    _isEnglishTop(context, app) ? en : it;
 
 Widget _buildDemoList(
   BuildContext context,
   int segment,
   List<PredictionMatch> all,
   Map<String, MatchOutcome> outcomes,
+  AppState app,
 ) {
   final matches = all.where((m) {
     final o = outcomes[m.id] ?? MatchOutcome.pending;
@@ -319,7 +368,14 @@ Widget _buildDemoList(
   if (matches.isEmpty) {
     return Center(
       child: Text(
-        segment == 0 ? 'Nessun risultato' : 'Nessuna partita in programma',
+        segment == 0
+            ? _tTop(context, app, 'Nessun risultato', 'No results')
+            : _tTop(
+                context,
+                app,
+                'Nessuna partita in programma',
+                'No upcoming matches',
+              ),
       ),
     );
   }
@@ -331,7 +387,8 @@ Widget _buildDemoList(
     itemBuilder: (context, i) {
       final m = matches[i];
       final o = outcomes[m.id] ?? MatchOutcome.pending;
-      final subtitle = 'Kickoff: ${formatKickoff(m.kickoff)}';
+      final subtitle =
+          '${_tTop(context, app, 'Kickoff', 'Kickoff')}: ${formatKickoff(m.kickoff)}';
       final trailing = o.isPending ? '' : _demoOutcomeLabel(o);
 
       return Card(
@@ -352,7 +409,10 @@ Widget _buildDemoList(
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ),
-                        Text('  vs  ', style: Theme.of(context).textTheme.titleMedium),
+                        Text(
+                          '  vs  ',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                         Expanded(
                           child: TeamName(
                             name: m.awayTeam,
