@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "495205946036",
+    "project_id": "cassandra-967e2",
+    "storage_bucket": "cassandra-967e2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:495205946036:android:0b01461813622eb289bde1",
+        "android_client_info": {
+          "package_name": "com.solicor.cassandra"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgtH9QFXjkO7UmW6BSbChkaCGkXN8NKg0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
