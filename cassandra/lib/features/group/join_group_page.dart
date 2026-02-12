@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 
@@ -19,15 +18,6 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
   bool _loading = false;
   String? _error;
 
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
-
   @override
   void dispose() {
     _codeController.dispose();
@@ -44,7 +34,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     });
 
     final appState = CassandraScope.of(context);
-    final en = _isEnglish(appState);
+    final l10n = AppLocalizations.of(context)!;
     final err = await appState.joinGroupByInviteCode(code);
 
     if (!mounted) return;
@@ -53,19 +43,17 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
       setState(() {
         _loading = false;
         _error = err == 'Invalid code'
-            ? (en ? 'Invalid invite code' : 'Codice invito non valido')
+            ? l10n.joinGroupInvalidCode
             : err == 'Already a member'
-            ? (en
-                  ? 'Already a member of this group'
-                  : 'Fai già parte di questo gruppo')
+            ? l10n.joinGroupAlreadyMember
             : err;
       });
     } else {
       setState(() => _loading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(en ? 'Joined group!' : 'Entrato nel gruppo!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.joinGroupJoined)));
         widget.onJoined?.call();
       }
     }
@@ -73,13 +61,11 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: CassandraColors.bg,
-      appBar: AppBar(
-        title: Text(_t(app, 'Unisciti a un gruppo', 'Join a group')),
-      ),
+      appBar: AppBar(title: Text(l10n.joinGroupTitle)),
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -90,11 +76,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                 Icon(Icons.group_add, size: 64, color: CassandraColors.primary),
                 const SizedBox(height: 16),
                 Text(
-                  _t(
-                    app,
-                    'Inserisci il codice invito del gruppo',
-                    'Enter the group invite code',
-                  ),
+                  l10n.joinGroupEnterInviteCode,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: CassandraColors.slate,
                   ),
@@ -106,8 +88,8 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                   textCapitalization: TextCapitalization.characters,
                   maxLength: 9, // CASS-XXXX
                   decoration: InputDecoration(
-                    labelText: _t(app, 'Codice invito', 'Invite code'),
-                    hintText: 'CASS-XXXX',
+                    labelText: l10n.joinGroupInviteCode,
+                    hintText: l10n.joinGroupCodeHint,
                     border: const OutlineInputBorder(),
                     errorText: _error,
                   ),
@@ -132,7 +114,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                               color: Colors.white,
                             ),
                           )
-                        : Text(_t(app, 'Unisciti', 'Join')),
+                        : Text(l10n.joinGroupButton),
                   ),
                 ),
               ],

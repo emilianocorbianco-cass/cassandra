@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import 'widgets/group_image_picker.dart';
@@ -55,15 +54,6 @@ class _GroupPageState extends State<GroupPage> {
   List<GroupMember>? _firestoreMembers;
   Map<String, Map<String, PickOption>>? _firestorePicksByMemberId;
   bool _firestoreLoading = false;
-
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   @override
   void initState() {
@@ -143,14 +133,13 @@ class _GroupPageState extends State<GroupPage> {
     int matchdayNumber,
     List<PredictionMatch> matches, {
     required bool english,
+    required AppLocalizations l10n,
   }) {
     final days = formatMatchdayDays(
       matches.map((m) => m.kickoff),
       english: english,
     );
-    return english
-        ? 'matchday $matchdayNumber - $days'
-        : 'giornata $matchdayNumber - $days';
+    return l10n.groupMatchdayLabel(matchdayNumber, days);
   }
 
   Color _avatarColorFromSeed(int seed) {
@@ -161,13 +150,16 @@ class _GroupPageState extends State<GroupPage> {
   @override
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     if (!appState.hasGroup) {
       return CreateGroupPage(onGroupCreated: () => setState(() {}));
     }
 
-    final en = _isEnglish(appState);
-    final groupName = appState.groupName ?? 'Cassandra Crew';
+    final en = Localizations.localeOf(
+      context,
+    ).languageCode.toLowerCase().startsWith('en');
+    final groupName = appState.groupName ?? l10n.groupDefaultName;
 
     // Storico reale: picks/outcomes salvati per giornata
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -199,24 +191,20 @@ class _GroupPageState extends State<GroupPage> {
       return !o.isPending;
     }).length;
 
-    final resultsLabel = en
-        ? (gradedCount == totalMatches
-              ? 'results: $gradedCount/$totalMatches'
-              : 'results: $gradedCount/$totalMatches (partial)')
-        : (gradedCount == totalMatches
-              ? 'risultati: $gradedCount/$totalMatches'
-              : 'risultati: $gradedCount/$totalMatches (parziale)');
+    final resultsLabel = gradedCount == totalMatches
+        ? l10n.groupResultsLabel(gradedCount, totalMatches)
+        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
     final dataLabel = _firestoreLoading
-        ? _t(appState, 'aggiornamento...', 'refreshing...')
+        ? l10n.groupDataRefreshing
         : appState.cachedPredictionMatchesAreReal
-        ? _t(appState, 'dati: reali (API)', 'data: real (API)')
-        : _t(appState, 'dati: demo', 'data: demo');
+        ? l10n.groupDataRealApi
+        : l10n.groupDataDemo;
 
     final updatedLabel =
         (appState.cachedPredictionMatchesAreReal &&
             appState.cachedPredictionMatchesUpdatedAt != null)
-        ? ' \u2022 ${en ? 'upd.' : 'agg.'} ${formatKickoff(appState.cachedPredictionMatchesUpdatedAt!)}'
+        ? ' \u2022 ${l10n.shortUpdated} ${formatKickoff(appState.cachedPredictionMatchesUpdatedAt!)}'
         : '';
 
     final overrideMember = GroupMember(
@@ -283,11 +271,11 @@ class _GroupPageState extends State<GroupPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_t(appState, 'Il mio gruppo', 'My group')),
+        title: Text(l10n.groupTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.group_add),
-            tooltip: _t(appState, 'Unisciti a un gruppo', 'Join a group'),
+            tooltip: l10n.groupJoinTooltip,
             onPressed: () {
               Navigator.of(context, rootNavigator: true).push(
                 MaterialPageRoute(
@@ -305,9 +293,7 @@ class _GroupPageState extends State<GroupPage> {
             icon: const Icon(Icons.share),
             onPressed: () {
               final code = appState.groupInviteCode ?? '';
-              final text = en
-                  ? 'Join my group "$groupName" on Cassandra! Code: $code'
-                  : 'Unisciti al mio gruppo «$groupName» su Cassandra! Codice: $code';
+              final text = l10n.groupShareInviteMessage(groupName, code);
               SharePlus.instance.share(ShareParams(text: text));
             },
           ),
@@ -330,13 +316,7 @@ class _GroupPageState extends State<GroupPage> {
         child: Column(
           children: [
             if (_firestoreMembers == null)
-              DemoBanner(
-                label: _t(
-                  appState,
-                  'Dati di esempio \u2014 unisciti a un gruppo per vedere dati reali',
-                  'Sample data \u2014 join a group to see real data',
-                ),
-              ),
+              DemoBanner(label: l10n.groupSampleDataBanner),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
@@ -363,6 +343,7 @@ class _GroupPageState extends State<GroupPage> {
                                 appState.uiMatchdayNumber,
                                 _matches,
                                 english: en,
+                                l10n: l10n,
                               ),
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
@@ -381,14 +362,8 @@ class _GroupPageState extends State<GroupPage> {
                   const SizedBox(height: 10),
                   SegmentedButton<int>(
                     segments: [
-                      ButtonSegment(
-                        value: 0,
-                        label: Text(_t(appState, 'classifica', 'standings')),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        label: Text(_t(appState, 'giornate', 'matchdays')),
-                      ),
+                      ButtonSegment(value: 0, label: Text(l10n.groupStandings)),
+                      ButtonSegment(value: 1, label: Text(l10n.groupMatchdays)),
                     ],
                     selected: {_segment},
                     onSelectionChanged: (s) =>
@@ -410,15 +385,7 @@ class _GroupPageState extends State<GroupPage> {
                             return Card(
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
-                                child: Text(
-                                  _t(
-                                    appState,
-                                    'Storico giornate (DEMO)\n'
-                                        'Qui mostriamo 16–19 dai mock. Appena abbiamo storico reale via API, lo rendiamo "vero".',
-                                    'Matchday history (DEMO)\n'
-                                        'Showing 16–19 from mocks. Once we have real history via API, we\'ll make it live.',
-                                  ),
-                                ),
+                                child: Text(l10n.groupHistoryDemoCard),
                               ),
                             );
                           }
@@ -436,19 +403,13 @@ class _GroupPageState extends State<GroupPage> {
                           }).length;
 
                           final total = md.matches.length;
-                          final mdResultsLabel = en
-                              ? (graded == total
-                                    ? '$graded/$total'
-                                    : '$graded/$total (partial)')
-                              : (graded == total
-                                    ? '$graded/$total'
-                                    : '$graded/$total (parziale)');
+                          final mdResultsLabel = graded == total
+                              ? l10n.groupResultsShort(graded, total)
+                              : l10n.groupResultsShortPartial(graded, total);
 
-                          final mdTitle = en
-                              ? 'Matchday ${md.dayNumber}'
-                              : 'Giornata ${md.dayNumber}';
+                          final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
 
-                          final mdResultsPrefix = en ? 'results' : 'risultati';
+                          final mdResultsPrefix = l10n.groupResultsPrefix;
 
                           return Card(
                             child: ListTile(

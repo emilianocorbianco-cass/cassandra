@@ -2,6 +2,7 @@ import 'package:cassandra/app/state/app_settings.dart';
 import 'package:cassandra/app/state/app_state.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
 import 'api_football_diagnostics_page.dart';
 import 'package:cassandra/features/auth/login_page.dart';
@@ -36,15 +37,6 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -62,20 +54,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _save(AppState app) async {
+    final l10n = AppLocalizations.of(context)!;
     await app.updateTeamName(_teamNameCtrl.text);
     await app.updateFavoriteTeam(_favoriteTeamCtrl.text);
     await app.updateLanguage(_language);
     await app.updateDefaultVisibility(_defaultVisibility);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_t(app, 'Impostazioni salvate', 'Settings saved')),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.settingsSaved)));
   }
 
   Future<void> _reset(AppState app) async {
+    final l10n = AppLocalizations.of(context)!;
     await app.resetAll();
 
     setState(() {
@@ -86,15 +78,16 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_t(app, 'Ripristinato', 'Reset done'))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.settingsResetDone)));
   }
 
   Future<void> _refreshFixturesCache() async {
     if (_fixturesRefreshing) return;
 
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
 
     setState(() => _fixturesRefreshing = true);
@@ -102,15 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final fs = app.firestoreService;
     if (fs == null) {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              app,
-              'Backend non configurato su questo device',
-              'Backend not configured on this device',
-            ),
-          ),
-        ),
+        SnackBar(content: Text(l10n.settingsBackendNotConfigured)),
       );
       if (mounted) setState(() => _fixturesRefreshing = false);
       return;
@@ -123,15 +108,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       if (doc == null || doc.matches.isEmpty) {
         messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              _t(
-                app,
-                'Nessun dato backend disponibile per la giornata corrente',
-                'No backend data available for the current matchday',
-              ),
-            ),
-          ),
+          SnackBar(content: Text(l10n.settingsNoBackendDataCurrentMatchday)),
         );
         return;
       }
@@ -144,27 +121,11 @@ class _SettingsPageState extends State<SettingsPage> {
       app.setCachedPredictionOutcomesByMatchId(doc.outcomesByMatchId);
 
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              app,
-              'Cache aggiornata da backend',
-              'Cache refreshed from backend',
-            ),
-          ),
-        ),
+        SnackBar(content: Text(l10n.settingsCacheRefreshedFromBackend)),
       );
     } catch (_) {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              app,
-              'Errore aggiornando da backend',
-              'Error refreshing from backend',
-            ),
-          ),
-        ),
+        SnackBar(content: Text(l10n.settingsCacheRefreshError)),
       );
     } finally {
       if (mounted) setState(() => _fixturesRefreshing = false);
@@ -172,18 +133,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildAccountSection(AppState app) {
+    final l10n = AppLocalizations.of(context)!;
     // Firebase non configurato (dev mode)
     if (app.authService == null) {
       return Card(
         child: ListTile(
           leading: const Icon(Icons.info_outline),
-          title: Text(
-            _t(
-              app,
-              'Modalita\u0027 sviluppo — Firebase non configurato',
-              'Dev mode — Firebase not configured',
-            ),
-          ),
+          title: Text(l10n.settingsDevModeNoFirebase),
         ),
       );
     }
@@ -203,14 +159,14 @@ class _SettingsPageState extends State<SettingsPage> {
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.logout),
-              title: Text(_t(app, 'Esci', 'Sign out')),
+              title: Text(l10n.settingsSignOut),
               onTap: () => _confirmSignOut(app),
             ),
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.delete_forever, color: Colors.red),
               title: Text(
-                _t(app, 'Elimina account', 'Delete account'),
+                l10n.settingsDeleteAccount,
                 style: const TextStyle(color: Colors.red),
               ),
               onTap: () => _confirmDeleteAccount(app),
@@ -224,7 +180,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.login),
-        title: Text(_t(app, 'Accedi', 'Sign in')),
+        title: Text(l10n.settingsSignIn),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
           Navigator.of(
@@ -236,21 +192,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _confirmSignOut(AppState app) async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_t(app, 'Conferma', 'Confirm')),
-        content: Text(
-          _t(app, 'Vuoi uscire dal tuo account?', 'Sign out of your account?'),
-        ),
+        title: Text(l10n.settingsConfirm),
+        content: Text(l10n.settingsSignOutQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(_t(app, 'Annulla', 'Cancel')),
+            child: Text(l10n.settingsCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(_t(app, 'Esci', 'Sign out')),
+            child: Text(l10n.settingsSignOut),
           ),
         ],
       ),
@@ -268,26 +223,21 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _confirmDeleteAccount(AppState app) async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_t(app, 'Elimina account', 'Delete account')),
-        content: Text(
-          _t(
-            app,
-            'Questa azione e\u0027 irreversibile. Vuoi continuare?',
-            'This action is irreversible. Continue?',
-          ),
-        ),
+        title: Text(l10n.settingsDeleteAccount),
+        content: Text(l10n.settingsDeleteAccountQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(_t(app, 'Annulla', 'Cancel')),
+            child: Text(l10n.settingsCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text(_t(app, 'Elimina', 'Delete')),
+            child: Text(l10n.settingsDelete),
           ),
         ],
       ),
@@ -305,37 +255,28 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              app,
-              'Errore: riaccedi e riprova.',
-              'Error: sign in again and retry.',
-            ),
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.settingsReauthError)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final hasFixturesCache = app.cachedPredictionMatches != null;
     final dataLabel = !hasFixturesCache
-        ? _t(app, 'cache: vuota', 'cache: empty')
+        ? l10n.settingsCacheEmpty
         : (app.cachedPredictionMatchesAreReal
-              ? _t(app, 'dati: cache backend', 'data: backend cache')
-              : _t(app, 'dati: demo', 'data: demo'));
+              ? l10n.settingsDataBackendCache
+              : l10n.settingsDataDemo);
     final updatedLabel = app.cachedPredictionMatchesUpdatedAt != null
-        ? ' • ${_t(app, 'agg.', 'upd.')} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
+        ? ' • ${l10n.shortUpdated} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
         : '';
 
-    final isEn = _isEnglish(app);
-
     return Scaffold(
-      appBar: AppBar(title: Text(_t(app, 'Impostazioni', 'Settings'))),
+      appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -349,8 +290,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   final outcomesCount =
                       app.cachedPredictionOutcomesByMatchId.length;
                   final kind = app.cachedPredictionMatchesAreReal
-                      ? 'cache backend'
-                      : (matchCount > 0 ? 'demo' : 'vuota');
+                      ? l10n.settingsKindBackendCache
+                      : (matchCount > 0
+                            ? l10n.settingsKindDemo
+                            : l10n.settingsKindEmpty);
                   final updated = app.cachedPredictionMatchesUpdatedAt;
                   String fmt(DateTime dt) {
                     final dd = dt.day.toString().padLeft(2, '0');
@@ -360,7 +303,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     return '$dd/$mm $hh:$mi';
                   }
 
-                  final updatedLabel = (updated == null) ? 'mai' : fmt(updated);
+                  final updatedLabel = (updated == null)
+                      ? l10n.settingsNever
+                      : fmt(updated);
 
                   void snack(String msg) {
                     ScaffoldMessenger.of(
@@ -372,14 +317,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Debug cache',
+                        l10n.settingsDebugCacheTitle,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
-                      Text('fixtures: $kind'),
-                      Text('match in cache: $matchCount'),
-                      Text('outcomes in cache: $outcomesCount'),
-                      Text('aggiornamento: $updatedLabel'),
+                      Text(l10n.settingsDebugFixturesLine(kind)),
+                      Text(l10n.settingsDebugMatchInCacheLine(matchCount)),
+                      Text(
+                        l10n.settingsDebugOutcomesInCacheLine(outcomesCount),
+                      ),
+                      Text(l10n.settingsDebugUpdateLine(updatedLabel)),
                       const SizedBox(height: 12),
                       Card(
                         child: Padding(
@@ -419,14 +366,16 @@ class _SettingsPageState extends State<SettingsPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Simulazione gruppo',
+                                    l10n.settingsSimulationGroupTitle,
                                     style: Theme.of(
                                       context,
                                     ).textTheme.titleMedium,
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'picks simulati salvati: ${app.memberPicksByMemberId.length}',
+                                    l10n.settingsSimulationSavedPicksLine(
+                                      app.memberPicksByMemberId.length,
+                                    ),
                                   ),
                                   const SizedBox(height: 12),
                                   Wrap(
@@ -456,11 +405,13 @@ class _SettingsPageState extends State<SettingsPage> {
                                                   replace: true,
                                                 );
                                                 snack(
-                                                  'Picks generati per ${others.length} membri',
+                                                  l10n.settingsGeneratedPicksForMembers(
+                                                    others.length,
+                                                  ),
                                                 );
                                               }
                                             : null,
-                                        child: const Text('Genera picks'),
+                                        child: Text(l10n.settingsGeneratePicks),
                                       ),
                                       FilledButton.tonal(
                                         onPressed: canSeed
@@ -480,18 +431,24 @@ class _SettingsPageState extends State<SettingsPage> {
                                                   replace: true,
                                                 );
                                                 snack(
-                                                  'Copiati i tuoi pick su ${others.length} membri',
+                                                  l10n.settingsCopiedMyPicksToMembers(
+                                                    others.length,
+                                                  ),
                                                 );
                                               }
                                             : null,
-                                        child: const Text('Copia i miei'),
+                                        child: Text(l10n.settingsCopyMyPicks),
                                       ),
                                       FilledButton.tonal(
                                         onPressed: () {
                                           app.clearMemberPicks();
-                                          snack('Picks simulati svuotati');
+                                          snack(
+                                            l10n.settingsSimulatedPicksCleared,
+                                          );
                                         },
-                                        child: const Text('Svuota simulati'),
+                                        child: Text(
+                                          l10n.settingsClearSimulatedPicks,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -509,23 +466,23 @@ class _SettingsPageState extends State<SettingsPage> {
                           FilledButton.tonal(
                             onPressed: () {
                               app.clearCachedPredictionMatches();
-                              snack('Cache fixtures svuotata');
+                              snack(l10n.settingsFixturesCacheCleared);
                             },
-                            child: const Text('Svuota fixtures'),
+                            child: Text(l10n.settingsClearFixtures),
                           ),
                           FilledButton.tonal(
                             onPressed: () {
                               app.clearCachedPredictionOutcomes();
-                              snack('Cache outcomes svuotata');
+                              snack(l10n.settingsOutcomesCacheCleared);
                             },
-                            child: const Text('Svuota outcomes'),
+                            child: Text(l10n.settingsClearOutcomes),
                           ),
                           FilledButton(
                             onPressed: () {
                               app.clearAllPredictionCache();
-                              snack('Cache pronostici svuotata');
+                              snack(l10n.settingsPredictionCacheCleared);
                             },
-                            child: const Text('Svuota tutto'),
+                            child: Text(l10n.settingsClearAll),
                           ),
                         ],
                       ),
@@ -537,7 +494,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 12),
           Text(
-            _t(app, 'Profilo', 'Profile'),
+            l10n.settingsProfile,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -545,23 +502,23 @@ class _SettingsPageState extends State<SettingsPage> {
             controller: _teamNameCtrl,
             textInputAction: TextInputAction.next,
             decoration: InputDecoration(
-              labelText: _t(app, 'Nome squadra (handle)', 'Team name (handle)'),
-              hintText: _t(app, 'Es: FC Cassandra', 'Ex: FC Cassandra'),
+              labelText: l10n.settingsTeamNameLabel,
+              hintText: l10n.settingsTeamNameHint,
             ),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _favoriteTeamCtrl,
             decoration: InputDecoration(
-              labelText: _t(app, 'Squadra del cuore', 'Favorite team'),
-              hintText: _t(app, 'Es: Roma', 'Ex: Roma'),
+              labelText: l10n.settingsFavoriteTeamLabel,
+              hintText: l10n.settingsFavoriteTeamHint,
             ),
           ),
 
           if (app.hasGroup) ...[
             const SizedBox(height: 24),
             Text(
-              _t(app, 'Gruppo', 'Group'),
+              l10n.settingsGroup,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
@@ -573,14 +530,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       imagePath: app.groupImagePath,
                       radius: 20,
                     ),
-                    title: Text(_t(app, 'Immagine del gruppo', 'Group image')),
-                    subtitle: Text(
-                      _t(
-                        app,
-                        'Tocca per cambiare la foto',
-                        'Tap to change the photo',
-                      ),
-                    ),
+                    title: Text(l10n.settingsGroupImageTitle),
+                    subtitle: Text(l10n.settingsGroupImageSubtitle),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () async {
                       final path =
@@ -592,16 +543,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
-                    title: Text(
-                      _t(app, 'Approvazione admin', 'Admin approval'),
-                    ),
-                    subtitle: Text(
-                      _t(
-                        app,
-                        'Solo l\'admin può accettare nuovi membri',
-                        'Only the admin can accept new members',
-                      ),
-                    ),
+                    title: Text(l10n.settingsAdminApprovalTitle),
+                    subtitle: Text(l10n.settingsAdminApprovalSubtitle),
                     value: app.groupAdminApproval,
                     onChanged: (value) {
                       app.updateGroupAdminApproval(value);
@@ -613,12 +556,15 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
 
           const SizedBox(height: 24),
-          Text('Account', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            l10n.settingsAccount,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           _buildAccountSection(app),
           const SizedBox(height: 24),
           Text(
-            _t(app, 'Lingua', 'Language'),
+            l10n.settingsLanguage,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -626,15 +572,15 @@ class _SettingsPageState extends State<SettingsPage> {
             segments: <ButtonSegment<CassandraLanguage>>[
               ButtonSegment(
                 value: CassandraLanguage.system,
-                label: Text(isEn ? 'System' : 'Sistema'),
+                label: Text(l10n.settingsLanguageSystem),
               ),
-              const ButtonSegment(
+              ButtonSegment(
                 value: CassandraLanguage.it,
-                label: Text('IT'),
+                label: Text(l10n.settingsLanguageIt),
               ),
-              const ButtonSegment(
+              ButtonSegment(
                 value: CassandraLanguage.en,
-                label: Text('EN'),
+                label: Text(l10n.settingsLanguageEn),
               ),
             ],
             selected: <CassandraLanguage>{_language},
@@ -644,17 +590,13 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            _t(
-              app,
-              'Nota: per ora molte etichette sono ancora “hardcoded”. Tradurremo a blocchi.',
-              'Note: many labels are still hardcoded for now. We will translate in batches.',
-            ),
+            l10n.settingsTranslationNote,
             style: Theme.of(context).textTheme.bodySmall,
           ),
 
           const SizedBox(height: 24),
           Text(
-            _t(app, 'Privacy pronostici (default)', 'Picks privacy (default)'),
+            l10n.settingsPicksPrivacyDefault,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -662,15 +604,15 @@ class _SettingsPageState extends State<SettingsPage> {
             segments: <ButtonSegment<PredictionVisibility>>[
               ButtonSegment(
                 value: PredictionVisibility.public,
-                label: Text(isEn ? 'Public' : 'Pubblico'),
+                label: Text(l10n.settingsPrivacyPublic),
               ),
               ButtonSegment(
                 value: PredictionVisibility.friends,
-                label: Text(isEn ? 'Friends' : 'Amici'),
+                label: Text(l10n.settingsPrivacyFriends),
               ),
               ButtonSegment(
                 value: PredictionVisibility.private,
-                label: Text(isEn ? 'Private' : 'Privato'),
+                label: Text(l10n.settingsPrivacyPrivate),
               ),
             ],
             selected: <PredictionVisibility>{_defaultVisibility},
@@ -680,17 +622,13 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            _t(
-              app,
-              'Questa preferenza verrà usata quando collegheremo invio pronostici + backend.',
-              'This preference will be used once we connect picks submission + backend.',
-            ),
+            l10n.settingsPrivacyNote,
             style: Theme.of(context).textTheme.bodySmall,
           ),
 
           const SizedBox(height: 24),
           Text(
-            _t(app, 'Diagnostica', 'Diagnostics'),
+            l10n.settingsDiagnostics,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -700,22 +638,14 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.storage),
-                  title: Text(_t(app, 'Fixtures cache', 'Fixtures cache')),
+                  title: Text(l10n.settingsFixturesCacheTitle),
                   subtitle: Text('$dataLabel$updatedLabel'),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.refresh),
-                  title: Text(
-                    _t(app, 'Aggiorna cache ora', 'Refresh cache now'),
-                  ),
-                  subtitle: Text(
-                    _t(
-                      app,
-                      'Legge la matchday corrente dalla cache backend.',
-                      'Reads current matchday from backend cache.',
-                    ),
-                  ),
+                  title: Text(l10n.settingsRefreshCacheNowTitle),
+                  subtitle: Text(l10n.settingsRefreshCacheNowSubtitle),
                   trailing: _fixturesRefreshing
                       ? const SizedBox(
                           height: 18,
@@ -728,24 +658,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.delete_outline),
-                  title: Text(
-                    _t(app, 'Svuota cache fixtures', 'Clear fixtures cache'),
-                  ),
-                  subtitle: Text(
-                    _t(
-                      app,
-                      'Torna ai dati demo locali fino al prossimo refresh.',
-                      'Fallback to local demo data until next refresh.',
-                    ),
-                  ),
+                  title: Text(l10n.settingsClearFixturesCacheTitle),
+                  subtitle: Text(l10n.settingsClearFixturesCacheSubtitle),
                   onTap: () {
                     app.clearCachedPredictionMatches();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          _t(app, 'Cache svuotata', 'Cache cleared'),
-                        ),
-                      ),
+                      SnackBar(content: Text(l10n.settingsCacheCleared)),
                     );
                   },
                 ),
@@ -755,16 +673,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
           Card(
             child: ListTile(
-              title: Text(
-                _t(app, 'Diagnostica backend', 'Backend diagnostics'),
-              ),
-              subtitle: Text(
-                _t(
-                  app,
-                  'Verifica cache matchday letta da Firestore.',
-                  'Verify matchday cache loaded from Firestore.',
-                ),
-              ),
+              title: Text(l10n.settingsBackendDiagnosticsTitle),
+              subtitle: Text(l10n.settingsBackendDiagnosticsSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.of(context).push(
@@ -782,14 +692,14 @@ class _SettingsPageState extends State<SettingsPage> {
               Expanded(
                 child: FilledButton(
                   onPressed: () => _save(app),
-                  child: Text(_t(app, 'Salva', 'Save')),
+                  child: Text(l10n.settingsSave),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => _reset(app),
-                  child: Text(_t(app, 'Reset', 'Reset')),
+                  child: Text(l10n.settingsReset),
                 ),
               ),
             ],

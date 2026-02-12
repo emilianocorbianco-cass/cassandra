@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import 'join_group_page.dart';
@@ -22,15 +21,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final _nameController = TextEditingController();
   bool _created = false;
   String? _pickedImagePath;
-
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   @override
   void dispose() {
@@ -61,12 +51,10 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
   void _onShare() {
     final appState = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final name = appState.groupName ?? '';
     final code = appState.groupInviteCode ?? '';
-
-    final text = _isEnglish(appState)
-        ? 'Join my group "$name" on Cassandra! Code: $code'
-        : 'Unisciti al mio gruppo «$name» su Cassandra! Codice: $code';
+    final text = l10n.groupShareInviteMessage(name, code);
 
     SharePlus.instance.share(ShareParams(text: text));
   }
@@ -84,7 +72,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   }
 
   Widget _buildFormView(BuildContext context) {
-    final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: CassandraColors.bg,
@@ -96,7 +84,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _t(app, 'Crea il tuo gruppo', 'Create your group'),
+                  l10n.createGroupTitle,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: CassandraColors.primary,
@@ -105,11 +93,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _t(
-                    app,
-                    'Sfida i tuoi amici sui pronostici di Serie A',
-                    'Challenge your friends on Serie A predictions',
-                  ),
+                  l10n.createGroupSubtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: CassandraColors.slate,
                   ),
@@ -126,11 +110,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        _t(
-                          app,
-                          'Tocca per aggiungere foto',
-                          'Tap to add photo',
-                        ),
+                        l10n.createGroupTapAddPhoto,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: CassandraColors.slate,
                           fontSize: 11,
@@ -144,7 +124,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   controller: _nameController,
                   maxLength: 30,
                   decoration: InputDecoration(
-                    labelText: _t(app, 'Nome del gruppo', 'Group name'),
+                    labelText: l10n.createGroupNameLabel,
                     border: const OutlineInputBorder(),
                   ),
                   onChanged: (_) => setState(() {}),
@@ -159,7 +139,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                     style: FilledButton.styleFrom(
                       backgroundColor: CassandraColors.primary,
                     ),
-                    child: Text(_t(app, 'Crea gruppo', 'Create group')),
+                    child: Text(l10n.createGroupButton),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -178,9 +158,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                         ),
                       );
                     },
-                    child: Text(
-                      _t(app, 'Hai un codice invito?', 'Have an invite code?'),
-                    ),
+                    child: Text(l10n.createGroupHaveInviteCode),
                   ),
                 ),
               ],
@@ -193,6 +171,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
   Widget _buildInviteView(BuildContext context) {
     final appState = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final groupName = appState.groupName ?? '';
     final inviteCode = appState.groupInviteCode ?? '';
 
@@ -215,7 +194,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   ),
                 const SizedBox(height: 16),
                 Text(
-                  _t(appState, 'Gruppo creato!', 'Group created!'),
+                  l10n.createGroupCreated,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: CassandraColors.primary,
@@ -235,7 +214,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          _t(appState, 'Codice invito', 'Invite code'),
+                          l10n.createGroupInviteCode,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: CassandraColors.slate),
                         ),
@@ -245,13 +224,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                             Clipboard.setData(ClipboardData(text: inviteCode));
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  _t(
-                                    appState,
-                                    'Codice copiato!',
-                                    'Code copied!',
-                                  ),
-                                ),
+                                content: Text(l10n.createGroupCodeCopied),
                               ),
                             );
                           },
@@ -268,7 +241,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _t(appState, 'Tocca per copiare', 'Tap to copy'),
+                          l10n.createGroupTapToCopy,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 color: CassandraColors.slate,
@@ -285,13 +258,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   child: FilledButton.icon(
                     onPressed: _onShare,
                     icon: const Icon(Icons.share),
-                    label: Text(
-                      _t(
-                        appState,
-                        'Condividi codice invito',
-                        'Share invite code',
-                      ),
-                    ),
+                    label: Text(l10n.createGroupShareInviteCode),
                     style: FilledButton.styleFrom(
                       backgroundColor: CassandraColors.primary,
                     ),
@@ -302,7 +269,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _onContinue,
-                    child: Text(_t(appState, 'Continua', 'Continue')),
+                    child: Text(l10n.createGroupContinue),
                   ),
                 ),
               ],

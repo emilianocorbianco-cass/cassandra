@@ -1,0 +1,198 @@
+{
+  "@@locale": "en",
+  "loginSeriesAPredictions": "Serie A Predictions",
+  "loginSignInGoogle": "Sign in with Google",
+  "loginSignInApple": "Sign in with Apple",
+  "loginSignInError": "Sign-in error. Please try again.",
+  "loginPrivacyNotice": "We only use what's strictly necessary to identify you.",
+  "createGroupTitle": "Create your group",
+  "createGroupSubtitle": "Challenge your friends on Serie A predictions",
+  "createGroupTapAddPhoto": "Tap to add photo",
+  "createGroupNameLabel": "Group name",
+  "createGroupButton": "Create group",
+  "createGroupHaveInviteCode": "Have an invite code?",
+  "createGroupCreated": "Group created!",
+  "createGroupInviteCode": "Invite code",
+  "createGroupCodeCopied": "Code copied!",
+  "createGroupTapToCopy": "Tap to copy",
+  "createGroupShareInviteCode": "Share invite code",
+  "createGroupContinue": "Continue",
+  "groupShareInviteMessage": "Join my group \"{groupName}\" on Cassandra! Code: {inviteCode}",
+  "@groupShareInviteMessage": {
+    "placeholders": {
+      "groupName": {},
+      "inviteCode": {}
+    }
+  },
+  "joinGroupTitle": "Join a group",
+  "joinGroupEnterInviteCode": "Enter the group invite code",
+  "joinGroupInviteCode": "Invite code",
+  "joinGroupCodeHint": "CASS-XXXX",
+  "joinGroupButton": "Join",
+  "joinGroupJoined": "Joined group!",
+  "joinGroupInvalidCode": "Invalid invite code",
+  "joinGroupAlreadyMember": "Already a member of this group",
+  "groupTitle": "My group",
+  "groupJoinTooltip": "Join a group",
+  "groupDefaultName": "Cassandra Crew",
+  "groupSampleDataBanner": "Sample data - join a group to see real data",
+  "groupDataRefreshing": "refreshing...",
+  "groupDataRealApi": "data: real (API)",
+  "groupDataDemo": "data: demo",
+  "shortUpdated": "upd.",
+  "groupMatchdayLabel": "matchday {matchdayNumber} - {daysLabel}",
+  "@groupMatchdayLabel": {
+    "placeholders": {
+      "matchdayNumber": {},
+      "daysLabel": {}
+    }
+  },
+  "groupResultsLabel": "results: {graded}/{total}",
+  "@groupResultsLabel": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "groupResultsLabelPartial": "results: {graded}/{total} (partial)",
+  "@groupResultsLabelPartial": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "groupStandings": "standings",
+  "groupMatchdays": "matchdays",
+  "groupHistoryDemoCard": "Matchday history (DEMO)\nShowing 16-19 from mocks. Once we have real history via API, we'll make it live.",
+  "groupMatchdayTitle": "Matchday {dayNumber}",
+  "@groupMatchdayTitle": {
+    "placeholders": {
+      "dayNumber": {}
+    }
+  },
+  "groupResultsPrefix": "results",
+  "groupResultsShort": "{graded}/{total}",
+  "@groupResultsShort": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "groupResultsShortPartial": "{graded}/{total} (partial)",
+  "@groupResultsShortPartial": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "settingsTitle": "Settings",
+  "settingsSaved": "Settings saved",
+  "settingsResetDone": "Reset done",
+  "settingsBackendNotConfigured": "Backend not configured on this device",
+  "settingsNoBackendDataCurrentMatchday": "No backend data available for the current matchday",
+  "settingsCacheRefreshedFromBackend": "Cache refreshed from backend",
+  "settingsCacheRefreshError": "Error refreshing from backend",
+  "settingsDevModeNoFirebase": "Dev mode - Firebase not configured",
+  "settingsSignOut": "Sign out",
+  "settingsDeleteAccount": "Delete account",
+  "settingsSignIn": "Sign in",
+  "settingsConfirm": "Confirm",
+  "settingsSignOutQuestion": "Sign out of your account?",
+  "settingsCancel": "Cancel",
+  "settingsDeleteAccountQuestion": "This action is irreversible. Continue?",
+  "settingsDelete": "Delete",
+  "settingsReauthError": "Error: sign in again and retry.",
+  "settingsCacheEmpty": "cache: empty",
+  "settingsDataBackendCache": "data: backend cache",
+  "settingsDataDemo": "data: demo",
+  "settingsDebugCacheTitle": "Debug cache",
+  "settingsDebugFixturesLine": "fixtures: {kind}",
+  "@settingsDebugFixturesLine": {
+    "placeholders": {
+      "kind": {}
+    }
+  },
+  "settingsDebugMatchInCacheLine": "match in cache: {count}",
+  "@settingsDebugMatchInCacheLine": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsDebugOutcomesInCacheLine": "outcomes in cache: {count}",
+  "@settingsDebugOutcomesInCacheLine": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsDebugUpdateLine": "update: {updated}",
+  "@settingsDebugUpdateLine": {
+    "placeholders": {
+      "updated": {}
+    }
+  },
+  "settingsNever": "never",
+  "settingsSimulationGroupTitle": "Group simulation",
+  "settingsSimulationSavedPicksLine": "saved simulated picks: {count}",
+  "@settingsSimulationSavedPicksLine": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsGeneratePicks": "Generate picks",
+  "settingsCopyMyPicks": "Copy mine",
+  "settingsClearSimulatedPicks": "Clear simulated",
+  "settingsGeneratedPicksForMembers": "Generated picks for {count} members",
+  "@settingsGeneratedPicksForMembers": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsCopiedMyPicksToMembers": "Copied your picks to {count} members",
+  "@settingsCopiedMyPicksToMembers": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsSimulatedPicksCleared": "Simulated picks cleared",
+  "settingsClearFixtures": "Clear fixtures",
+  "settingsClearOutcomes": "Clear outcomes",
+  "settingsClearAll": "Clear all",
+  "settingsFixturesCacheCleared": "Fixtures cache cleared",
+  "settingsOutcomesCacheCleared": "Outcomes cache cleared",
+  "settingsPredictionCacheCleared": "Predictions cache cleared",
+  "settingsProfile": "Profile",
+  "settingsTeamNameLabel": "Team name (handle)",
+  "settingsTeamNameHint": "Ex: FC Cassandra",
+  "settingsFavoriteTeamLabel": "Favorite team",
+  "settingsFavoriteTeamHint": "Ex: Roma",
+  "settingsGroup": "Group",
+  "settingsGroupImageTitle": "Group image",
+  "settingsGroupImageSubtitle": "Tap to change the photo",
+  "settingsAdminApprovalTitle": "Admin approval",
+  "settingsAdminApprovalSubtitle": "Only the admin can accept new members",
+  "settingsAccount": "Account",
+  "settingsLanguage": "Language",
+  "settingsLanguageSystem": "System",
+  "settingsLanguageIt": "IT",
+  "settingsLanguageEn": "EN",
+  "settingsTranslationNote": "Note: many labels are still hardcoded for now. We will translate in batches.",
+  "settingsPicksPrivacyDefault": "Picks privacy (default)",
+  "settingsPrivacyPublic": "Public",
+  "settingsPrivacyFriends": "Friends",
+  "settingsPrivacyPrivate": "Private",
+  "settingsPrivacyNote": "This preference will be used once we connect picks submission + backend.",
+  "settingsDiagnostics": "Diagnostics",
+  "settingsFixturesCacheTitle": "Fixtures cache",
+  "settingsRefreshCacheNowTitle": "Refresh cache now",
+  "settingsRefreshCacheNowSubtitle": "Reads current matchday from backend cache.",
+  "settingsClearFixturesCacheTitle": "Clear fixtures cache",
+  "settingsClearFixturesCacheSubtitle": "Fallback to local demo data until next refresh.",
+  "settingsCacheCleared": "Cache cleared",
+  "settingsBackendDiagnosticsTitle": "Backend diagnostics",
+  "settingsBackendDiagnosticsSubtitle": "Verify matchday cache loaded from Firestore.",
+  "settingsSave": "Save",
+  "settingsReset": "Reset",
+  "settingsKindBackendCache": "backend cache",
+  "settingsKindDemo": "demo",
+  "settingsKindEmpty": "empty"
+}

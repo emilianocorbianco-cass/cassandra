@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'theme/cassandra_theme.dart';
@@ -20,8 +21,9 @@ class CassandraApp extends StatelessWidget {
       // Se null -> segue la lingua del sistema
       locale: appState.localeOverride,
 
-      supportedLocales: const [Locale('it'), Locale('en')],
+      supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
+        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

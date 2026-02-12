@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../app/navigation/home_shell.dart';
 import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 
@@ -16,26 +16,6 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
-
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
-
-  String _langLabel(CassandraLanguage lang) {
-    switch (lang) {
-      case CassandraLanguage.system:
-        return 'Auto';
-      case CassandraLanguage.it:
-        return 'IT';
-      case CassandraLanguage.en:
-        return 'EN';
-    }
-  }
 
   Future<void> _signInWithGoogle() async {
     setState(() {
@@ -64,14 +44,10 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       if (mounted) {
-        final app = CassandraScope.of(context);
+        final l10n = AppLocalizations.of(context)!;
         setState(() {
           _loading = false;
-          _error = _t(
-            app,
-            'Errore di accesso. Riprova.',
-            'Sign-in error. Please try again.',
-          );
+          _error = l10n.loginSignInError;
         });
       }
     }
@@ -103,14 +79,10 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       if (mounted) {
-        final app = CassandraScope.of(context);
+        final l10n = AppLocalizations.of(context)!;
         setState(() {
           _loading = false;
-          _error = _t(
-            app,
-            'Errore di accesso. Riprova.',
-            'Sign-in error. Please try again.',
-          );
+          _error = l10n.loginSignInError;
         });
       }
     }
@@ -119,6 +91,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: CassandraColors.bg,
@@ -133,15 +106,15 @@ class _LoginPageState extends State<LoginPage> {
                 segments: [
                   ButtonSegment(
                     value: CassandraLanguage.system,
-                    label: Text(_langLabel(CassandraLanguage.system)),
+                    label: Text(l10n.settingsLanguageSystem),
                   ),
                   ButtonSegment(
                     value: CassandraLanguage.it,
-                    label: Text(_langLabel(CassandraLanguage.it)),
+                    label: Text(l10n.settingsLanguageIt),
                   ),
                   ButtonSegment(
                     value: CassandraLanguage.en,
-                    label: Text(_langLabel(CassandraLanguage.en)),
+                    label: Text(l10n.settingsLanguageEn),
                   ),
                 ],
                 selected: {app.language},
@@ -175,7 +148,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _t(app, 'Pronostici Serie A', 'Serie A Predictions'),
+                      l10n.loginSeriesAPredictions,
                       style: const TextStyle(
                         fontSize: 16,
                         color: CassandraColors.slate,
@@ -190,9 +163,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: OutlinedButton.icon(
                           onPressed: _signInWithGoogle,
                           icon: const Icon(Icons.g_mobiledata, size: 24),
-                          label: Text(
-                            _t(app, 'Accedi con Google', 'Sign in with Google'),
-                          ),
+                          label: Text(l10n.loginSignInGoogle),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             foregroundColor: CassandraColors.slate,
@@ -208,9 +179,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: OutlinedButton.icon(
                           onPressed: _signInWithApple,
                           icon: const Icon(Icons.apple, size: 24),
-                          label: Text(
-                            _t(app, 'Accedi con Apple', 'Sign in with Apple'),
-                          ),
+                          label: Text(l10n.loginSignInApple),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             foregroundColor: CassandraColors.slate,
@@ -231,11 +200,7 @@ class _LoginPageState extends State<LoginPage> {
                     ],
                     const Spacer(flex: 1),
                     Text(
-                      _t(
-                        app,
-                        'Usiamo solo il minimo necessario per identificarti.',
-                        'We only use what\u0027s strictly necessary to identify you.',
-                      ),
+                      l10n.loginPrivacyNotice,
                       style: const TextStyle(
                         fontSize: 12,
                         color: CassandraColors.slate,

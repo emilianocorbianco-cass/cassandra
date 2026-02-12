@@ -1,0 +1,198 @@
+{
+  "@@locale": "it",
+  "loginSeriesAPredictions": "Pronostici Serie A",
+  "loginSignInGoogle": "Accedi con Google",
+  "loginSignInApple": "Accedi con Apple",
+  "loginSignInError": "Errore di accesso. Riprova.",
+  "loginPrivacyNotice": "Usiamo solo il minimo necessario per identificarti.",
+  "createGroupTitle": "Crea il tuo gruppo",
+  "createGroupSubtitle": "Sfida i tuoi amici sui pronostici di Serie A",
+  "createGroupTapAddPhoto": "Tocca per aggiungere foto",
+  "createGroupNameLabel": "Nome del gruppo",
+  "createGroupButton": "Crea gruppo",
+  "createGroupHaveInviteCode": "Hai un codice invito?",
+  "createGroupCreated": "Gruppo creato!",
+  "createGroupInviteCode": "Codice invito",
+  "createGroupCodeCopied": "Codice copiato!",
+  "createGroupTapToCopy": "Tocca per copiare",
+  "createGroupShareInviteCode": "Condividi codice invito",
+  "createGroupContinue": "Continua",
+  "groupShareInviteMessage": "Unisciti al mio gruppo \"{groupName}\" su Cassandra! Codice: {inviteCode}",
+  "@groupShareInviteMessage": {
+    "placeholders": {
+      "groupName": {},
+      "inviteCode": {}
+    }
+  },
+  "joinGroupTitle": "Unisciti a un gruppo",
+  "joinGroupEnterInviteCode": "Inserisci il codice invito del gruppo",
+  "joinGroupInviteCode": "Codice invito",
+  "joinGroupCodeHint": "CASS-XXXX",
+  "joinGroupButton": "Unisciti",
+  "joinGroupJoined": "Entrato nel gruppo!",
+  "joinGroupInvalidCode": "Codice invito non valido",
+  "joinGroupAlreadyMember": "Fai gia parte di questo gruppo",
+  "groupTitle": "Il mio gruppo",
+  "groupJoinTooltip": "Unisciti a un gruppo",
+  "groupDefaultName": "Cassandra Crew",
+  "groupSampleDataBanner": "Dati di esempio - unisciti a un gruppo per vedere dati reali",
+  "groupDataRefreshing": "aggiornamento...",
+  "groupDataRealApi": "dati: reali (API)",
+  "groupDataDemo": "dati: demo",
+  "shortUpdated": "agg.",
+  "groupMatchdayLabel": "giornata {matchdayNumber} - {daysLabel}",
+  "@groupMatchdayLabel": {
+    "placeholders": {
+      "matchdayNumber": {},
+      "daysLabel": {}
+    }
+  },
+  "groupResultsLabel": "risultati: {graded}/{total}",
+  "@groupResultsLabel": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "groupResultsLabelPartial": "risultati: {graded}/{total} (parziale)",
+  "@groupResultsLabelPartial": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "groupStandings": "classifica",
+  "groupMatchdays": "giornate",
+  "groupHistoryDemoCard": "Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.",
+  "groupMatchdayTitle": "Giornata {dayNumber}",
+  "@groupMatchdayTitle": {
+    "placeholders": {
+      "dayNumber": {}
+    }
+  },
+  "groupResultsPrefix": "risultati",
+  "groupResultsShort": "{graded}/{total}",
+  "@groupResultsShort": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "groupResultsShortPartial": "{graded}/{total} (parziale)",
+  "@groupResultsShortPartial": {
+    "placeholders": {
+      "graded": {},
+      "total": {}
+    }
+  },
+  "settingsTitle": "Impostazioni",
+  "settingsSaved": "Impostazioni salvate",
+  "settingsResetDone": "Ripristinato",
+  "settingsBackendNotConfigured": "Backend non configurato su questo device",
+  "settingsNoBackendDataCurrentMatchday": "Nessun dato backend disponibile per la giornata corrente",
+  "settingsCacheRefreshedFromBackend": "Cache aggiornata da backend",
+  "settingsCacheRefreshError": "Errore aggiornando da backend",
+  "settingsDevModeNoFirebase": "Modalita sviluppo - Firebase non configurato",
+  "settingsSignOut": "Esci",
+  "settingsDeleteAccount": "Elimina account",
+  "settingsSignIn": "Accedi",
+  "settingsConfirm": "Conferma",
+  "settingsSignOutQuestion": "Vuoi uscire dal tuo account?",
+  "settingsCancel": "Annulla",
+  "settingsDeleteAccountQuestion": "Questa azione e irreversibile. Vuoi continuare?",
+  "settingsDelete": "Elimina",
+  "settingsReauthError": "Errore: riaccedi e riprova.",
+  "settingsCacheEmpty": "cache: vuota",
+  "settingsDataBackendCache": "dati: cache backend",
+  "settingsDataDemo": "dati: demo",
+  "settingsDebugCacheTitle": "Debug cache",
+  "settingsDebugFixturesLine": "fixtures: {kind}",
+  "@settingsDebugFixturesLine": {
+    "placeholders": {
+      "kind": {}
+    }
+  },
+  "settingsDebugMatchInCacheLine": "match in cache: {count}",
+  "@settingsDebugMatchInCacheLine": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsDebugOutcomesInCacheLine": "outcomes in cache: {count}",
+  "@settingsDebugOutcomesInCacheLine": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsDebugUpdateLine": "aggiornamento: {updated}",
+  "@settingsDebugUpdateLine": {
+    "placeholders": {
+      "updated": {}
+    }
+  },
+  "settingsNever": "mai",
+  "settingsSimulationGroupTitle": "Simulazione gruppo",
+  "settingsSimulationSavedPicksLine": "picks simulati salvati: {count}",
+  "@settingsSimulationSavedPicksLine": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsGeneratePicks": "Genera picks",
+  "settingsCopyMyPicks": "Copia i miei",
+  "settingsClearSimulatedPicks": "Svuota simulati",
+  "settingsGeneratedPicksForMembers": "Picks generati per {count} membri",
+  "@settingsGeneratedPicksForMembers": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsCopiedMyPicksToMembers": "Copiati i tuoi pick su {count} membri",
+  "@settingsCopiedMyPicksToMembers": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsSimulatedPicksCleared": "Picks simulati svuotati",
+  "settingsClearFixtures": "Svuota fixtures",
+  "settingsClearOutcomes": "Svuota outcomes",
+  "settingsClearAll": "Svuota tutto",
+  "settingsFixturesCacheCleared": "Cache fixtures svuotata",
+  "settingsOutcomesCacheCleared": "Cache outcomes svuotata",
+  "settingsPredictionCacheCleared": "Cache pronostici svuotata",
+  "settingsProfile": "Profilo",
+  "settingsTeamNameLabel": "Nome squadra (handle)",
+  "settingsTeamNameHint": "Es: FC Cassandra",
+  "settingsFavoriteTeamLabel": "Squadra del cuore",
+  "settingsFavoriteTeamHint": "Es: Roma",
+  "settingsGroup": "Gruppo",
+  "settingsGroupImageTitle": "Immagine del gruppo",
+  "settingsGroupImageSubtitle": "Tocca per cambiare la foto",
+  "settingsAdminApprovalTitle": "Approvazione admin",
+  "settingsAdminApprovalSubtitle": "Solo l'admin puo accettare nuovi membri",
+  "settingsAccount": "Account",
+  "settingsLanguage": "Lingua",
+  "settingsLanguageSystem": "Sistema",
+  "settingsLanguageIt": "IT",
+  "settingsLanguageEn": "EN",
+  "settingsTranslationNote": "Nota: per ora molte etichette sono ancora hardcoded. Tradurremo a blocchi.",
+  "settingsPicksPrivacyDefault": "Privacy pronostici (default)",
+  "settingsPrivacyPublic": "Pubblico",
+  "settingsPrivacyFriends": "Amici",
+  "settingsPrivacyPrivate": "Privato",
+  "settingsPrivacyNote": "Questa preferenza verra usata quando collegheremo invio pronostici + backend.",
+  "settingsDiagnostics": "Diagnostica",
+  "settingsFixturesCacheTitle": "Fixtures cache",
+  "settingsRefreshCacheNowTitle": "Aggiorna cache ora",
+  "settingsRefreshCacheNowSubtitle": "Legge la matchday corrente dalla cache backend.",
+  "settingsClearFixturesCacheTitle": "Svuota cache fixtures",
+  "settingsClearFixturesCacheSubtitle": "Torna ai dati demo locali fino al prossimo refresh.",
+  "settingsCacheCleared": "Cache svuotata",
+  "settingsBackendDiagnosticsTitle": "Diagnostica backend",
+  "settingsBackendDiagnosticsSubtitle": "Verifica cache matchday letta da Firestore.",
+  "settingsSave": "Salva",
+  "settingsReset": "Reset",
+  "settingsKindBackendCache": "cache backend",
+  "settingsKindDemo": "demo",
+  "settingsKindEmpty": "vuota"
+}
