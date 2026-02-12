@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // /users/{uid} — solo il proprietario può scrivere
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // /groups/{groupId} — autenticati possono leggere (per join by code)
+    // solo admin può modificare campi del gruppo
+    match /groups/{groupId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null
+                    && (resource.data.adminUid == request.auth.uid
+                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt']));
+
+      // /groups/{groupId}/members/{uid}
+      // un utente può aggiungersi (join) o rimuoversi (leave)
+      // admin può gestire qualsiasi membro
+      match /members/{memberUid} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                      && request.auth.uid == memberUid;
+        allow update: if request.auth != null
+                      && (request.auth.uid == memberUid
+                          || get(/databases/$(database)/documents/groups/$(groupId)).data.adminUid == request.auth.uid);
+        allow delete: if request.auth != null
+                      && (request.auth.uid == memberUid
+                          || get(/databases/$(database)/documents/groups/$(groupId)).data.adminUid == request.auth.uid);
+      }
+    }
+
+    // /picks/{docId} — solo il proprietario (uid nel doc) può scrivere
+    // autenticati possono leggere (per classifica)
+    match /picks/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
+    }
+
+    // /seasons/{seasonKey}/matchdays/{dayNumber}
+    // autenticati possono leggere e scrivere (last-writer-wins per MVP)
+    match /seasons/{seasonKey}/matchdays/{dayNumber} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
