@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../leaderboards/models/matchday_data.dart';
@@ -66,17 +65,13 @@ class GroupMatchdayPage extends StatelessWidget {
     return mockPicksForMember('${member.id}_${matchday.dayNumber}', matches);
   }
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final appState = CassandraScope.of(context);
-    final en = _isEnglish(context, appState);
+    final en = Localizations.localeOf(
+      context,
+    ).languageCode.toLowerCase().startsWith('en');
 
     // non notificano: safe in build
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -97,13 +92,15 @@ class GroupMatchdayPage extends StatelessWidget {
       english: en,
     );
     final resultsLabel = gradedCount == totalMatches
-        ? '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches'
-        : '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches (${en ? 'partial' : 'parziale'})';
+        ? l10n.groupResultsLabel(gradedCount, totalMatches)
+        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
     final savedOutcomes = appState.hasSavedOutcomesForMatchday(
       matchday.dayNumber,
     );
-    final outcomesTag = savedOutcomes ? 'OUT: SALVATI' : 'OUT: runtime';
+    final outcomesTag = savedOutcomes
+        ? l10n.groupOutcomesSavedTag
+        : l10n.groupOutcomesRuntimeTag;
 
     final rows = members.map((member) {
       final picks = _picksForMember(appState, member, matches);
@@ -131,7 +128,7 @@ class GroupMatchdayPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          '${en ? 'Matchday' : 'Giornata'} ${matchday.dayNumber} • $groupName',
+          '${l10n.groupMatchdayTitle(matchday.dayNumber)} • $groupName',
         ),
       ),
       body: SafeArea(
@@ -208,12 +205,12 @@ class GroupMatchdayPage extends StatelessWidget {
                       ),
                       title: Text(
                         isMe
-                            ? '${r.member.teamName} (${en ? 'you' : 'tu'})'
+                            ? '${r.member.teamName} (${l10n.groupYou})'
                             : r.member.teamName,
                       ),
                       subtitle: Text(
                         '${r.member.displayName}\n'
-                        '${en ? 'correct' : 'esatti'}: ${r.day.correctCount}/$totalMatches • bonus: ${r.day.bonusPoints} • ${en ? 'avg. odds' : 'quota media'}: $avg',
+                        '${l10n.statsCorrect}: ${r.day.correctCount}/$totalMatches • bonus: ${r.day.bonusPoints} • ${l10n.statsAvgOdds}: $avg',
                       ),
                       isThreeLine: true,
                       trailing: Text(

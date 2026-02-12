@@ -272,5 +272,18 @@
     }
   },
   "statsMatchdays": "matchdays",
-  "statsCorrect": "correct"
+  "statsCorrect": "correct",
+  "tabPredictions": "Predictions",
+  "tabStats": "Stats",
+  "tabTrophies": "Trophies",
+  "groupYou": "you",
+  "groupOutcomesSavedTag": "OUT: SAVED",
+  "groupOutcomesRuntimeTag": "OUT: runtime",
+  "groupPicksSavedTag": "PICK: SAVED",
+  "groupPicksDemoRuntimeTag": "PICK: demo/runtime",
+  "groupBonusLabel": "Bonus",
+  "groupAvgOddsPlayedLabel": "avg. odds played",
+  "groupPickLabel": "pick",
+  "groupOutcomeLabel": "outcome",
+  "groupOddsLabel": "odds"
 }

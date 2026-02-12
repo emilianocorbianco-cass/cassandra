@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/team_name.dart';
@@ -88,17 +87,13 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     }
   }
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final appState = CassandraScope.of(context);
-    final en = _isEnglish(context, appState);
+    final en = Localizations.localeOf(
+      context,
+    ).languageCode.toLowerCase().startsWith('en');
 
     // safe (non notificano)
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -127,8 +122,8 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     }).length;
 
     final resultsLabel = gradedCount == totalMatches
-        ? '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches'
-        : '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches (${en ? 'partial' : 'parziale'})';
+        ? l10n.groupResultsLabel(gradedCount, totalMatches)
+        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
     final savedPicks =
         appState.hasSavedPicksForMatchday(matchday.dayNumber) &&
@@ -137,13 +132,17 @@ class GroupMatchdayMemberPage extends StatelessWidget {
       matchday.dayNumber,
     );
 
-    final picksTag = savedPicks ? 'PICK: SALVATI' : 'PICK: demo/runtime';
-    final outcomesTag = savedOutcomes ? 'OUT: SALVATI' : 'OUT: runtime';
+    final picksTag = savedPicks
+        ? l10n.groupPicksSavedTag
+        : l10n.groupPicksDemoRuntimeTag;
+    final outcomesTag = savedOutcomes
+        ? l10n.groupOutcomesSavedTag
+        : l10n.groupOutcomesRuntimeTag;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          '${member.teamName} • ${en ? 'Matchday' : 'Giornata'} ${matchday.dayNumber}',
+          '${member.teamName} • ${l10n.groupMatchdayTitle(matchday.dayNumber)}',
         ),
       ),
       body: SafeArea(
@@ -180,7 +179,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _Metric(
-                              label: en ? 'Total' : 'Totale',
+                              label: l10n.statsTotal,
                               value: formatOdds(day.total),
                             ),
                           ),
@@ -192,7 +191,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                           ),
                           Expanded(
                             child: _Metric(
-                              label: 'Bonus',
+                              label: l10n.groupBonusLabel,
                               value: '${day.bonusPoints}',
                             ),
                           ),
@@ -200,12 +199,12 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        '${en ? 'avg. odds played' : 'quota media giocata'}: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
+                        '${l10n.groupAvgOddsPlayedLabel}: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '${en ? 'correct' : 'esatti'}: ${day.correctCount}/$totalMatches',
+                        '${l10n.statsCorrect}: ${day.correctCount}/$totalMatches',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -260,8 +259,8 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                         ],
                       ),
                       subtitle: Text(
-                        'pick: ${_pickLabel(pick)} • ${en ? 'outcome' : 'esito'}: ${_outcomeLabel(outcome)}\n'
-                        '${mb.note}${mb.playedOdds == null ? '' : ' • ${en ? 'odds' : 'quota'}: ${formatOdds(mb.playedOdds!)}'}',
+                        '${l10n.groupPickLabel}: ${_pickLabel(pick)} • ${l10n.groupOutcomeLabel}: ${_outcomeLabel(outcome)}\n'
+                        '${mb.note}${mb.playedOdds == null ? '' : ' • ${l10n.groupOddsLabel}: ${formatOdds(mb.playedOdds!)}'}',
                       ),
                       isThreeLine: true,
                       trailing: Column(

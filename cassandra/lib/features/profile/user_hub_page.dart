@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../badges/models/badge_counts.dart';
 import '../badges/trophy_engine.dart';
@@ -47,16 +47,6 @@ class _UserHubPageState extends State<UserHubPage> {
 
   bool _initialized = false;
   int? _lastDemoSeed;
-
-  bool _isEnglish() {
-    final app = CassandraScope.of(context);
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(String it, String en) => _isEnglish() ? en : it;
 
   @override
   void didChangeDependencies() {
@@ -110,6 +100,7 @@ class _UserHubPageState extends State<UserHubPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final totalMatches = widget.matchday.matches.length;
     final gradedCount = widget.matchday.matches.where((m) {
       final o = widget.matchday.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
@@ -117,17 +108,17 @@ class _UserHubPageState extends State<UserHubPage> {
     }).length;
 
     final resultsLabel = (gradedCount == totalMatches)
-        ? '${_t('risultati', 'results')}: $gradedCount/$totalMatches'
-        : '${_t('risultati', 'results')}: $gradedCount/$totalMatches (${_t('parziale', 'partial')})';
+        ? l10n.groupResultsLabel(gradedCount, totalMatches)
+        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
     final app = CassandraScope.of(context);
     final dataLabel = app.cachedPredictionMatchesAreReal
-        ? _t('dati: reali (API)', 'data: real (API)')
-        : _t('dati: demo', 'data: demo');
+        ? l10n.groupDataRealApi
+        : l10n.groupDataDemo;
     final updatedLabel =
         (app.cachedPredictionMatchesAreReal &&
             app.cachedPredictionMatchesUpdatedAt != null)
-        ? ' \u2022 ${_t('agg.', 'upd.')} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
+        ? ' \u2022 ${l10n.shortUpdated} ${formatKickoff(app.cachedPredictionMatchesUpdatedAt!)}'
         : '';
 
     final initial = widget.initialTabIndex.clamp(0, 2);
@@ -166,9 +157,9 @@ class _UserHubPageState extends State<UserHubPage> {
                 children: [
                   TabBar(
                     tabs: [
-                      Tab(text: _t('Pronostici', 'Predictions')),
-                      const Tab(text: 'Stats'),
-                      Tab(text: _t('Trofei', 'Trophies')),
+                      Tab(text: l10n.tabPredictions),
+                      Tab(text: l10n.tabStats),
+                      Tab(text: l10n.tabTrophies),
                     ],
                   ),
                   Padding(

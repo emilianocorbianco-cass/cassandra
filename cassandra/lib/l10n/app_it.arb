@@ -272,5 +272,18 @@
     }
   },
   "statsMatchdays": "giornate",
-  "statsCorrect": "esatti"
+  "statsCorrect": "esatti",
+  "tabPredictions": "Pronostici",
+  "tabStats": "Stats",
+  "tabTrophies": "Trofei",
+  "groupYou": "tu",
+  "groupOutcomesSavedTag": "OUT: SALVATI",
+  "groupOutcomesRuntimeTag": "OUT: runtime",
+  "groupPicksSavedTag": "PICK: SALVATI",
+  "groupPicksDemoRuntimeTag": "PICK: demo/runtime",
+  "groupBonusLabel": "Bonus",
+  "groupAvgOddsPlayedLabel": "quota media giocata",
+  "groupPickLabel": "pick",
+  "groupOutcomeLabel": "esito",
+  "groupOddsLabel": "quota"
 }
