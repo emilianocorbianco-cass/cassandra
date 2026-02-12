@@ -44,6 +44,7 @@ class _HomeShellState extends State<HomeShell> {
     // ── Firestore fast path: try cached matchday data first ──
     final fs = app.firestoreService;
     if (fs != null) {
+      if (!app.isAuthenticated) return;
       try {
         final doc = await fs.getMatchdayData(
           seasonKey: app.currentSeasonKey,

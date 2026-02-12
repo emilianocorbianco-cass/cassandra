@@ -17,6 +17,7 @@
   "createGroupTapToCopy": "Tocca per copiare",
   "createGroupShareInviteCode": "Condividi codice invito",
   "createGroupContinue": "Continua",
+  "createGroupError": "Impossibile creare il gruppo. Riprova.",
   "groupShareInviteMessage": "Unisciti al mio gruppo \"{groupName}\" su Cassandra! Codice: {inviteCode}",
   "@groupShareInviteMessage": {
     "placeholders": {
@@ -39,6 +40,9 @@
   "groupDataRefreshing": "aggiornamento...",
   "groupDataRealApi": "dati: reali (API)",
   "groupDataDemo": "dati: demo",
+  "groupSignInRequired": "Accedi per continuare.",
+  "backendPermissionDenied": "Accesso negato dal backend. Verifica login e regole Firestore.",
+  "groupShareUnavailableCodeCopied": "Condivisione non disponibile qui. Codice invito copiato.",
   "shortUpdated": "agg.",
   "groupMatchdayLabel": "giornata {matchdayNumber} - {daysLabel}",
   "@groupMatchdayLabel": {
@@ -205,6 +209,7 @@
   "serieASegmentResults": "risultati",
   "serieASegmentStandings": "classifica",
   "serieADataDemo": "dati: demo",
+  "serieASignInRequired": "Accedi per vedere i dati live.",
   "serieAErrorLoadingBackendCache": "Errore caricando cache backend: {errorMessage}",
   "@serieAErrorLoadingBackendCache": {
     "placeholders": {

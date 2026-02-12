@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../features/predictions/models/formatters.dart';
@@ -38,6 +39,13 @@ class _ApiFootballDiagnosticsPageState
         errorMessage: l10n.settingsBackendNotConfigured,
       );
     }
+    if (!app.isAuthenticated) {
+      return _BackendDiagData(
+        matches: [],
+        outcomesByMatchId: {},
+        errorMessage: l10n.groupSignInRequired,
+      );
+    }
 
     try {
       final doc = await fs.getMatchdayData(
@@ -64,13 +72,17 @@ class _ApiFootballDiagnosticsPageState
         updatedAt: doc.updatedAt,
       );
     } catch (e) {
+      final errorMessage =
+          e is FirebaseException && e.code == 'permission-denied'
+          ? l10n.backendPermissionDenied
+          : e.toString();
       return _BackendDiagData(
         matches: const [],
         outcomesByMatchId: const {},
         seasonKey: app.currentSeasonKey,
         dayNumber: app.cassandraMatchdayCursor,
         updatedAt: null,
-        errorMessage: e.toString(),
+        errorMessage: errorMessage,
       );
     }
   }

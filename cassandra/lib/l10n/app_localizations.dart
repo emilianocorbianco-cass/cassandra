@@ -200,6 +200,12 @@ abstract class AppLocalizations {
   /// **'Continue'**
   String get createGroupContinue;
 
+  /// No description provided for @createGroupError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to create the group. Please try again.'**
+  String get createGroupError;
+
   /// No description provided for @groupShareInviteMessage.
   ///
   /// In en, this message translates to:
@@ -295,6 +301,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'data: demo'**
   String get groupDataDemo;
+
+  /// No description provided for @groupSignInRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to continue.'**
+  String get groupSignInRequired;
+
+  /// No description provided for @backendPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Backend access denied. Check login and Firestore rules.'**
+  String get backendPermissionDenied;
+
+  /// No description provided for @groupShareUnavailableCodeCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing is unavailable here. Invite code copied.'**
+  String get groupShareUnavailableCodeCopied;
 
   /// No description provided for @shortUpdated.
   ///
@@ -871,6 +895,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'data: demo'**
   String get serieADataDemo;
+
+  /// No description provided for @serieASignInRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to see live data.'**
+  String get serieASignInRequired;
 
   /// No description provided for @serieAErrorLoadingBackendCache.
   ///

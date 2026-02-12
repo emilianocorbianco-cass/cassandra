@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../app/state/app_state.dart';
 import '../../app/widgets/team_name.dart';
@@ -41,6 +42,7 @@ class _SerieAPageState extends State<SerieAPage> {
 
   Future<_SerieAData> _load() async {
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     if (app.cachedPredictionMatches != null &&
         app.cachedPredictionMatches!.isNotEmpty &&
@@ -63,6 +65,14 @@ class _SerieAPageState extends State<SerieAPage> {
         matches: [],
         outcomesByMatchId: {},
         fromBackend: false,
+      );
+    }
+    if (!app.isAuthenticated) {
+      return _SerieAData(
+        matches: const [],
+        outcomesByMatchId: const {},
+        fromBackend: false,
+        errorMessage: l10n.serieASignInRequired,
       );
     }
 
@@ -96,9 +106,29 @@ class _SerieAPageState extends State<SerieAPage> {
         matches: const [],
         outcomesByMatchId: const {},
         fromBackend: false,
-        errorMessage: e.toString(),
+        errorMessage: _friendlyBackendError(e, l10n, app),
       );
     }
+  }
+
+  String _friendlyBackendError(
+    Object error,
+    AppLocalizations l10n,
+    AppState app,
+  ) {
+    if (error is FirebaseException && error.code == 'permission-denied') {
+      return app.isAuthenticated
+          ? l10n.backendPermissionDenied
+          : l10n.serieASignInRequired;
+    }
+    final lower = error.toString().toLowerCase();
+    if (lower.contains('permission-denied') ||
+        lower.contains('permission denied')) {
+      return app.isAuthenticated
+          ? l10n.backendPermissionDenied
+          : l10n.serieASignInRequired;
+    }
+    return error.toString();
   }
 
   Future<void> _reload() async {

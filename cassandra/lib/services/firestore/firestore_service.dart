@@ -6,6 +6,7 @@ import '../../features/predictions/models/pick_option.dart';
 import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import '../../features/scoring/models/score_breakdown.dart';
+import '../api_football/models/api_football_standing.dart';
 import 'firestore_serializers.dart';
 import 'models/group_document.dart';
 import 'models/matchday_document.dart';
@@ -297,5 +298,26 @@ class FirestoreService {
       seasonKey: seasonKey,
       dayNumber: dayNumber,
     );
+  }
+
+  Future<List<ApiFootballStanding>> getSeasonStandings({
+    required String seasonKey,
+  }) async {
+    final doc = await _db
+        .collection('seasons')
+        .doc(seasonKey)
+        .collection('standings')
+        .doc('current')
+        .get();
+
+    if (!doc.exists) return const [];
+    final data = doc.data();
+    final rows = data?['rows'];
+    if (rows is! List) return const [];
+
+    return rows
+        .whereType<Map>()
+        .map((e) => ApiFootballStanding.fromMap(e.cast<String, dynamic>()))
+        .toList();
   }
 }

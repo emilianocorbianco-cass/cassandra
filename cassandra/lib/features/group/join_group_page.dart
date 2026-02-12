@@ -35,7 +35,12 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
 
     final appState = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
-    final err = await appState.joinGroupByInviteCode(code);
+    String? err;
+    try {
+      err = await appState.joinGroupByInviteCode(code);
+    } catch (_) {
+      err = 'Permission denied';
+    }
 
     if (!mounted) return;
 
@@ -46,6 +51,12 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
             ? l10n.joinGroupInvalidCode
             : err == 'Already a member'
             ? l10n.joinGroupAlreadyMember
+            : err == 'Not authenticated'
+            ? l10n.groupSignInRequired
+            : err == 'Backend unavailable'
+            ? l10n.settingsBackendNotConfigured
+            : err == 'Permission denied'
+            ? l10n.backendPermissionDenied
             : err;
       });
     } else {

@@ -377,55 +377,85 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> createGroup(String name) async {
+  Future<String?> createGroup(String name) async {
     final cleaned = name.trim();
-    if (cleaned.isEmpty) return;
-
-    _groupName = cleaned;
-    await _prefs?.setString(_kGroupNameV1, cleaned);
+    if (cleaned.isEmpty) return 'Invalid name';
 
     // Genera codice invito CASS-XXXX (con check unicità su Firestore)
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final rng = Random.secure();
-    String code;
     final fs = _firestoreService;
-    do {
+    final uid = _profile.id;
+
+    // Dev mode: backend non configurato → crea solo locale.
+    if (fs == null) {
       final suffix = List.generate(
         4,
         (_) => chars[rng.nextInt(chars.length)],
       ).join();
-      code = 'CASS-$suffix';
-    } while (fs != null && await fs.isInviteCodeTaken(code));
-
-    _groupInviteCode = code;
-    await _prefs?.setString(_kGroupInviteCodeV1, code);
-
-    // Scrivi gruppo su Firestore
-    if (fs != null && isAuthenticated) {
-      try {
-        final uid = _profile.id;
-        final groupId = await fs.createGroup(
-          name: cleaned,
-          adminUid: uid,
-          inviteCode: code,
-        );
-        // Aggiungi admin come primo membro
-        await fs.joinGroup(
-          groupId: groupId,
-          uid: uid,
-          displayName: _profile.displayName,
-          teamName: _profile.teamName,
-          avatarSeed: currentUserAvatarSeed,
-          favoriteTeam: _profile.favoriteTeam,
-        );
-        _firestoreGroupIds = [..._firestoreGroupIds, groupId];
-        _activeGroupId = groupId;
-      } catch (_) {
-        // Firestore fallito, il gruppo resta locale
-      }
+      final code = 'CASS-$suffix';
+      _groupName = cleaned;
+      _groupInviteCode = code;
+      await _prefs?.setString(_kGroupNameV1, cleaned);
+      await _prefs?.setString(_kGroupInviteCodeV1, code);
+      notifyListeners();
+      return null;
     }
 
-    notifyListeners();
+    if (!isAuthenticated || uid.isEmpty) {
+      return 'Not authenticated';
+    }
+
+    String? code;
+    for (var i = 0; i < 30; i++) {
+      final suffix = List.generate(
+        4,
+        (_) => chars[rng.nextInt(chars.length)],
+      ).join();
+      final candidate = 'CASS-$suffix';
+      try {
+        final taken = await fs.isInviteCodeTaken(candidate);
+        if (!taken) {
+          code = candidate;
+          break;
+        }
+      } catch (_) {
+        return 'Permission denied';
+      }
+    }
+    if (code == null) return 'Invite code generation failed';
+
+    try {
+      final groupId = await fs.createGroup(
+        name: cleaned,
+        adminUid: uid,
+        inviteCode: code,
+      );
+      // Aggiungi admin come primo membro
+      await fs.joinGroup(
+        groupId: groupId,
+        uid: uid,
+        displayName: _profile.displayName,
+        teamName: _profile.teamName,
+        avatarSeed: currentUserAvatarSeed,
+        favoriteTeam: _profile.favoriteTeam,
+      );
+
+      _groupName = cleaned;
+      _groupInviteCode = code;
+      await _prefs?.setString(_kGroupNameV1, cleaned);
+      await _prefs?.setString(_kGroupInviteCodeV1, code);
+
+      if (!_firestoreGroupIds.contains(groupId)) {
+        _firestoreGroupIds = [..._firestoreGroupIds, groupId];
+      }
+      _activeGroupId = groupId;
+
+      notifyListeners();
+      return null;
+    } catch (_) {
+      return 'Create group failed';
+    }
   }
 
   /// Gruppo Firestore attivo (primo per default)
@@ -442,7 +472,8 @@ class AppState extends ChangeNotifier {
   /// Join a Firestore group by invite code. Returns error string or null on success.
   Future<String?> joinGroupByInviteCode(String code) async {
     final fs = _firestoreService;
-    if (fs == null || !isAuthenticated) return 'Not authenticated';
+    if (fs == null) return 'Backend unavailable';
+    if (!isAuthenticated) return 'Not authenticated';
 
     final group = await fs.getGroupByInviteCode(code.trim().toUpperCase());
     if (group == null) return 'Invalid code';
@@ -1088,7 +1119,7 @@ class AppState extends ChangeNotifier {
   Future<List<GroupMember>> fetchFirestoreGroupMembers() async {
     final fs = _firestoreService;
     final groupId = activeGroupId;
-    if (fs == null || groupId == null) return [];
+    if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
     return docs
@@ -1111,7 +1142,7 @@ class AppState extends ChangeNotifier {
     required List<String> uids,
   }) async {
     final fs = _firestoreService;
-    if (fs == null) return {};
+    if (fs == null || !isAuthenticated) return {};
 
     final docs = await fs.getPicksForMatchday(
       seasonKey: currentSeasonKey,
@@ -1126,7 +1157,7 @@ class AppState extends ChangeNotifier {
   Future<GroupDocument?> fetchActiveGroupDocument() async {
     final fs = _firestoreService;
     final groupId = activeGroupId;
-    if (fs == null || groupId == null) return null;
+    if (fs == null || !isAuthenticated || groupId == null) return null;
     return fs.getGroup(groupId);
   }
 
@@ -1134,7 +1165,7 @@ class AppState extends ChangeNotifier {
   /// Returns list of PicksDocument for the current season.
   Future<List<PicksDocument>> fetchSeasonPicksForUser(String uid) async {
     final fs = _firestoreService;
-    if (fs == null) return [];
+    if (fs == null || !isAuthenticated) return [];
     return fs.getPicksForUser(uid: uid, seasonKey: currentSeasonKey);
   }
 

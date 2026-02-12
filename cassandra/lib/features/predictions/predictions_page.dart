@@ -20,6 +20,9 @@ import '../leaderboards/models/matchday_data.dart';
 import 'predictions_matchday_page.dart';
 import 'predictions_history_page.dart';
 import '../scoring/models/score_breakdown.dart';
+import '../../services/api_football/models/api_football_standing.dart';
+import '../../services/firestore/models/matchday_document.dart';
+import 'widgets/serie_a_standings_table.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -81,6 +84,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   bool _loadingFixtures = false;
   bool _didLoadFixtures = false;
   DateTime? _fixturesUpdatedAt;
+  List<ApiFootballStanding>? _standings;
   final Map<String, PickOption> _picks = {};
   int _segment = 0; // 0 = futuri, 1 = passati
   VisibilityChoice? _submittedVisibility;
@@ -491,16 +495,30 @@ class _PredictionsPageState extends State<PredictionsPage>
         }
         return;
       }
+      if (!appState.isAuthenticated) {
+        if (kDebugMode) {
+          debugPrint('[fixtures] unauthenticated -> using local/demo');
+        }
+        return;
+      }
 
       final dayNumber = appState.cassandraMatchdayCursor;
-      final doc = await fs.getMatchdayData(
-        seasonKey: appState.currentSeasonKey,
-        dayNumber: dayNumber,
-      );
+      final results = await Future.wait<dynamic>([
+        fs.getMatchdayData(
+          seasonKey: appState.currentSeasonKey,
+          dayNumber: dayNumber,
+        ),
+        fs.getSeasonStandings(seasonKey: appState.currentSeasonKey),
+      ]);
+      final doc = results[0] as MatchdayDocument?;
+      final standings = results[1] as List<ApiFootballStanding>;
 
       if (doc == null || doc.matches.isEmpty) {
         if (kDebugMode) {
           debugPrint('[fixtures] no firestore data for day=$dayNumber');
+        }
+        if (mounted && standings.isNotEmpty) {
+          setState(() => _standings = standings);
         }
         return;
       }
@@ -545,6 +563,7 @@ class _PredictionsPageState extends State<PredictionsPage>
         _matches = matches;
         _usingRealFixtures = true;
         _fixturesUpdatedAt = doc.updatedAt;
+        _standings = standings.isEmpty ? null : standings;
       });
       scope.setCachedPredictionMatches(
         matches,
@@ -1011,17 +1030,20 @@ class _PredictionsPageState extends State<PredictionsPage>
                   ? _buildHistory(context)
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: matches.length,
+                      itemCount: matches.length + (_standings != null ? 1 : 0),
                       itemBuilder: (context, i) {
-                        final match = matches[i];
-                        final pick = _pickFor(match.id);
-                        return PredictionMatchCard(
-                          match: match,
-                          pick: pick,
-                          locked: _locked,
-                          onPick: (p) => _setPick(match.id, p),
-                          onClear: () => _clearPick(match.id),
-                        );
+                        if (i < matches.length) {
+                          final match = matches[i];
+                          final pick = _pickFor(match.id);
+                          return PredictionMatchCard(
+                            match: match,
+                            pick: pick,
+                            locked: _locked,
+                            onPick: (p) => _setPick(match.id, p),
+                            onClear: () => _clearPick(match.id),
+                          );
+                        }
+                        return SerieAStandingsTable(standings: _standings!);
                       },
                     ),
             ),

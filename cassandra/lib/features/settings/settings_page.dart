@@ -1,6 +1,7 @@
 import 'package:cassandra/app/state/app_settings.dart';
 import 'package:cassandra/app/state/app_state.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -100,6 +101,11 @@ class _SettingsPageState extends State<SettingsPage> {
       if (mounted) setState(() => _fixturesRefreshing = false);
       return;
     }
+    if (!app.isAuthenticated) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.groupSignInRequired)));
+      if (mounted) setState(() => _fixturesRefreshing = false);
+      return;
+    }
 
     try {
       final doc = await fs.getMatchdayData(
@@ -123,9 +129,17 @@ class _SettingsPageState extends State<SettingsPage> {
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.settingsCacheRefreshedFromBackend)),
       );
-    } catch (_) {
+    } catch (e) {
+      final permissionDenied =
+          e is FirebaseException && e.code == 'permission-denied';
       messenger.showSnackBar(
-        SnackBar(content: Text(l10n.settingsCacheRefreshError)),
+        SnackBar(
+          content: Text(
+            permissionDenied
+                ? l10n.backendPermissionDenied
+                : l10n.settingsCacheRefreshError,
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _fixturesRefreshing = false);

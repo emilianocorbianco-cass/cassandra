@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
@@ -147,6 +148,43 @@ class _GroupPageState extends State<GroupPage> {
     return HSLColor.fromAHSL(1, hue, 0.45, 0.65).toColor();
   }
 
+  Rect? _shareOriginFromContext(BuildContext sourceContext) {
+    final renderObject = sourceContext.findRenderObject();
+    if (renderObject is! RenderBox) return null;
+    final origin = renderObject.localToGlobal(Offset.zero);
+    return origin & renderObject.size;
+  }
+
+  Future<void> _shareInvite({
+    required String groupName,
+    required String inviteCode,
+    required BuildContext sourceContext,
+    required AppLocalizations l10n,
+  }) async {
+    if (inviteCode.trim().isEmpty) return;
+    final text = l10n.groupShareInviteMessage(groupName, inviteCode);
+    final messenger = ScaffoldMessenger.of(context);
+    final shareOrigin = _shareOriginFromContext(sourceContext);
+    try {
+      final result = await SharePlus.instance.share(
+        ShareParams(text: text, sharePositionOrigin: shareOrigin),
+      );
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        await Clipboard.setData(ClipboardData(text: inviteCode));
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.groupShareUnavailableCodeCopied)),
+        );
+      }
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: inviteCode));
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.groupShareUnavailableCodeCopied)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
@@ -289,13 +327,19 @@ class _GroupPageState extends State<GroupPage> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () {
-              final code = appState.groupInviteCode ?? '';
-              final text = l10n.groupShareInviteMessage(groupName, code);
-              SharePlus.instance.share(ShareParams(text: text));
-            },
+          Builder(
+            builder: (buttonContext) => IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () async {
+                final code = appState.groupInviteCode ?? '';
+                await _shareInvite(
+                  groupName: groupName,
+                  inviteCode: code,
+                  sourceContext: buttonContext,
+                  l10n: l10n,
+                );
+              },
+            ),
           ),
         ],
         bottom: PreferredSize(

@@ -20,6 +20,8 @@ class CreateGroupPage extends StatefulWidget {
 class _CreateGroupPageState extends State<CreateGroupPage> {
   final _nameController = TextEditingController();
   bool _created = false;
+  bool _creating = false;
+  String? _error;
   String? _pickedImagePath;
 
   @override
@@ -39,24 +41,74 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
 
+    setState(() {
+      _creating = true;
+      _error = null;
+    });
+
     final appState = CassandraScope.of(context);
-    await appState.createGroup(name);
+    final err = await appState.createGroup(name);
+
+    if (!mounted) return;
+    if (err != null) {
+      final l10n = AppLocalizations.of(context)!;
+      setState(() {
+        _creating = false;
+        _error = err == 'Not authenticated'
+            ? l10n.groupSignInRequired
+            : err == 'Backend unavailable'
+            ? l10n.settingsBackendNotConfigured
+            : err == 'Permission denied'
+            ? l10n.backendPermissionDenied
+            : l10n.createGroupError;
+      });
+      return;
+    }
 
     if (_pickedImagePath != null) {
       await appState.updateGroupImagePath(_pickedImagePath);
     }
 
-    setState(() => _created = true);
+    setState(() {
+      _creating = false;
+      _created = true;
+    });
   }
 
-  void _onShare() {
+  Rect? _shareOriginFromContext(BuildContext sourceContext) {
+    final renderObject = sourceContext.findRenderObject();
+    if (renderObject is! RenderBox) return null;
+    final origin = renderObject.localToGlobal(Offset.zero);
+    return origin & renderObject.size;
+  }
+
+  Future<void> _onShare(BuildContext sourceContext) async {
     final appState = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
     final name = appState.groupName ?? '';
     final code = appState.groupInviteCode ?? '';
+    if (code.trim().isEmpty) return;
     final text = l10n.groupShareInviteMessage(name, code);
-
-    SharePlus.instance.share(ShareParams(text: text));
+    final messenger = ScaffoldMessenger.of(context);
+    final shareOrigin = _shareOriginFromContext(sourceContext);
+    try {
+      final result = await SharePlus.instance.share(
+        ShareParams(text: text, sharePositionOrigin: shareOrigin),
+      );
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        await Clipboard.setData(ClipboardData(text: code));
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.groupShareUnavailableCodeCopied)),
+        );
+      }
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: code));
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.groupShareUnavailableCodeCopied)),
+      );
+    }
   }
 
   void _onContinue() {
@@ -133,15 +185,34 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: _nameController.text.trim().isEmpty
+                    onPressed: _creating || _nameController.text.trim().isEmpty
                         ? null
                         : _onCreate,
                     style: FilledButton.styleFrom(
                       backgroundColor: CassandraColors.primary,
                     ),
-                    child: Text(l10n.createGroupButton),
+                    child: _creating
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(l10n.createGroupButton),
                   ),
                 ),
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _error!,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -255,12 +326,14 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _onShare,
-                    icon: const Icon(Icons.share),
-                    label: Text(l10n.createGroupShareInviteCode),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: CassandraColors.primary,
+                  child: Builder(
+                    builder: (buttonContext) => FilledButton.icon(
+                      onPressed: () => _onShare(buttonContext),
+                      icon: const Icon(Icons.share),
+                      label: Text(l10n.createGroupShareInviteCode),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: CassandraColors.primary,
+                      ),
                     ),
                   ),
                 ),

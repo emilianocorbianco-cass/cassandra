@@ -54,6 +54,21 @@ interface MatchDoc {
 
 type Outcome = "home" | "draw" | "away" | "pending" | "voided";
 
+interface StandingDoc {
+  rank: number;
+  teamName: string;
+  teamLogo: string | null;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDiff: number;
+  points: number;
+  form: string | null;
+}
+
 // Preferred bookmaker IDs (Bet365, Bwin, 1xBet, 10Bet)
 const PREFERRED_BOOKMAKER_IDS = [8, 6, 11, 1];
 
@@ -141,6 +156,50 @@ function parseFixtures(json: Record<string, unknown>): ApiFixture[] {
           goals["away"] != null ? Number(goals["away"]) : null,
         round: league["round"] ? String(league["round"]) : null,
       } as ApiFixture;
+    });
+}
+
+function parseStandings(json: Record<string, unknown>): StandingDoc[] {
+  const response = json["response"];
+  if (!Array.isArray(response) || response.length === 0) return [];
+
+  const first = response[0];
+  if (typeof first !== "object" || first == null) return [];
+
+  const league = (first as Record<string, unknown>)["league"];
+  if (typeof league !== "object" || league == null) return [];
+
+  const standings = (league as Record<string, unknown>)["standings"];
+  if (!Array.isArray(standings) || standings.length === 0) return [];
+
+  const group = standings[0];
+  if (!Array.isArray(group)) return [];
+
+  const asInt = (v: unknown): number =>
+    typeof v === "number" ? Math.trunc(v) : Number(v) || 0;
+
+  return group
+    .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+    .map((entry) => {
+      const team = (entry["team"] as Record<string, unknown> | undefined) ?? {};
+      const all = (entry["all"] as Record<string, unknown> | undefined) ?? {};
+      const goals =
+        (all["goals"] as Record<string, unknown> | undefined) ?? {};
+
+      return {
+        rank: asInt(entry["rank"]),
+        teamName: String(team["name"] ?? "?"),
+        teamLogo: team["logo"] ? String(team["logo"]) : null,
+        played: asInt(all["played"]),
+        wins: asInt(all["win"]),
+        draws: asInt(all["draw"]),
+        losses: asInt(all["lose"]),
+        goalsFor: asInt(goals["for"]),
+        goalsAgainst: asInt(goals["against"]),
+        goalDiff: asInt(entry["goalsDiff"]),
+        points: asInt(entry["points"]),
+        form: entry["form"] ? String(entry["form"]) : null,
+      };
     });
 }
 
@@ -354,7 +413,7 @@ export const refreshMatchdayData = onSchedule(
     console.log(`[refresh] League ID: ${leagueId}`);
 
     // 2. Fetch fixtures (last 40 + next 80)
-    const [pastJson, nextJson] = await Promise.all([
+    const [pastJson, nextJson, standingsJson] = await Promise.all([
       apiGet("fixtures", {
         league: leagueId.toString(),
         season: season.toString(),
@@ -367,10 +426,31 @@ export const refreshMatchdayData = onSchedule(
         next: "80",
         timezone: "Europe/Rome",
       }),
+      apiGet("standings", {
+        league: leagueId.toString(),
+        season: season.toString(),
+      }),
     ]);
 
     const pastFixtures = parseFixtures(pastJson);
     const nextFixtures = parseFixtures(nextJson);
+    const standings = parseStandings(standingsJson);
+
+    if (standings.length > 0) {
+      await db
+        .collection("seasons")
+        .doc(seasonKey)
+        .collection("standings")
+        .doc("current")
+        .set(
+          {
+            rows: standings,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      console.log(`[refresh] Wrote standings rows=${standings.length}`);
+    }
 
     // 3. Deduplicate by fixtureId
     const seen = new Set<number>();

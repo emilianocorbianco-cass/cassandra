@@ -62,6 +62,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createGroupContinue => 'Continue';
 
   @override
+  String get createGroupError =>
+      'Unable to create the group. Please try again.';
+
+  @override
   String groupShareInviteMessage(Object groupName, Object inviteCode) {
     return 'Join my group \"$groupName\" on Cassandra! Code: $inviteCode';
   }
@@ -111,6 +115,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupDataDemo => 'data: demo';
+
+  @override
+  String get groupSignInRequired => 'Sign in to continue.';
+
+  @override
+  String get backendPermissionDenied =>
+      'Backend access denied. Check login and Firestore rules.';
+
+  @override
+  String get groupShareUnavailableCodeCopied =>
+      'Sharing is unavailable here. Invite code copied.';
 
   @override
   String get shortUpdated => 'upd.';
@@ -438,6 +453,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get serieADataDemo => 'data: demo';
+
+  @override
+  String get serieASignInRequired => 'Sign in to see live data.';
 
   @override
   String serieAErrorLoadingBackendCache(Object errorMessage) {

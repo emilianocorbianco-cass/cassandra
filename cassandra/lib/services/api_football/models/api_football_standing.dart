@@ -49,4 +49,23 @@ class ApiFootballStanding {
       form: json['form']?.toString(),
     );
   }
+
+  factory ApiFootballStanding.fromMap(Map<String, dynamic> map) {
+    int asInt(dynamic v) => v is int ? v : (v is num ? v.toInt() : 0);
+
+    return ApiFootballStanding(
+      rank: asInt(map['rank']),
+      teamName: map['teamName']?.toString() ?? '?',
+      teamLogo: map['teamLogo']?.toString(),
+      played: asInt(map['played']),
+      wins: asInt(map['wins']),
+      draws: asInt(map['draws']),
+      losses: asInt(map['losses']),
+      goalsFor: asInt(map['goalsFor']),
+      goalsAgainst: asInt(map['goalsAgainst']),
+      goalDiff: asInt(map['goalDiff']),
+      points: asInt(map['points']),
+      form: map['form']?.toString(),
+    );
+  }
 }
