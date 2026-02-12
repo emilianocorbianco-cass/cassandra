@@ -68,7 +68,9 @@ class UserPicksView extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 6),
-                        Text('Base: ${formatOdds(day.baseTotal)}'),
+                        Text(
+                          '${l10n.predictionsBaseLabel}: ${formatOdds(day.baseTotal)}',
+                        ),
                         Text('${l10n.groupBonusLabel}: ${day.bonusPoints}'),
                         const SizedBox(height: 6),
                         Text('${l10n.statsCorrect}: ${day.correctCount}/10'),

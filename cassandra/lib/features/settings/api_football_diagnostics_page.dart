@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../features/predictions/models/formatters.dart';
@@ -27,13 +28,14 @@ class _ApiFootballDiagnosticsPageState
   }
 
   Future<_BackendDiagData> _load() async {
+    final l10n = AppLocalizations.of(context)!;
     final app = CassandraScope.of(context);
     final fs = app.firestoreService;
     if (fs == null) {
-      return const _BackendDiagData(
+      return _BackendDiagData(
         matches: [],
         outcomesByMatchId: {},
-        errorMessage: 'Backend/Firestore non configurato su questo device.',
+        errorMessage: l10n.settingsBackendNotConfigured,
       );
     }
 
@@ -50,7 +52,7 @@ class _ApiFootballDiagnosticsPageState
           seasonKey: app.currentSeasonKey,
           dayNumber: app.cassandraMatchdayCursor,
           updatedAt: null,
-          errorMessage: 'Nessun documento matchday trovato in Firestore.',
+          errorMessage: l10n.settingsDiagNoMatchdayDoc,
         );
       }
 
@@ -75,12 +77,13 @@ class _ApiFootballDiagnosticsPageState
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Backend cache diagnostica'),
+        title: Text(l10n.settingsBackendDiagnosticsTitle),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
+            tooltip: l10n.settingsRefreshCacheNowTitle,
             icon: const Icon(Icons.refresh),
             onPressed: () => setState(() => _future = _load()),
           ),
@@ -101,26 +104,34 @@ class _ApiFootballDiagnosticsPageState
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                'Sorgente: Firestore /seasons/<season>/matchdays/<day>',
+                l10n.settingsDiagSourceFirestore,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 10),
-              if (data.seasonKey != null) Text('seasonKey: ${data.seasonKey}'),
-              if (data.dayNumber != null) Text('dayNumber: ${data.dayNumber}'),
-              Text('matches: ${data.matches.length}'),
-              Text('outcomes: ${data.outcomesByMatchId.length}'),
+              if (data.seasonKey != null)
+                Text(l10n.settingsDiagSeasonKey(data.seasonKey!)),
+              if (data.dayNumber != null)
+                Text(l10n.settingsDiagDayNumber(data.dayNumber!)),
+              Text(l10n.settingsDiagMatchesCount(data.matches.length)),
               Text(
-                'updatedAt: ${data.updatedAt == null ? '-' : formatKickoff(data.updatedAt!)}',
+                l10n.settingsDiagOutcomesCount(data.outcomesByMatchId.length),
+              ),
+              Text(
+                l10n.settingsDiagUpdatedAt(
+                  data.updatedAt == null ? '-' : formatKickoff(data.updatedAt!),
+                ),
               ),
               if (data.errorMessage != null) ...[
                 const SizedBox(height: 12),
-                Text('Errore', style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  l10n.settingsDiagErrorTitle,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
                 const SizedBox(height: 6),
                 Text(data.errorMessage!),
               ],
               const SizedBox(height: 14),
-              if (data.matches.isEmpty)
-                const Text('Nessuna partita disponibile.'),
+              if (data.matches.isEmpty) Text(l10n.serieANoMatchesToShow),
               ...data.matches.map((m) {
                 final o = data.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
                 return Card(
@@ -128,7 +139,9 @@ class _ApiFootballDiagnosticsPageState
                     title: Text('${m.homeTeam}  vs  ${m.awayTeam}'),
                     subtitle: Text(formatKickoff(m.kickoff)),
                     trailing: Text(
-                      o.isPending ? 'PENDING' : o.label.toUpperCase(),
+                      o.isPending
+                          ? l10n.predictionsOutcomePending.toUpperCase()
+                          : o.label.toUpperCase(),
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
 import '../../badges/badge_engine.dart';
@@ -31,6 +32,7 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final entries = buildSortedMockGroupLeaderboard(
       matches: matches,
       outcomesByMatchId: outcomesByMatchId,
@@ -39,7 +41,7 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
     );
 
     if (entries.isEmpty) {
-      return const Center(child: Text('Nessun dato disponibile'));
+      return Center(child: Text(l10n.commonNoDataAvailable));
     }
 
     return ListView.builder(

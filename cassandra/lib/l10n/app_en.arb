@@ -449,5 +449,46 @@
     }
   },
   "predictionsSubmitWithoutShowing": "submit without showing",
-  "predictionsSubmitAndShow": "submit and show"
+  "predictionsSubmitAndShow": "submit and show",
+  "commonNoDataAvailable": "No data available",
+  "predictionsBaseLabel": "Base",
+  "predictionsDataDemoFixturesNotSaved": "Data: DEMO (fixtures not saved)",
+  "predictionsDataSaved": "Data: saved",
+  "predictionsOutcomePending": "pending",
+  "settingsDiagNoMatchdayDoc": "No matchday document found in Firestore.",
+  "settingsDiagSourceFirestore": "Source: Firestore /seasons/<season>/matchdays/<day>",
+  "settingsDiagSeasonKey": "seasonKey: {value}",
+  "@settingsDiagSeasonKey": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "settingsDiagDayNumber": "dayNumber: {value}",
+  "@settingsDiagDayNumber": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "settingsDiagMatchesCount": "matches: {count}",
+  "@settingsDiagMatchesCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsDiagOutcomesCount": "outcomes: {count}",
+  "@settingsDiagOutcomesCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsDiagUpdatedAt": "updatedAt: {value}",
+  "@settingsDiagUpdatedAt": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "settingsDiagErrorTitle": "Error",
+  "commonVersusShort": "vs",
+  "predictionsDoubleChance": "Double chance",
+  "predictionsClearPick": "Clear pick"
 }

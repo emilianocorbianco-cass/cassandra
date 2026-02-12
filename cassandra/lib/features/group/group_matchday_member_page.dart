@@ -185,7 +185,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                           ),
                           Expanded(
                             child: _Metric(
-                              label: 'Base',
+                              label: l10n.predictionsBaseLabel,
                               value: formatOdds(day.baseTotal),
                             ),
                           ),

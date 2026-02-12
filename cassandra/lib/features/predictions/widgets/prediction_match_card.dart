@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../app/state/app_settings.dart';
-import '../../../app/state/cassandra_scope.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 import '../../../app/widgets/team_name.dart';
 import '../models/pick_option.dart';
 import '../models/prediction_match.dart';
@@ -25,11 +24,7 @@ class PredictionMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final langCode = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    final en = langCode.toLowerCase().startsWith('en');
+    final l10n = AppLocalizations.of(context)!;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -47,7 +42,7 @@ class PredictionMatchCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
-                const Text('vs'),
+                Text(' ${l10n.commonVersusShort} '),
                 Expanded(
                   child: TeamName(
                     name: match.awayTeam,
@@ -61,7 +56,7 @@ class PredictionMatchCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Kickoff: ${formatKickoff(match.kickoff)}',
+              '${l10n.kickoffLabel}: ${formatKickoff(match.kickoff)}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 10),
@@ -95,7 +90,7 @@ class PredictionMatchCard extends StatelessWidget {
 
             const SizedBox(height: 8),
             Text(
-              en ? 'Double chance' : 'Doppia chance',
+              l10n.predictionsDoubleChance,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 6),
@@ -133,7 +128,7 @@ class PredictionMatchCard extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: locked ? null : onClear,
-                  child: Text(en ? 'Clear pick' : 'Azzera scelta'),
+                  child: Text(l10n.predictionsClearPick),
                 ),
               ),
             ],

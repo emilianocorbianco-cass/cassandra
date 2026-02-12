@@ -1502,6 +1502,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'submit and show'**
   String get predictionsSubmitAndShow;
+
+  /// No description provided for @commonNoDataAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No data available'**
+  String get commonNoDataAvailable;
+
+  /// No description provided for @predictionsBaseLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Base'**
+  String get predictionsBaseLabel;
+
+  /// No description provided for @predictionsDataDemoFixturesNotSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Data: DEMO (fixtures not saved)'**
+  String get predictionsDataDemoFixturesNotSaved;
+
+  /// No description provided for @predictionsDataSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Data: saved'**
+  String get predictionsDataSaved;
+
+  /// No description provided for @predictionsOutcomePending.
+  ///
+  /// In en, this message translates to:
+  /// **'pending'**
+  String get predictionsOutcomePending;
+
+  /// No description provided for @settingsDiagNoMatchdayDoc.
+  ///
+  /// In en, this message translates to:
+  /// **'No matchday document found in Firestore.'**
+  String get settingsDiagNoMatchdayDoc;
+
+  /// No description provided for @settingsDiagSourceFirestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: Firestore /seasons/<season>/matchdays/<day>'**
+  String get settingsDiagSourceFirestore;
+
+  /// No description provided for @settingsDiagSeasonKey.
+  ///
+  /// In en, this message translates to:
+  /// **'seasonKey: {value}'**
+  String settingsDiagSeasonKey(Object value);
+
+  /// No description provided for @settingsDiagDayNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'dayNumber: {value}'**
+  String settingsDiagDayNumber(Object value);
+
+  /// No description provided for @settingsDiagMatchesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'matches: {count}'**
+  String settingsDiagMatchesCount(Object count);
+
+  /// No description provided for @settingsDiagOutcomesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'outcomes: {count}'**
+  String settingsDiagOutcomesCount(Object count);
+
+  /// No description provided for @settingsDiagUpdatedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'updatedAt: {value}'**
+  String settingsDiagUpdatedAt(Object value);
+
+  /// No description provided for @settingsDiagErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get settingsDiagErrorTitle;
+
+  /// No description provided for @commonVersusShort.
+  ///
+  /// In en, this message translates to:
+  /// **'vs'**
+  String get commonVersusShort;
+
+  /// No description provided for @predictionsDoubleChance.
+  ///
+  /// In en, this message translates to:
+  /// **'Double chance'**
+  String get predictionsDoubleChance;
+
+  /// No description provided for @predictionsClearPick.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear pick'**
+  String get predictionsClearPick;
 }
 
 class _AppLocalizationsDelegate

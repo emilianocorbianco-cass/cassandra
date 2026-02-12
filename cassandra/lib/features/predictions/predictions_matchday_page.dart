@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/cassandra_scope.dart';
 import '../../app/widgets/team_name.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
@@ -71,11 +70,8 @@ class PredictionsMatchdayPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final langCode = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    final en = langCode.toLowerCase().startsWith('en');
+    final l10n = AppLocalizations.of(context)!;
+    final en = l10n.localeName.startsWith('en');
 
     final DayScoreBreakdown day = CassandraScoringEngine.computeDayScore(
       matches: matches,
@@ -89,11 +85,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          en ? 'Matchday $matchdayNumber' : 'Giornata $matchdayNumber',
-        ),
-      ),
+      appBar: AppBar(title: Text(l10n.groupMatchdayTitle(matchdayNumber))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
         children: [
@@ -109,7 +101,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          en ? 'Total' : 'Totale',
+                          l10n.statsTotal,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                       ),
@@ -122,24 +114,20 @@ class PredictionsMatchdayPage extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Expanded(child: Text('Base')),
+                      Expanded(child: Text(l10n.predictionsBaseLabel)),
                       Text(_fmtPoints(day.baseTotal)),
                     ],
                   ),
                   Row(
                     children: [
-                      const Expanded(child: Text('Bonus')),
+                      Expanded(child: Text(l10n.groupBonusLabel)),
                       Text(day.bonusPoints.toString()),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Expanded(
-                        child: Text(
-                          en ? 'Avg. odds played' : 'Quota media giocata',
-                        ),
-                      ),
+                      Expanded(child: Text(l10n.groupAvgOddsPlayedLabel)),
                       Text(
                         (day.averageOddsPlayed == null)
                             ? '—'
@@ -150,10 +138,8 @@ class PredictionsMatchdayPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     isDemoData
-                        ? (en
-                              ? 'Data: DEMO (fixtures not saved)'
-                              : 'Dati: DEMO (fixture non storicizzate)')
-                        : (en ? 'Data: saved' : 'Dati: salvati'),
+                        ? l10n.predictionsDataDemoFixturesNotSaved
+                        : l10n.predictionsDataSaved,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -170,7 +156,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
                 : (_isCorrect(pick, outcome) ? '✅' : '❌');
 
             final outcomeLabel = outcome.isPending
-                ? (en ? 'pending' : 'in attesa')
+                ? l10n.predictionsOutcomePending
                 : (outcome == MatchOutcome.home
                       ? '1'
                       : outcome == MatchOutcome.draw
@@ -198,7 +184,7 @@ class PredictionsMatchdayPage extends StatelessWidget {
                   ],
                 ),
                 subtitle: Text(
-                  'Pick: ${_pickLabel(pick)} • ${en ? 'Outcome' : 'Esito'}: $outcomeLabel',
+                  '${l10n.groupPickLabel}: ${_pickLabel(pick)} • ${l10n.groupOutcomeLabel}: $outcomeLabel',
                 ),
                 trailing: Text(status),
               ),

@@ -816,4 +816,65 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get predictionsSubmitAndShow => 'invia e mostra';
+
+  @override
+  String get commonNoDataAvailable => 'Nessun dato disponibile';
+
+  @override
+  String get predictionsBaseLabel => 'Base';
+
+  @override
+  String get predictionsDataDemoFixturesNotSaved =>
+      'Dati: DEMO (fixture non storicizzate)';
+
+  @override
+  String get predictionsDataSaved => 'Dati: salvati';
+
+  @override
+  String get predictionsOutcomePending => 'in attesa';
+
+  @override
+  String get settingsDiagNoMatchdayDoc =>
+      'Nessun documento matchday trovato in Firestore.';
+
+  @override
+  String get settingsDiagSourceFirestore =>
+      'Sorgente: Firestore /seasons/<season>/matchdays/<day>';
+
+  @override
+  String settingsDiagSeasonKey(Object value) {
+    return 'seasonKey: $value';
+  }
+
+  @override
+  String settingsDiagDayNumber(Object value) {
+    return 'dayNumber: $value';
+  }
+
+  @override
+  String settingsDiagMatchesCount(Object count) {
+    return 'matches: $count';
+  }
+
+  @override
+  String settingsDiagOutcomesCount(Object count) {
+    return 'outcomes: $count';
+  }
+
+  @override
+  String settingsDiagUpdatedAt(Object value) {
+    return 'updatedAt: $value';
+  }
+
+  @override
+  String get settingsDiagErrorTitle => 'Errore';
+
+  @override
+  String get commonVersusShort => 'vs';
+
+  @override
+  String get predictionsDoubleChance => 'Doppia chance';
+
+  @override
+  String get predictionsClearPick => 'Azzera scelta';
 }

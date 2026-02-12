@@ -279,7 +279,7 @@ class _SerieAPageState extends State<SerieAPage> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                const Text('  vs  '),
+                Text('  ${l10n.commonVersusShort}  '),
                 Expanded(
                   child: TeamName(
                     name: m.awayTeam,
