@@ -285,5 +285,169 @@
   "groupAvgOddsPlayedLabel": "avg. odds played",
   "groupPickLabel": "pick",
   "groupOutcomeLabel": "outcome",
-  "groupOddsLabel": "odds"
+  "groupOddsLabel": "odds",
+  "tabGroup": "Group",
+  "tabLive": "Live",
+  "leaderboardsPlayersCount": "Players: {count}",
+  "@leaderboardsPlayersCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "serieAStandingsTitle": "Serie A Standings",
+  "serieATeamColumn": "Team",
+  "serieAPlayedColumn": "MP",
+  "serieAWinsColumn": "W",
+  "serieADrawsColumn": "D",
+  "serieALossesColumn": "L",
+  "serieAGoalsAgainstColumn": "GA",
+  "serieAGoalDiffColumn": "GD",
+  "serieAPointsColumn": "Pts",
+  "serieALastFiveColumn": "Last 5",
+  "statsBestDayShort": "MD{day}: {points}",
+  "@statsBestDayShort": {
+    "placeholders": {
+      "day": {},
+      "points": {}
+    }
+  },
+  "statsWorstDayShort": "MD{day}: {points}",
+  "@statsWorstDayShort": {
+    "placeholders": {
+      "day": {},
+      "points": {}
+    }
+  },
+  "profileTrophiesHistory": "Trophies (history)",
+  "profileTrophiesDescription": "Trophies for {displayName} (demo season history).\nRules: 👑 group winner • L last place • 👁️ 10/10 correct • 🦉 jinxed own favorite team.",
+  "@profileTrophiesDescription": {
+    "placeholders": {
+      "displayName": {}
+    }
+  },
+  "predictionsVoidCount": "void {count}",
+  "@predictionsVoidCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "predictionsValidStatus": "valid",
+  "predictionsInvalidStatus": "invalid",
+  "predictionsPickLockedSnack": "Match already started: pick locked",
+  "predictionsMissingConfirm": "You left {missing} matches without a prediction.\n\nCassandra rule: for each unplayed match a penalty equal to -highest odds (among 1/X/2) will be applied when scoring.\n\nSubmit anyway?",
+  "@predictionsMissingConfirm": {
+    "placeholders": {
+      "missing": {}
+    }
+  },
+  "predictionsSubmitAnyway": "Submit anyway",
+  "predictionsVisibilityPublic": "public",
+  "predictionsVisibilityPrivate": "private",
+  "predictionsSlipSubmitted": "Slip submitted (visibility: {visibility})",
+  "@predictionsSlipSubmitted": {
+    "placeholders": {
+      "visibility": {}
+    }
+  },
+  "predictionsDebugScoreTitle": "Debug: score calculation",
+  "predictionsDebugBase": "base: {value}",
+  "@predictionsDebugBase": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugBonus": "bonus: {value}",
+  "@predictionsDebugBonus": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugTotal": "total: {value}",
+  "@predictionsDebugTotal": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugCorrect": "correct: {value}",
+  "@predictionsDebugCorrect": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugAvgOdds": "avg odds: {value}",
+  "@predictionsDebugAvgOdds": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugPickRow": "pick {pick}  •  result {outcome}  •  {points}",
+  "@predictionsDebugPickRow": {
+    "placeholders": {
+      "pick": {},
+      "outcome": {},
+      "points": {}
+    }
+  },
+  "predictionsTagLive": "LIVE",
+  "predictionsTagDemo": "DEMO",
+  "predictionsTagSaved": "SAVED",
+  "predictionsTagRecoveries": "RECOVERIES",
+  "predictionsHistoryDemoInfo": "Predictions history (DEMO)\nShowing 16-19 from mocks. Current matchday is visible above (LIVE/DEMO).",
+  "predictionsPicksLocked": "picks locked",
+  "predictionsEditableUntil": "editable until {time}",
+  "@predictionsEditableUntil": {
+    "placeholders": {
+      "time": {}
+    }
+  },
+  "predictionsScoreSummary": "points: {total} (base {base} • bonus {bonus}) • correct {correct}/{count} • avg odds {avgOdds}",
+  "@predictionsScoreSummary": {
+    "placeholders": {
+      "total": {},
+      "base": {},
+      "bonus": {},
+      "correct": {},
+      "count": {},
+      "avgOdds": {}
+    }
+  },
+  "predictionsDataRealBackendCache": "data: real (backend cache)",
+  "predictionsRefreshMatches": "Refresh matches",
+  "predictionsUseBackendCache": "Use backend cache",
+  "predictionsForceDemoData": "Force demo data",
+  "predictionsSampleDataBanner": "Sample data - wait for backend sync",
+  "predictionsPastSegment": "past predictions",
+  "predictionsUpcomingSegment": "upcoming predictions",
+  "predictionsDebugShifted": "debug: shifted {shifted} • <48h {under48} • >48h {over48}",
+  "@predictionsDebugShifted": {
+    "placeholders": {
+      "shifted": {},
+      "under48": {},
+      "over48": {}
+    }
+  },
+  "predictionsDebugPlayedVoid": "debug: played {played} • void {voidCount}",
+  "@predictionsDebugPlayedVoid": {
+    "placeholders": {
+      "played": {},
+      "voidCount": {}
+    }
+  },
+  "predictionsPicksSummary": "picks: {picked}/{total}  •  avg odds: {avgOdds}",
+  "@predictionsPicksSummary": {
+    "placeholders": {
+      "picked": {},
+      "total": {},
+      "avgOdds": {}
+    }
+  },
+  "predictionsLastSubmit": "last submit: {submittedAt} ({visibility})",
+  "@predictionsLastSubmit": {
+    "placeholders": {
+      "submittedAt": {},
+      "visibility": {}
+    }
+  },
+  "predictionsSubmitWithoutShowing": "submit without showing",
+  "predictionsSubmitAndShow": "submit and show"
 }

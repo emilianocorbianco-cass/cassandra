@@ -7,8 +7,8 @@ import '../../features/stats/stats_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart';
-import '../state/app_settings.dart';
 import '../theme/app_colors.dart';
 
 class HomeShell extends StatefulWidget {
@@ -79,14 +79,6 @@ class _HomeShellState extends State<HomeShell> {
     // Backend-only mode: niente fallback API lato client.
   }
 
-  bool _isEnglish() {
-    final app = CassandraScope.of(context);
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   int _index = 0;
 
   static final _pages = <Widget>[
@@ -99,6 +91,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final appState = CassandraScope.of(context);
 
     return Scaffold(
@@ -126,23 +119,23 @@ class _HomeShellState extends State<HomeShell> {
           destinations: [
             NavigationDestination(
               icon: const Icon(Icons.sports_soccer),
-              label: _isEnglish() ? 'Predictions' : 'Pronostici',
+              label: l10n.tabPredictions,
             ),
             NavigationDestination(
               icon: const Icon(Icons.groups),
-              label: _isEnglish() ? 'Group' : 'Gruppo',
+              label: l10n.tabGroup,
             ),
             NavigationDestination(
               icon: const Icon(Icons.format_list_bulleted),
-              label: 'Live',
+              label: l10n.tabLive,
             ),
             NavigationDestination(
               icon: const Icon(Icons.bar_chart),
-              label: 'Stats',
+              label: l10n.tabStats,
             ),
-            const NavigationDestination(
-              icon: Icon(Icons.settings),
-              label: 'Settings',
+            NavigationDestination(
+              icon: const Icon(Icons.settings),
+              label: l10n.settingsTitle,
             ),
           ],
         ),

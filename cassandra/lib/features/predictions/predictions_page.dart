@@ -11,8 +11,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/scoring_engine.dart';
-import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
+import '../../l10n/app_localizations.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show computeMatchdayProgress;
 import '../leaderboards/mock_season_data.dart';
@@ -38,16 +38,6 @@ class _PredictionsPageState extends State<PredictionsPage>
   @override
   bool get wantKeepAlive => true;
 
-  bool _isEnglish() {
-    final app = CassandraScope.of(context);
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(String it, String en) => _isEnglish() ? en : it;
-
   bool _didLoadRealFixtures = false;
 
   bool get demoActive {
@@ -68,9 +58,13 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   String get matchdayLabel {
     final appState = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    final isEnglish = l10n.localeName.startsWith('en');
     if (demoActive) {
-      return '${_t('giornata', 'matchday')} ${appState.uiMatchdayNumber} - '
-          '${formatMatchdayDays(matches.map((m) => m.kickoff), english: _isEnglish())}';
+      return l10n.groupMatchdayLabel(
+        appState.uiMatchdayNumber,
+        formatMatchdayDays(matches.map((m) => m.kickoff), english: isEnglish),
+      );
     }
     return _matchdayLabel;
   }
@@ -148,9 +142,10 @@ class _PredictionsPageState extends State<PredictionsPage>
       _firstKickoff?.subtract(const Duration(minutes: 30));
   bool get _locked => _lockTime != null && DateTime.now().isAfter(_lockTime!);
   String get _matchdayLabel {
+    final l10n = AppLocalizations.of(context)!;
     final daysLabel = formatMatchdayDays(
       matches.map((m) => m.kickoff),
-      english: _isEnglish(),
+      english: l10n.localeName.startsWith('en'),
     );
     final appState = CassandraScope.of(context);
     final progress = appState.matchdayProgressFor(_effectiveMatchdayNumber);
@@ -160,9 +155,9 @@ class _PredictionsPageState extends State<PredictionsPage>
               ' • P:${progress.primaryDone ? "OK" : "..."}'
               ' • F:${progress.finalDone ? "OK" : "..."}'
               ' • ${progress.playedFixtures}/${progress.totalFixtures}'
-              '${progress.voidFixtures > 0 ? " • ${_t('nulle', 'void')} ${progress.voidFixtures}" : ""}'
-              ' • ${progress.isValidMatchday ? _t("valida", "valid") : _t("non valida", "invalid")}';
-    return '${_t('giornata', 'matchday')} $_effectiveMatchdayNumber - $daysLabel$status';
+              '${progress.voidFixtures > 0 ? " • ${l10n.predictionsVoidCount(progress.voidFixtures)}" : ""}'
+              ' • ${progress.isValidMatchday ? l10n.predictionsValidStatus : l10n.predictionsInvalidStatus}';
+    return '${l10n.groupMatchdayLabel(_effectiveMatchdayNumber, daysLabel)}$status';
   }
 
   double? _oddsForPick(PredictionMatch match, PickOption pick) {
@@ -197,22 +192,16 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   void _setPick(String matchId, PickOption pick) {
+    final l10n = AppLocalizations.of(context)!;
     // Lock: non permettere modifiche ai pick se la partita è già iniziata.
     final PredictionMatch? match = matches.cast<PredictionMatch?>().firstWhere(
       (m) => m?.id == matchId,
       orElse: () => null,
     );
     if (match != null && DateTime.now().isAfter(match.kickoff)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              'Partita già iniziata: pick bloccato',
-              'Match already started: pick locked',
-            ),
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.predictionsPickLockedSnack)));
       return;
     }
     setState(() => _picks[matchId] = pick);
@@ -225,25 +214,15 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   Future<bool> _confirmSubmitIfMissing(int missing) async {
+    final l10n = AppLocalizations.of(context)!;
     final result = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          content: Text(
-            _t(
-              'Hai lasciato $missing partite senza pronostico.\n\n'
-                  'Regola Cassandra: per ogni partita non giocata verrà applicata '
-                  'una penalità pari a -quota più alta (tra 1/X/2) in fase di calcolo.\n\n'
-                  'Vuoi inviare comunque?',
-              'You left $missing matches without a prediction.\n\n'
-                  'Cassandra rule: for each unplayed match a penalty equal to '
-                  '-highest odds (among 1/X/2) will be applied when scoring.\n\n'
-                  'Submit anyway?',
-            ),
-          ),
+          content: Text(l10n.predictionsMissingConfirm(missing)),
           actions: [
             IconButton(
-              tooltip: _t('Storico', 'History'),
+              tooltip: l10n.predHistoryTitle,
               icon: const Icon(Icons.history),
               onPressed: () {
                 Navigator.of(context).push(
@@ -255,11 +234,11 @@ class _PredictionsPageState extends State<PredictionsPage>
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: Text(_t('Annulla', 'Cancel')),
+              child: Text(l10n.settingsCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(_t('Invia comunque', 'Submit anyway')),
+              child: Text(l10n.predictionsSubmitAnyway),
             ),
           ],
         );
@@ -269,6 +248,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   Future<void> _submit(VisibilityChoice visibility) async {
+    final l10n = AppLocalizations.of(context)!;
     if (_locked) return;
     final missing = _missingCount;
     if (missing > 0) {
@@ -282,17 +262,10 @@ class _PredictionsPageState extends State<PredictionsPage>
       _submittedAt = DateTime.now();
     });
     final label = visibility == VisibilityChoice.public
-        ? _t('pubblica', 'public')
-        : _t('privata', 'private');
+        ? l10n.predictionsVisibilityPublic
+        : l10n.predictionsVisibilityPrivate;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _t(
-            'Schedina inviata (visibilità: $label)',
-            'Slip submitted (visibility: $label)',
-          ),
-        ),
-      ),
+      SnackBar(content: Text(l10n.predictionsSlipSubmitted(label))),
     );
     // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
     final appState = CassandraScope.of(context);
@@ -346,6 +319,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   Future<void> _showDebugScorePreview() async {
+    final l10n = AppLocalizations.of(context)!;
     final rnd = Random();
     const outcomesList = [
       MatchOutcome.home,
@@ -376,18 +350,22 @@ class _PredictionsPageState extends State<PredictionsPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Debug: calcolo punteggio',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    l10n.predictionsDebugScoreTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 10),
-                  Text('base: ${formatOdds(day.baseTotal)}'),
-                  Text('bonus: ${day.bonusPoints}'),
-                  Text('totale: ${formatOdds(day.total)}'),
+                  Text(l10n.predictionsDebugBase(formatOdds(day.baseTotal))),
+                  Text(l10n.predictionsDebugBonus('${day.bonusPoints}')),
+                  Text(l10n.predictionsDebugTotal(formatOdds(day.total))),
                   const SizedBox(height: 6),
-                  Text('esatti: ${day.correctCount}/10'),
+                  Text(l10n.predictionsDebugCorrect('${day.correctCount}/10')),
                   Text(
-                    'quota media: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
+                    l10n.predictionsDebugAvgOdds(
+                      day.averageOddsPlayed == null
+                          ? '-'
+                          : formatOdds(day.averageOddsPlayed!),
+                    ),
                   ),
                   const Divider(height: 20),
                   Expanded(
@@ -429,7 +407,11 @@ class _PredictionsPageState extends State<PredictionsPage>
                                 ],
                               ),
                               Text(
-                                'pick ${pick.label}  •  res ${outcome.label}  •  $sign${formatOdds(b.basePoints)}',
+                                l10n.predictionsDebugPickRow(
+                                  pick.label,
+                                  outcome.label,
+                                  '$sign${formatOdds(b.basePoints)}',
+                                ),
                               ),
                               if (b.note.isNotEmpty)
                                 Text(
@@ -614,6 +596,8 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   Widget _buildHistory(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final isEnglish = l10n.localeName.startsWith('en');
     final appState = CassandraScope.of(context);
     appState.ensureCurrentUserPicksLoaded();
     final uid = appState.profile.id;
@@ -646,10 +630,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       Map<String, PickOption> picks, {
       String? tag,
     }) {
-      final en = _isEnglish();
       final daysLabel = formatMatchdayDays(
         md.matches.map((m) => m.kickoff),
-        english: en,
+        english: isEnglish,
       );
       final total = md.matches.length;
       final graded = md.matches.where((m) {
@@ -657,12 +640,11 @@ class _PredictionsPageState extends State<PredictionsPage>
         return !o.isPending;
       }).length;
       final resultsLabel = graded == total
-          ? '${en ? 'results' : 'risultati'}: $graded/$total'
-          : '${en ? 'results' : 'risultati'}: $graded/$total (${en ? 'partial' : 'parziale'})';
-      final mdLabel = en ? 'Matchday' : 'Giornata';
+          ? l10n.groupResultsLabel(graded, total)
+          : l10n.groupResultsLabelPartial(graded, total);
       final title = tag == null
-          ? '$mdLabel ${md.dayNumber}'
-          : '$mdLabel ${md.dayNumber} ($tag)';
+          ? l10n.groupMatchdayTitle(md.dayNumber)
+          : '${l10n.groupMatchdayTitle(md.dayNumber)} ($tag)';
       final appState = CassandraScope.of(context);
       final savedMatches = appState.matchesByMatchday[md.dayNumber];
       final matchesEffective = (savedMatches != null && savedMatches.isNotEmpty)
@@ -698,7 +680,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       );
     }
 
-    final liveTag = appState.cachedPredictionMatchesAreReal ? 'LIVE' : 'DEMO';
+    final liveTag = appState.cachedPredictionMatchesAreReal
+        ? l10n.predictionsTagLive
+        : l10n.predictionsTagDemo;
     appState.ensureCurrentUserPicksHistoryLoaded();
     final hasSavedLive = appState.hasSavedPicksForMatchday(
       _effectiveMatchdayNumber,
@@ -706,7 +690,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     final livePicksEffective = hasSavedLive
         ? appState.currentUserPicksForMatchday(_effectiveMatchdayNumber)
         : livePicks;
-    final liveTagEffective = hasSavedLive ? 'SALVATI' : liveTag;
+    final liveTagEffective = hasSavedLive ? l10n.predictionsTagSaved : liveTag;
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
@@ -714,12 +698,7 @@ class _PredictionsPageState extends State<PredictionsPage>
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              _t(
-                'Storico pronostici (DEMO)\n'
-                    'Qui mostriamo 16–19 dai mock. La giornata corrente è visibile sopra (LIVE/DEMO).',
-                'Predictions history (DEMO)\n'
-                    'Showing 16–19 from mocks. Current matchday is visible above (LIVE/DEMO).',
-              ),
+              l10n.predictionsHistoryDemoInfo,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -754,10 +733,10 @@ class _PredictionsPageState extends State<PredictionsPage>
                   final prog = appState.matchdayProgressFor(day);
                   final tag =
                       (prog != null && prog.primaryDone && !prog.finalDone)
-                      ? 'RECUPERI'
+                      ? l10n.predictionsTagRecoveries
                       : (appState.hasSavedPicksForMatchday(day)
-                            ? 'SALVATI'
-                            : 'LIVE');
+                            ? l10n.predictionsTagSaved
+                            : l10n.predictionsTagLive);
                   final md = MatchdayData(
                     dayNumber: day,
                     matches: matchesEffective,
@@ -785,8 +764,8 @@ class _PredictionsPageState extends State<PredictionsPage>
                       md.matches,
                     ),
               tag: appState.hasSavedPicksForMatchday(md.dayNumber)
-                  ? 'SALVATI'
-                  : 'DEMO',
+                  ? l10n.predictionsTagSaved
+                  : l10n.predictionsTagDemo,
             ),
       ],
     );
@@ -797,14 +776,12 @@ class _PredictionsPageState extends State<PredictionsPage>
     super.build(context);
 
     final appState = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     // Mentre i dati reali si caricano, mostra spinner
     if (matches.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: Text(_t('Pronostici', 'Predictions')),
-        ),
+        appBar: AppBar(centerTitle: true, title: Text(l10n.tabPredictions)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -827,12 +804,9 @@ class _PredictionsPageState extends State<PredictionsPage>
         .where((m) => !_pickFor(m.id).isNone)
         .length;
     final lockLabel = _locked
-        ? _t('giocate bloccate', 'picks locked')
+        ? l10n.predictionsPicksLocked
         : _lockTime != null
-        ? _t(
-            'modificabile fino alle ${formatKickoff(_lockTime!)}',
-            'editable until ${formatKickoff(_lockTime!)}',
-          )
+        ? l10n.predictionsEditableUntil(formatKickoff(_lockTime!))
         : '';
     final scoreOutcomesByMatchId = <String, MatchOutcome>{
       for (final m in scoringMatches)
@@ -852,31 +826,32 @@ class _PredictionsPageState extends State<PredictionsPage>
     final scoreAvgLabel = dayScore.averageOddsPlayed == null
         ? '—'
         : formatOdds(dayScore.averageOddsPlayed!);
-    final scoreLabel = _isEnglish()
-        ? 'points: ${formatOdds(dayScore.total)} (base ${formatOdds(dayScore.baseTotal)} • bonus $bonusSigned)'
-              ' • correct ${dayScore.correctCount}/${dayScore.matchBreakdowns.length}'
-              ' • avg odds $scoreAvgLabel'
-        : 'punti: ${formatOdds(dayScore.total)} (base ${formatOdds(dayScore.baseTotal)} • bonus $bonusSigned)'
-              ' • corretti ${dayScore.correctCount}/${dayScore.matchBreakdowns.length}'
-              ' • quota media $scoreAvgLabel';
+    final scoreLabel = l10n.predictionsScoreSummary(
+      formatOdds(dayScore.total),
+      formatOdds(dayScore.baseTotal),
+      bonusSigned,
+      dayScore.correctCount,
+      dayScore.matchBreakdowns.length,
+      scoreAvgLabel,
+    );
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
     final dataLabel = (demoActive || _forceDemoFixtures)
-        ? _t('dati: demo', 'data: demo')
+        ? l10n.settingsDataDemo
         : (_usingRealFixtures
-              ? _t('dati: reali (cache backend)', 'data: real (backend cache)')
-              : _t('dati: demo', 'data: demo'));
+              ? l10n.predictionsDataRealBackendCache
+              : l10n.settingsDataDemo);
     final updatedLabel =
         (_usingRealFixtures && !demoActive && _fixturesUpdatedAt != null)
-        ? ' • ${_t('agg.', 'upd.')} ${formatKickoff(_fixturesUpdatedAt!)}'
+        ? ' • ${l10n.shortUpdated} ${formatKickoff(_fixturesUpdatedAt!)}'
         : '';
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text(_t('Pronostici', 'Predictions')),
+        title: Text(l10n.tabPredictions),
         actions: [
           IconButton(
-            tooltip: _t('Aggiorna match', 'Refresh matches'),
+            tooltip: l10n.predictionsRefreshMatches,
             onPressed: (_loadingFixtures || demoActive || _forceDemoFixtures)
                 ? null
                 : () => _tryLoadRealFixturesOnce(showLoader: true, force: true),
@@ -891,8 +866,8 @@ class _PredictionsPageState extends State<PredictionsPage>
           if (kDebugMode)
             IconButton(
               tooltip: _forceDemoFixtures
-                  ? _t('Usa cache backend', 'Use backend cache')
-                  : _t('Forza dati demo', 'Force demo data'),
+                  ? l10n.predictionsUseBackendCache
+                  : l10n.predictionsForceDemoData,
               icon: Icon(_forceDemoFixtures ? Icons.public : Icons.science),
               onPressed: () async {
                 final enableDemo = !_forceDemoFixtures;
@@ -919,12 +894,7 @@ class _PredictionsPageState extends State<PredictionsPage>
         child: Column(
           children: [
             if (!_usingRealFixtures)
-              DemoBanner(
-                label: _t(
-                  'Dati di esempio \u2014 attendi sincronizzazione backend',
-                  'Sample data \u2014 wait for backend sync',
-                ),
-              ),
+              DemoBanner(label: l10n.predictionsSampleDataBanner),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
@@ -934,15 +904,11 @@ class _PredictionsPageState extends State<PredictionsPage>
                     segments: [
                       ButtonSegment(
                         value: 1,
-                        label: Text(
-                          _t('i pronostici passati', 'past predictions'),
-                        ),
+                        label: Text(l10n.predictionsPastSegment),
                       ),
                       ButtonSegment(
                         value: 0,
-                        label: Text(
-                          _t('i pronostici futuri', 'upcoming predictions'),
-                        ),
+                        label: Text(l10n.predictionsUpcomingSegment),
                       ),
                     ],
                     selected: {_segment},
@@ -992,7 +958,11 @@ class _PredictionsPageState extends State<PredictionsPage>
                           }
                         }
                         return Text(
-                          'debug: shiftate $shifted • <48h $under48 • >48h $over48',
+                          l10n.predictionsDebugShifted(
+                            shifted,
+                            under48,
+                            over48,
+                          ),
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: CassandraColors.slate),
                         );
@@ -1001,13 +971,19 @@ class _PredictionsPageState extends State<PredictionsPage>
 
                   if (kDebugMode)
                     Text(
-                      "debug: giocate ${appState.matchdayProgressFor(_effectiveMatchdayNumber)?.playedFixtures ?? '-'}"
-                      " • nulle ${appState.matchdayProgressFor(_effectiveMatchdayNumber)?.voidFixtures ?? '-'}",
+                      l10n.predictionsDebugPlayedVoid(
+                        '${appState.matchdayProgressFor(_effectiveMatchdayNumber)?.playedFixtures ?? '-'}',
+                        '${appState.matchdayProgressFor(_effectiveMatchdayNumber)?.voidFixtures ?? '-'}',
+                      ),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   const SizedBox(height: 6),
                   Text(
-                    '${_t('scelte', 'picks')}: $pickedCountForScoring/${scoringMatches.length}  •  ${_t('quota media', 'avg odds')}: $avgLabel',
+                    l10n.predictionsPicksSummary(
+                      pickedCountForScoring,
+                      scoringMatches.length,
+                      avgLabel,
+                    ),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: CassandraColors.slate,
                     ),
@@ -1015,8 +991,12 @@ class _PredictionsPageState extends State<PredictionsPage>
                   if (_submittedVisibility != null && _submittedAt != null) ...[
                     const SizedBox(height: 6),
                     Text(
-                      '${_t('ultimo invio', 'last submit')}: ${formatKickoff(_submittedAt!)} '
-                      '(${_submittedVisibility == VisibilityChoice.public ? _t('pubblica', 'public') : _t('privata', 'private')})',
+                      l10n.predictionsLastSubmit(
+                        formatKickoff(_submittedAt!),
+                        _submittedVisibility == VisibilityChoice.public
+                            ? l10n.predictionsVisibilityPublic
+                            : l10n.predictionsVisibilityPrivate,
+                      ),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: CassandraColors.slate,
                       ),
@@ -1067,9 +1047,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                           foregroundColor: CassandraColors.primary,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: Text(
-                          _t('invia senza mostrare', 'submit without showing'),
-                        ),
+                        child: Text(l10n.predictionsSubmitWithoutShowing),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1083,7 +1061,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                           foregroundColor: CassandraColors.bg,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: Text(_t('invia e mostra', 'submit and show')),
+                        child: Text(l10n.predictionsSubmitAndShow),
                       ),
                     ),
                   ],

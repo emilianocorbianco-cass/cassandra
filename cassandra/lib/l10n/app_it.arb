@@ -285,5 +285,169 @@
   "groupAvgOddsPlayedLabel": "quota media giocata",
   "groupPickLabel": "pick",
   "groupOutcomeLabel": "esito",
-  "groupOddsLabel": "quota"
+  "groupOddsLabel": "quota",
+  "tabGroup": "Gruppo",
+  "tabLive": "Live",
+  "leaderboardsPlayersCount": "Giocatori: {count}",
+  "@leaderboardsPlayersCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "serieAStandingsTitle": "Classifica Serie A",
+  "serieATeamColumn": "Squadra",
+  "serieAPlayedColumn": "PG",
+  "serieAWinsColumn": "V",
+  "serieADrawsColumn": "P",
+  "serieALossesColumn": "S",
+  "serieAGoalsAgainstColumn": "GS",
+  "serieAGoalDiffColumn": "DR",
+  "serieAPointsColumn": "Pt",
+  "serieALastFiveColumn": "Ultime 5",
+  "statsBestDayShort": "G{day}: {points}",
+  "@statsBestDayShort": {
+    "placeholders": {
+      "day": {},
+      "points": {}
+    }
+  },
+  "statsWorstDayShort": "G{day}: {points}",
+  "@statsWorstDayShort": {
+    "placeholders": {
+      "day": {},
+      "points": {}
+    }
+  },
+  "profileTrophiesHistory": "Trofei (storico)",
+  "profileTrophiesDescription": "Trofei di {displayName} (storico stagione demo).\nRegole: 👑 primo del gruppo • L ultimo • 👁️ 10/10 esatti • 🦉 gufata sulla squadra del cuore.",
+  "@profileTrophiesDescription": {
+    "placeholders": {
+      "displayName": {}
+    }
+  },
+  "predictionsVoidCount": "nulle {count}",
+  "@predictionsVoidCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "predictionsValidStatus": "valida",
+  "predictionsInvalidStatus": "non valida",
+  "predictionsPickLockedSnack": "Partita gia iniziata: pick bloccato",
+  "predictionsMissingConfirm": "Hai lasciato {missing} partite senza pronostico.\n\nRegola Cassandra: per ogni partita non giocata verra applicata una penalita pari a -quota piu alta (tra 1/X/2) in fase di calcolo.\n\nVuoi inviare comunque?",
+  "@predictionsMissingConfirm": {
+    "placeholders": {
+      "missing": {}
+    }
+  },
+  "predictionsSubmitAnyway": "Invia comunque",
+  "predictionsVisibilityPublic": "pubblica",
+  "predictionsVisibilityPrivate": "privata",
+  "predictionsSlipSubmitted": "Schedina inviata (visibilita: {visibility})",
+  "@predictionsSlipSubmitted": {
+    "placeholders": {
+      "visibility": {}
+    }
+  },
+  "predictionsDebugScoreTitle": "Debug: calcolo punteggio",
+  "predictionsDebugBase": "base: {value}",
+  "@predictionsDebugBase": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugBonus": "bonus: {value}",
+  "@predictionsDebugBonus": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugTotal": "totale: {value}",
+  "@predictionsDebugTotal": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugCorrect": "esatti: {value}",
+  "@predictionsDebugCorrect": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugAvgOdds": "quota media: {value}",
+  "@predictionsDebugAvgOdds": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "predictionsDebugPickRow": "pick {pick}  •  esito {outcome}  •  {points}",
+  "@predictionsDebugPickRow": {
+    "placeholders": {
+      "pick": {},
+      "outcome": {},
+      "points": {}
+    }
+  },
+  "predictionsTagLive": "LIVE",
+  "predictionsTagDemo": "DEMO",
+  "predictionsTagSaved": "SALVATI",
+  "predictionsTagRecoveries": "RECUPERI",
+  "predictionsHistoryDemoInfo": "Storico pronostici (DEMO)\nQui mostriamo 16-19 dai mock. La giornata corrente e visibile sopra (LIVE/DEMO).",
+  "predictionsPicksLocked": "giocate bloccate",
+  "predictionsEditableUntil": "modificabile fino alle {time}",
+  "@predictionsEditableUntil": {
+    "placeholders": {
+      "time": {}
+    }
+  },
+  "predictionsScoreSummary": "punti: {total} (base {base} • bonus {bonus}) • corretti {correct}/{count} • quota media {avgOdds}",
+  "@predictionsScoreSummary": {
+    "placeholders": {
+      "total": {},
+      "base": {},
+      "bonus": {},
+      "correct": {},
+      "count": {},
+      "avgOdds": {}
+    }
+  },
+  "predictionsDataRealBackendCache": "dati: reali (cache backend)",
+  "predictionsRefreshMatches": "Aggiorna match",
+  "predictionsUseBackendCache": "Usa cache backend",
+  "predictionsForceDemoData": "Forza dati demo",
+  "predictionsSampleDataBanner": "Dati di esempio - attendi sincronizzazione backend",
+  "predictionsPastSegment": "i pronostici passati",
+  "predictionsUpcomingSegment": "i pronostici futuri",
+  "predictionsDebugShifted": "debug: shiftate {shifted} • <48h {under48} • >48h {over48}",
+  "@predictionsDebugShifted": {
+    "placeholders": {
+      "shifted": {},
+      "under48": {},
+      "over48": {}
+    }
+  },
+  "predictionsDebugPlayedVoid": "debug: giocate {played} • nulle {voidCount}",
+  "@predictionsDebugPlayedVoid": {
+    "placeholders": {
+      "played": {},
+      "voidCount": {}
+    }
+  },
+  "predictionsPicksSummary": "scelte: {picked}/{total}  •  quota media: {avgOdds}",
+  "@predictionsPicksSummary": {
+    "placeholders": {
+      "picked": {},
+      "total": {},
+      "avgOdds": {}
+    }
+  },
+  "predictionsLastSubmit": "ultimo invio: {submittedAt} ({visibility})",
+  "@predictionsLastSubmit": {
+    "placeholders": {
+      "submittedAt": {},
+      "visibility": {}
+    }
+  },
+  "predictionsSubmitWithoutShowing": "invia senza mostrare",
+  "predictionsSubmitAndShow": "invia e mostra"
 }

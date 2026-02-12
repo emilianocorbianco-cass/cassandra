@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/state/app_settings.dart';
-import '../../../app/state/app_state.dart';
-import '../../../app/state/cassandra_scope.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../badges/models/badge_counts.dart';
 import '../../badges/models/badge_type.dart';
 import '../../group/models/group_member.dart';
@@ -17,18 +15,11 @@ class UserTrophiesView extends StatelessWidget {
     required this.trophies,
   });
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   Widget _trophyTile(
     BuildContext context,
     BadgeType type,
     int count, {
-    required bool en,
+    required bool isEnglish,
   }) {
     Widget icon;
     switch (type) {
@@ -57,7 +48,7 @@ class UserTrophiesView extends StatelessWidget {
           children: [
             icon,
             const SizedBox(height: 10),
-            Text(type.title(english: en), textAlign: TextAlign.center),
+            Text(type.title(english: isEnglish), textAlign: TextAlign.center),
             const SizedBox(height: 6),
             Text(
               '$count',
@@ -71,8 +62,8 @@ class UserTrophiesView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final en = _isEnglish(context, app);
+    final l10n = AppLocalizations.of(context)!;
+    final isEnglish = l10n.localeName.startsWith('en');
 
     return SafeArea(
       child: ListView(
@@ -81,13 +72,7 @@ class UserTrophiesView extends StatelessWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(
-                en
-                    ? 'Trophies for ${member.displayName} (demo season history).\n'
-                          'Rules: 👑 group winner • L last place • 👁️ 10/10 correct • 🦉 jinxed own favorite team.'
-                    : 'Trofei di ${member.displayName} (storico stagione demo).\n'
-                          'Regole: 👑 primo del gruppo • L ultimo • 👁️ 10/10 esatti • 🦉 gufata sulla squadra del cuore.',
-              ),
+              child: Text(l10n.profileTrophiesDescription(member.displayName)),
             ),
           ),
           const SizedBox(height: 8),
@@ -102,25 +87,25 @@ class UserTrophiesView extends StatelessWidget {
                 context,
                 BadgeType.crown,
                 trophies.of(BadgeType.crown),
-                en: en,
+                isEnglish: isEnglish,
               ),
               _trophyTile(
                 context,
                 BadgeType.eyes,
                 trophies.of(BadgeType.eyes),
-                en: en,
+                isEnglish: isEnglish,
               ),
               _trophyTile(
                 context,
                 BadgeType.owl,
                 trophies.of(BadgeType.owl),
-                en: en,
+                isEnglish: isEnglish,
               ),
               _trophyTile(
                 context,
                 BadgeType.loser,
                 trophies.of(BadgeType.loser),
-                en: en,
+                isEnglish: isEnglish,
               ),
             ],
           ),

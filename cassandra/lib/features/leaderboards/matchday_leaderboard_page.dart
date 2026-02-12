@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
-import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../l10n/app_localizations.dart';
 import '../predictions/models/formatters.dart';
 import 'models/matchday_data.dart';
 import 'models/season_leaderboard_entry.dart';
@@ -35,17 +33,9 @@ class MatchdayLeaderboardPage extends StatelessWidget {
     return null;
   }
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final en = _isEnglish(context, app);
+    final l10n = AppLocalizations.of(context)!;
 
     final rows =
         <({SeasonLeaderboardEntry entry, MemberMatchdayScore score})>[];
@@ -70,17 +60,13 @@ class MatchdayLeaderboardPage extends StatelessWidget {
 
     final daysLabel = formatMatchdayDays(
       matchday.matches.map((m) => m.kickoff),
-      english: en,
+      english: Localizations.localeOf(
+        context,
+      ).languageCode.toLowerCase().startsWith('en'),
     );
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          en
-              ? 'Matchday ${matchday.dayNumber}'
-              : 'Giornata ${matchday.dayNumber}',
-        ),
-      ),
+      appBar: AppBar(title: Text(l10n.groupMatchdayTitle(matchday.dayNumber))),
       body: SafeArea(
         child: Column(
           children: [
@@ -92,7 +78,7 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                   Text(daysLabel, style: Theme.of(context).textTheme.bodySmall),
                   const SizedBox(height: 6),
                   Text(
-                    '${en ? 'Players' : 'Giocatori'}: ${rows.length}',
+                    l10n.leaderboardsPlayersCount(rows.length),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

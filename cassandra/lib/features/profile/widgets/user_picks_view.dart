@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:cassandra/app/widgets/team_name.dart';
-import '../../../app/state/app_settings.dart';
-import '../../../app/state/app_state.dart';
 import '../../group/models/group_member.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../leaderboards/models/matchday_data.dart';
 import '../../predictions/models/formatters.dart';
 import '../../predictions/models/pick_option.dart';
@@ -23,17 +22,11 @@ class UserPicksView extends StatelessWidget {
     required this.picksByMatchId,
   });
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
-    final en = _isEnglish(context, app);
+    final l10n = AppLocalizations.of(context)!;
+    final isEnglish = l10n.localeName.startsWith('en');
     final cachedMatches = app.cachedPredictionMatches;
     final day = CassandraScoringEngine.computeDayScore(
       matches: (cachedMatches ?? matchday.matches),
@@ -45,7 +38,7 @@ class UserPicksView extends StatelessWidget {
 
     final daysLabel = formatMatchdayDays(
       (cachedMatches ?? matchday.matches).map((m) => m.kickoff),
-      english: en,
+      english: isEnglish,
     );
     final avgOddsLabel = day.averageOddsPlayed == null
         ? '-'
@@ -60,7 +53,7 @@ class UserPicksView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '${en ? 'Matchday' : 'Giornata'} ${matchday.dayNumber} - $daysLabel',
+                  l10n.groupMatchdayLabel(matchday.dayNumber, daysLabel),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
@@ -71,19 +64,15 @@ class UserPicksView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          '${en ? 'Total' : 'Totale'}: ${formatOdds(day.total)}',
+                          '${l10n.statsTotal}: ${formatOdds(day.total)}',
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 6),
                         Text('Base: ${formatOdds(day.baseTotal)}'),
-                        Text('Bonus: ${day.bonusPoints}'),
+                        Text('${l10n.groupBonusLabel}: ${day.bonusPoints}'),
                         const SizedBox(height: 6),
-                        Text(
-                          '${en ? 'Correct' : 'Esatti'}: ${day.correctCount}/10',
-                        ),
-                        Text(
-                          '${en ? 'Avg. odds' : 'Quota media'}: $avgOddsLabel',
-                        ),
+                        Text('${l10n.statsCorrect}: ${day.correctCount}/10'),
+                        Text('${l10n.groupAvgOddsPlayedLabel}: $avgOddsLabel'),
                       ],
                     ),
                   ),
@@ -141,8 +130,8 @@ class UserPicksView extends StatelessWidget {
                       ],
                     ),
                     subtitle: Text(
-                      'pick ${pick.label} (${en ? 'odds' : 'quota'} $playedOddsLabel)  •  ${en ? 'result' : 'res'} ${outcome.label}\n'
-                      '${en ? 'points' : 'punti'}: $sign${formatOdds(b.basePoints)}',
+                      '${l10n.groupPickLabel} ${pick.label} (${l10n.groupOddsLabel} $playedOddsLabel)  •  ${l10n.groupOutcomeLabel} ${outcome.label}\n'
+                      '${l10n.leaderboardsPoints}: $sign${formatOdds(b.basePoints)}',
                     ),
                     isThreeLine: true,
                   ),

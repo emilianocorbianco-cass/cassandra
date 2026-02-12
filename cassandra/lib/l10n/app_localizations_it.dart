@@ -21,13 +21,15 @@ class AppLocalizationsIt extends AppLocalizations {
   String get loginSignInError => 'Errore di accesso. Riprova.';
 
   @override
-  String get loginPrivacyNotice => 'Usiamo solo il minimo necessario per identificarti.';
+  String get loginPrivacyNotice =>
+      'Usiamo solo il minimo necessario per identificarti.';
 
   @override
   String get createGroupTitle => 'Crea il tuo gruppo';
 
   @override
-  String get createGroupSubtitle => 'Sfida i tuoi amici sui pronostici di Serie A';
+  String get createGroupSubtitle =>
+      'Sfida i tuoi amici sui pronostici di Serie A';
 
   @override
   String get createGroupTapAddPhoto => 'Tocca per aggiungere foto';
@@ -68,7 +70,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get joinGroupTitle => 'Unisciti a un gruppo';
 
   @override
-  String get joinGroupEnterInviteCode => 'Inserisci il codice invito del gruppo';
+  String get joinGroupEnterInviteCode =>
+      'Inserisci il codice invito del gruppo';
 
   @override
   String get joinGroupInviteCode => 'Codice invito';
@@ -98,7 +101,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupDefaultName => 'Cassandra Crew';
 
   @override
-  String get groupSampleDataBanner => 'Dati di esempio - unisciti a un gruppo per vedere dati reali';
+  String get groupSampleDataBanner =>
+      'Dati di esempio - unisciti a un gruppo per vedere dati reali';
 
   @override
   String get groupDataRefreshing => 'aggiornamento...';
@@ -134,7 +138,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupMatchdays => 'giornate';
 
   @override
-  String get groupHistoryDemoCard => 'Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.';
+  String get groupHistoryDemoCard =>
+      'Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.';
 
   @override
   String groupMatchdayTitle(Object dayNumber) {
@@ -164,10 +169,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsResetDone => 'Ripristinato';
 
   @override
-  String get settingsBackendNotConfigured => 'Backend non configurato su questo device';
+  String get settingsBackendNotConfigured =>
+      'Backend non configurato su questo device';
 
   @override
-  String get settingsNoBackendDataCurrentMatchday => 'Nessun dato backend disponibile per la giornata corrente';
+  String get settingsNoBackendDataCurrentMatchday =>
+      'Nessun dato backend disponibile per la giornata corrente';
 
   @override
   String get settingsCacheRefreshedFromBackend => 'Cache aggiornata da backend';
@@ -176,7 +183,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsCacheRefreshError => 'Errore aggiornando da backend';
 
   @override
-  String get settingsDevModeNoFirebase => 'Modalita sviluppo - Firebase non configurato';
+  String get settingsDevModeNoFirebase =>
+      'Modalita sviluppo - Firebase non configurato';
 
   @override
   String get settingsSignOut => 'Esci';
@@ -197,7 +205,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsCancel => 'Annulla';
 
   @override
-  String get settingsDeleteAccountQuestion => 'Questa azione e irreversibile. Vuoi continuare?';
+  String get settingsDeleteAccountQuestion =>
+      'Questa azione e irreversibile. Vuoi continuare?';
 
   @override
   String get settingsDelete => 'Elimina';
@@ -316,7 +325,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsAdminApprovalTitle => 'Approvazione admin';
 
   @override
-  String get settingsAdminApprovalSubtitle => 'Solo l\'admin puo accettare nuovi membri';
+  String get settingsAdminApprovalSubtitle =>
+      'Solo l\'admin puo accettare nuovi membri';
 
   @override
   String get settingsAccount => 'Account';
@@ -334,7 +344,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsLanguageEn => 'EN';
 
   @override
-  String get settingsTranslationNote => 'Nota: per ora molte etichette sono ancora hardcoded. Tradurremo a blocchi.';
+  String get settingsTranslationNote =>
+      'Nota: per ora molte etichette sono ancora hardcoded. Tradurremo a blocchi.';
 
   @override
   String get settingsPicksPrivacyDefault => 'Privacy pronostici (default)';
@@ -349,7 +360,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsPrivacyPrivate => 'Privato';
 
   @override
-  String get settingsPrivacyNote => 'Questa preferenza verra usata quando collegheremo invio pronostici + backend.';
+  String get settingsPrivacyNote =>
+      'Questa preferenza verra usata quando collegheremo invio pronostici + backend.';
 
   @override
   String get settingsDiagnostics => 'Diagnostica';
@@ -361,13 +373,15 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsRefreshCacheNowTitle => 'Aggiorna cache ora';
 
   @override
-  String get settingsRefreshCacheNowSubtitle => 'Legge la matchday corrente dalla cache backend.';
+  String get settingsRefreshCacheNowSubtitle =>
+      'Legge la matchday corrente dalla cache backend.';
 
   @override
   String get settingsClearFixturesCacheTitle => 'Svuota cache fixtures';
 
   @override
-  String get settingsClearFixturesCacheSubtitle => 'Torna ai dati demo locali fino al prossimo refresh.';
+  String get settingsClearFixturesCacheSubtitle =>
+      'Torna ai dati demo locali fino al prossimo refresh.';
 
   @override
   String get settingsCacheCleared => 'Cache svuotata';
@@ -376,7 +390,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsBackendDiagnosticsTitle => 'Diagnostica backend';
 
   @override
-  String get settingsBackendDiagnosticsSubtitle => 'Verifica cache matchday letta da Firestore.';
+  String get settingsBackendDiagnosticsSubtitle =>
+      'Verifica cache matchday letta da Firestore.';
 
   @override
   String get settingsSave => 'Salva';
@@ -397,10 +412,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predHistoryTitle => 'Storico pronostici';
 
   @override
-  String get predHistoryInfo => 'Qui trovi le giornate che hai salvato/inviato.\nSe non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.';
+  String get predHistoryInfo =>
+      'Qui trovi le giornate che hai salvato/inviato.\nSe non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.';
 
   @override
-  String get predHistoryEmpty => 'Nessuna giornata salvata.\nVai su Pronostici e invia almeno una giornata per vederla qui.';
+  String get predHistoryEmpty =>
+      'Nessuna giornata salvata.\nVai su Pronostici e invia almeno una giornata per vederla qui.';
 
   @override
   String get predHistoryTagSaved => 'SALVATI';
@@ -447,7 +464,8 @@ class AppLocalizationsIt extends AppLocalizations {
   String get leaderboardsTitle => 'Classifiche';
 
   @override
-  String get leaderboardsDemoBanner => 'Dati di esempio - i dati reali appariranno dopo il primo invio';
+  String get leaderboardsDemoBanner =>
+      'Dati di esempio - i dati reali appariranno dopo il primo invio';
 
   @override
   String get leaderboardsDataRefreshing => 'aggiornamento...';
@@ -584,4 +602,218 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get groupOddsLabel => 'quota';
+
+  @override
+  String get tabGroup => 'Gruppo';
+
+  @override
+  String get tabLive => 'Live';
+
+  @override
+  String leaderboardsPlayersCount(Object count) {
+    return 'Giocatori: $count';
+  }
+
+  @override
+  String get serieAStandingsTitle => 'Classifica Serie A';
+
+  @override
+  String get serieATeamColumn => 'Squadra';
+
+  @override
+  String get serieAPlayedColumn => 'PG';
+
+  @override
+  String get serieAWinsColumn => 'V';
+
+  @override
+  String get serieADrawsColumn => 'P';
+
+  @override
+  String get serieALossesColumn => 'S';
+
+  @override
+  String get serieAGoalsAgainstColumn => 'GS';
+
+  @override
+  String get serieAGoalDiffColumn => 'DR';
+
+  @override
+  String get serieAPointsColumn => 'Pt';
+
+  @override
+  String get serieALastFiveColumn => 'Ultime 5';
+
+  @override
+  String statsBestDayShort(Object day, Object points) {
+    return 'G$day: $points';
+  }
+
+  @override
+  String statsWorstDayShort(Object day, Object points) {
+    return 'G$day: $points';
+  }
+
+  @override
+  String get profileTrophiesHistory => 'Trofei (storico)';
+
+  @override
+  String profileTrophiesDescription(Object displayName) {
+    return 'Trofei di $displayName (storico stagione demo).\nRegole: 👑 primo del gruppo • L ultimo • 👁️ 10/10 esatti • 🦉 gufata sulla squadra del cuore.';
+  }
+
+  @override
+  String predictionsVoidCount(Object count) {
+    return 'nulle $count';
+  }
+
+  @override
+  String get predictionsValidStatus => 'valida';
+
+  @override
+  String get predictionsInvalidStatus => 'non valida';
+
+  @override
+  String get predictionsPickLockedSnack =>
+      'Partita gia iniziata: pick bloccato';
+
+  @override
+  String predictionsMissingConfirm(Object missing) {
+    return 'Hai lasciato $missing partite senza pronostico.\n\nRegola Cassandra: per ogni partita non giocata verra applicata una penalita pari a -quota piu alta (tra 1/X/2) in fase di calcolo.\n\nVuoi inviare comunque?';
+  }
+
+  @override
+  String get predictionsSubmitAnyway => 'Invia comunque';
+
+  @override
+  String get predictionsVisibilityPublic => 'pubblica';
+
+  @override
+  String get predictionsVisibilityPrivate => 'privata';
+
+  @override
+  String predictionsSlipSubmitted(Object visibility) {
+    return 'Schedina inviata (visibilita: $visibility)';
+  }
+
+  @override
+  String get predictionsDebugScoreTitle => 'Debug: calcolo punteggio';
+
+  @override
+  String predictionsDebugBase(Object value) {
+    return 'base: $value';
+  }
+
+  @override
+  String predictionsDebugBonus(Object value) {
+    return 'bonus: $value';
+  }
+
+  @override
+  String predictionsDebugTotal(Object value) {
+    return 'totale: $value';
+  }
+
+  @override
+  String predictionsDebugCorrect(Object value) {
+    return 'esatti: $value';
+  }
+
+  @override
+  String predictionsDebugAvgOdds(Object value) {
+    return 'quota media: $value';
+  }
+
+  @override
+  String predictionsDebugPickRow(Object pick, Object outcome, Object points) {
+    return 'pick $pick  •  esito $outcome  •  $points';
+  }
+
+  @override
+  String get predictionsTagLive => 'LIVE';
+
+  @override
+  String get predictionsTagDemo => 'DEMO';
+
+  @override
+  String get predictionsTagSaved => 'SALVATI';
+
+  @override
+  String get predictionsTagRecoveries => 'RECUPERI';
+
+  @override
+  String get predictionsHistoryDemoInfo =>
+      'Storico pronostici (DEMO)\nQui mostriamo 16-19 dai mock. La giornata corrente e visibile sopra (LIVE/DEMO).';
+
+  @override
+  String get predictionsPicksLocked => 'giocate bloccate';
+
+  @override
+  String predictionsEditableUntil(Object time) {
+    return 'modificabile fino alle $time';
+  }
+
+  @override
+  String predictionsScoreSummary(
+    Object total,
+    Object base,
+    Object bonus,
+    Object correct,
+    Object count,
+    Object avgOdds,
+  ) {
+    return 'punti: $total (base $base • bonus $bonus) • corretti $correct/$count • quota media $avgOdds';
+  }
+
+  @override
+  String get predictionsDataRealBackendCache => 'dati: reali (cache backend)';
+
+  @override
+  String get predictionsRefreshMatches => 'Aggiorna match';
+
+  @override
+  String get predictionsUseBackendCache => 'Usa cache backend';
+
+  @override
+  String get predictionsForceDemoData => 'Forza dati demo';
+
+  @override
+  String get predictionsSampleDataBanner =>
+      'Dati di esempio - attendi sincronizzazione backend';
+
+  @override
+  String get predictionsPastSegment => 'i pronostici passati';
+
+  @override
+  String get predictionsUpcomingSegment => 'i pronostici futuri';
+
+  @override
+  String predictionsDebugShifted(
+    Object shifted,
+    Object under48,
+    Object over48,
+  ) {
+    return 'debug: shiftate $shifted • <48h $under48 • >48h $over48';
+  }
+
+  @override
+  String predictionsDebugPlayedVoid(Object played, Object voidCount) {
+    return 'debug: giocate $played • nulle $voidCount';
+  }
+
+  @override
+  String predictionsPicksSummary(Object picked, Object total, Object avgOdds) {
+    return 'scelte: $picked/$total  •  quota media: $avgOdds';
+  }
+
+  @override
+  String predictionsLastSubmit(Object submittedAt, Object visibility) {
+    return 'ultimo invio: $submittedAt ($visibility)';
+  }
+
+  @override
+  String get predictionsSubmitWithoutShowing => 'invia senza mostrare';
+
+  @override
+  String get predictionsSubmitAndShow => 'invia e mostra';
 }

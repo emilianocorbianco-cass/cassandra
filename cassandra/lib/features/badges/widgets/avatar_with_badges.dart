@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../app/state/app_settings.dart';
-import '../../../app/state/cassandra_scope.dart';
 import '../../../app/theme/cassandra_colors.dart';
+import '../../../l10n/app_localizations.dart';
 import '../models/badge_type.dart';
 
 class AvatarWithBadges extends StatelessWidget {
@@ -18,17 +17,9 @@ class AvatarWithBadges extends StatelessWidget {
     this.radius = 18,
   });
 
-  bool _isEnglish(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final en = _isEnglish(context);
+    final isEnglish = AppLocalizations.of(context)!.localeName.startsWith('en');
     final sorted = badges.toList()
       ..sort((a, b) => a.priority.compareTo(b.priority));
     final visible = sorted.take(2).toList(); // per ora max 2 badge visibili
@@ -57,7 +48,7 @@ class AvatarWithBadges extends StatelessWidget {
                     Padding(
                       padding: EdgeInsets.only(left: i == 0 ? 0 : 2),
                       child: Tooltip(
-                        message: visible[i].title(english: en),
+                        message: visible[i].title(english: isEnglish),
                         child: _BadgeBubble(type: visible[i], size: bubbleSize),
                       ),
                     ),

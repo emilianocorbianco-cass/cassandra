@@ -62,7 +62,8 @@ import 'app_localizations_it.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale)
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -70,7 +71,8 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations);
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -82,17 +84,18 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('en'),
-    Locale('it')
+    Locale('it'),
   ];
 
   /// No description provided for @loginSeriesAPredictions.
@@ -1168,9 +1171,341 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'odds'**
   String get groupOddsLabel;
+
+  /// No description provided for @tabGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Group'**
+  String get tabGroup;
+
+  /// No description provided for @tabLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get tabLive;
+
+  /// No description provided for @leaderboardsPlayersCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Players: {count}'**
+  String leaderboardsPlayersCount(Object count);
+
+  /// No description provided for @serieAStandingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Serie A Standings'**
+  String get serieAStandingsTitle;
+
+  /// No description provided for @serieATeamColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'Team'**
+  String get serieATeamColumn;
+
+  /// No description provided for @serieAPlayedColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'MP'**
+  String get serieAPlayedColumn;
+
+  /// No description provided for @serieAWinsColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'W'**
+  String get serieAWinsColumn;
+
+  /// No description provided for @serieADrawsColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'D'**
+  String get serieADrawsColumn;
+
+  /// No description provided for @serieALossesColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'L'**
+  String get serieALossesColumn;
+
+  /// No description provided for @serieAGoalsAgainstColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'GA'**
+  String get serieAGoalsAgainstColumn;
+
+  /// No description provided for @serieAGoalDiffColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'GD'**
+  String get serieAGoalDiffColumn;
+
+  /// No description provided for @serieAPointsColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'Pts'**
+  String get serieAPointsColumn;
+
+  /// No description provided for @serieALastFiveColumn.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 5'**
+  String get serieALastFiveColumn;
+
+  /// No description provided for @statsBestDayShort.
+  ///
+  /// In en, this message translates to:
+  /// **'MD{day}: {points}'**
+  String statsBestDayShort(Object day, Object points);
+
+  /// No description provided for @statsWorstDayShort.
+  ///
+  /// In en, this message translates to:
+  /// **'MD{day}: {points}'**
+  String statsWorstDayShort(Object day, Object points);
+
+  /// No description provided for @profileTrophiesHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Trophies (history)'**
+  String get profileTrophiesHistory;
+
+  /// No description provided for @profileTrophiesDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Trophies for {displayName} (demo season history).\nRules: 👑 group winner • L last place • 👁️ 10/10 correct • 🦉 jinxed own favorite team.'**
+  String profileTrophiesDescription(Object displayName);
+
+  /// No description provided for @predictionsVoidCount.
+  ///
+  /// In en, this message translates to:
+  /// **'void {count}'**
+  String predictionsVoidCount(Object count);
+
+  /// No description provided for @predictionsValidStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'valid'**
+  String get predictionsValidStatus;
+
+  /// No description provided for @predictionsInvalidStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'invalid'**
+  String get predictionsInvalidStatus;
+
+  /// No description provided for @predictionsPickLockedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Match already started: pick locked'**
+  String get predictionsPickLockedSnack;
+
+  /// No description provided for @predictionsMissingConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'You left {missing} matches without a prediction.\n\nCassandra rule: for each unplayed match a penalty equal to -highest odds (among 1/X/2) will be applied when scoring.\n\nSubmit anyway?'**
+  String predictionsMissingConfirm(Object missing);
+
+  /// No description provided for @predictionsSubmitAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit anyway'**
+  String get predictionsSubmitAnyway;
+
+  /// No description provided for @predictionsVisibilityPublic.
+  ///
+  /// In en, this message translates to:
+  /// **'public'**
+  String get predictionsVisibilityPublic;
+
+  /// No description provided for @predictionsVisibilityPrivate.
+  ///
+  /// In en, this message translates to:
+  /// **'private'**
+  String get predictionsVisibilityPrivate;
+
+  /// No description provided for @predictionsSlipSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Slip submitted (visibility: {visibility})'**
+  String predictionsSlipSubmitted(Object visibility);
+
+  /// No description provided for @predictionsDebugScoreTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Debug: score calculation'**
+  String get predictionsDebugScoreTitle;
+
+  /// No description provided for @predictionsDebugBase.
+  ///
+  /// In en, this message translates to:
+  /// **'base: {value}'**
+  String predictionsDebugBase(Object value);
+
+  /// No description provided for @predictionsDebugBonus.
+  ///
+  /// In en, this message translates to:
+  /// **'bonus: {value}'**
+  String predictionsDebugBonus(Object value);
+
+  /// No description provided for @predictionsDebugTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'total: {value}'**
+  String predictionsDebugTotal(Object value);
+
+  /// No description provided for @predictionsDebugCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'correct: {value}'**
+  String predictionsDebugCorrect(Object value);
+
+  /// No description provided for @predictionsDebugAvgOdds.
+  ///
+  /// In en, this message translates to:
+  /// **'avg odds: {value}'**
+  String predictionsDebugAvgOdds(Object value);
+
+  /// No description provided for @predictionsDebugPickRow.
+  ///
+  /// In en, this message translates to:
+  /// **'pick {pick}  •  result {outcome}  •  {points}'**
+  String predictionsDebugPickRow(Object pick, Object outcome, Object points);
+
+  /// No description provided for @predictionsTagLive.
+  ///
+  /// In en, this message translates to:
+  /// **'LIVE'**
+  String get predictionsTagLive;
+
+  /// No description provided for @predictionsTagDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'DEMO'**
+  String get predictionsTagDemo;
+
+  /// No description provided for @predictionsTagSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'SAVED'**
+  String get predictionsTagSaved;
+
+  /// No description provided for @predictionsTagRecoveries.
+  ///
+  /// In en, this message translates to:
+  /// **'RECOVERIES'**
+  String get predictionsTagRecoveries;
+
+  /// No description provided for @predictionsHistoryDemoInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions history (DEMO)\nShowing 16-19 from mocks. Current matchday is visible above (LIVE/DEMO).'**
+  String get predictionsHistoryDemoInfo;
+
+  /// No description provided for @predictionsPicksLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'picks locked'**
+  String get predictionsPicksLocked;
+
+  /// No description provided for @predictionsEditableUntil.
+  ///
+  /// In en, this message translates to:
+  /// **'editable until {time}'**
+  String predictionsEditableUntil(Object time);
+
+  /// No description provided for @predictionsScoreSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'points: {total} (base {base} • bonus {bonus}) • correct {correct}/{count} • avg odds {avgOdds}'**
+  String predictionsScoreSummary(
+    Object total,
+    Object base,
+    Object bonus,
+    Object correct,
+    Object count,
+    Object avgOdds,
+  );
+
+  /// No description provided for @predictionsDataRealBackendCache.
+  ///
+  /// In en, this message translates to:
+  /// **'data: real (backend cache)'**
+  String get predictionsDataRealBackendCache;
+
+  /// No description provided for @predictionsRefreshMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh matches'**
+  String get predictionsRefreshMatches;
+
+  /// No description provided for @predictionsUseBackendCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Use backend cache'**
+  String get predictionsUseBackendCache;
+
+  /// No description provided for @predictionsForceDemoData.
+  ///
+  /// In en, this message translates to:
+  /// **'Force demo data'**
+  String get predictionsForceDemoData;
+
+  /// No description provided for @predictionsSampleDataBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Sample data - wait for backend sync'**
+  String get predictionsSampleDataBanner;
+
+  /// No description provided for @predictionsPastSegment.
+  ///
+  /// In en, this message translates to:
+  /// **'past predictions'**
+  String get predictionsPastSegment;
+
+  /// No description provided for @predictionsUpcomingSegment.
+  ///
+  /// In en, this message translates to:
+  /// **'upcoming predictions'**
+  String get predictionsUpcomingSegment;
+
+  /// No description provided for @predictionsDebugShifted.
+  ///
+  /// In en, this message translates to:
+  /// **'debug: shifted {shifted} • <48h {under48} • >48h {over48}'**
+  String predictionsDebugShifted(Object shifted, Object under48, Object over48);
+
+  /// No description provided for @predictionsDebugPlayedVoid.
+  ///
+  /// In en, this message translates to:
+  /// **'debug: played {played} • void {voidCount}'**
+  String predictionsDebugPlayedVoid(Object played, Object voidCount);
+
+  /// No description provided for @predictionsPicksSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'picks: {picked}/{total}  •  avg odds: {avgOdds}'**
+  String predictionsPicksSummary(Object picked, Object total, Object avgOdds);
+
+  /// No description provided for @predictionsLastSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'last submit: {submittedAt} ({visibility})'**
+  String predictionsLastSubmit(Object submittedAt, Object visibility);
+
+  /// No description provided for @predictionsSubmitWithoutShowing.
+  ///
+  /// In en, this message translates to:
+  /// **'submit without showing'**
+  String get predictionsSubmitWithoutShowing;
+
+  /// No description provided for @predictionsSubmitAndShow.
+  ///
+  /// In en, this message translates to:
+  /// **'submit and show'**
+  String get predictionsSubmitAndShow;
 }
 
-class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -1179,25 +1514,26 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
   }
 
   @override
-  bool isSupported(Locale locale) => <String>['en', 'it'].contains(locale.languageCode);
+  bool isSupported(Locale locale) =>
+      <String>['en', 'it'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
-
-
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en': return AppLocalizationsEn();
-    case 'it': return AppLocalizationsIt();
+    case 'en':
+      return AppLocalizationsEn();
+    case 'it':
+      return AppLocalizationsIt();
   }
 
   throw FlutterError(
     'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
     'an issue with the localizations generation tool. Please file an issue '
     'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.'
+    'that was used.',
   );
 }

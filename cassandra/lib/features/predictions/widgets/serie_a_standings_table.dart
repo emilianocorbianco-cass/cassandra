@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:cassandra/app/state/app_settings.dart';
-import 'package:cassandra/app/state/app_state.dart';
-import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/app/widgets/team_name.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:cassandra/services/api_football/models/api_football_standing.dart';
 
 class SerieAStandingsTable extends StatelessWidget {
@@ -11,17 +9,9 @@ class SerieAStandingsTable extends StatelessWidget {
 
   final List<ApiFootballStanding> standings;
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final en = _isEnglish(context, app);
+    final l10n = AppLocalizations.of(context)!;
     final textTheme = Theme.of(context).textTheme;
     final headerStyle = textTheme.labelSmall?.copyWith(
       fontWeight: FontWeight.w700,
@@ -35,10 +25,7 @@ class SerieAStandingsTable extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              en ? 'Serie A Standings' : 'Classifica Serie A',
-              style: textTheme.titleMedium,
-            ),
+            Text(l10n.serieAStandingsTitle, style: textTheme.titleMedium),
             const SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -51,42 +38,45 @@ class SerieAStandingsTable extends StatelessWidget {
                 columns: [
                   DataColumn(label: Text('#', style: headerStyle)),
                   DataColumn(
-                    label: Text(en ? 'Team' : 'Squadra', style: headerStyle),
+                    label: Text(l10n.serieATeamColumn, style: headerStyle),
                   ),
                   DataColumn(
-                    label: Text(en ? 'MP' : 'PG', style: headerStyle),
+                    label: Text(l10n.serieAPlayedColumn, style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'W' : 'V', style: headerStyle),
+                    label: Text(l10n.serieAWinsColumn, style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'D' : 'P', style: headerStyle),
+                    label: Text(l10n.serieADrawsColumn, style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'L' : 'S', style: headerStyle),
+                    label: Text(l10n.serieALossesColumn, style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'GF' : 'GF', style: headerStyle),
+                    label: Text('GF', style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'GA' : 'GS', style: headerStyle),
+                    label: Text(
+                      l10n.serieAGoalsAgainstColumn,
+                      style: headerStyle,
+                    ),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'GD' : 'DR', style: headerStyle),
+                    label: Text(l10n.serieAGoalDiffColumn, style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'Pts' : 'Pt', style: headerStyle),
+                    label: Text(l10n.serieAPointsColumn, style: headerStyle),
                     numeric: true,
                   ),
                   DataColumn(
-                    label: Text(en ? 'Last 5' : 'Ultime 5', style: headerStyle),
+                    label: Text(l10n.serieALastFiveColumn, style: headerStyle),
                   ),
                 ],
                 rows: standings.map((s) {

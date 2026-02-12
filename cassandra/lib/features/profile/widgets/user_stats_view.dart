@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/state/app_settings.dart';
-import '../../../app/state/app_state.dart';
-import '../../../app/state/cassandra_scope.dart';
 import '../../../app/theme/cassandra_colors.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../badges/models/badge_counts.dart';
 import '../../badges/models/badge_type.dart';
 import '../../leaderboards/models/season_leaderboard_entry.dart';
@@ -64,17 +62,9 @@ class UserStatsView extends StatelessWidget {
     return Chip(label: Text('$count'), avatar: icon);
   }
 
-  bool _isEnglish(BuildContext context, AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
-    final en = _isEnglish(context, app);
+    final l10n = AppLocalizations.of(context)!;
     final s = CassandraStatsEngine.computeForEntry(entry);
 
     final totalLabel = formatOdds(s.totalPoints);
@@ -85,11 +75,17 @@ class UserStatsView extends StatelessWidget {
 
     final bestLabel = (s.bestDayNumber == null || s.bestDayPoints == null)
         ? '-'
-        : '${en ? 'MD' : 'G'}${s.bestDayNumber}: ${formatOdds(s.bestDayPoints!)}';
+        : l10n.statsBestDayShort(
+            s.bestDayNumber!,
+            formatOdds(s.bestDayPoints!),
+          );
 
     final worstLabel = (s.worstDayNumber == null || s.worstDayPoints == null)
         ? '-'
-        : '${en ? 'MD' : 'G'}${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
+        : l10n.statsWorstDayShort(
+            s.worstDayNumber!,
+            formatOdds(s.worstDayPoints!),
+          );
 
     return SafeArea(
       child: ListView(
@@ -97,33 +93,27 @@ class UserStatsView extends StatelessWidget {
         children: [
           Row(
             children: [
-              _miniStat(label: en ? 'total' : 'totale', value: totalLabel),
-              _miniStat(
-                label: en ? 'avg/matchday' : 'media/giornata',
-                value: avgLabel,
-              ),
+              _miniStat(label: l10n.statsTotal, value: totalLabel),
+              _miniStat(label: l10n.statsAvgMatchday, value: avgLabel),
             ],
           ),
           Row(
             children: [
               _miniStat(
-                label: en ? 'matchdays played' : 'giornate giocate',
+                label: l10n.statsMatchdaysPlayed,
                 value: '${s.daysPlayed}',
               ),
-              _miniStat(
-                label: en ? 'avg. odds' : 'quota media',
-                value: oddsLabel,
-              ),
+              _miniStat(label: l10n.statsAvgOdds, value: oddsLabel),
             ],
           ),
           Row(
             children: [
               _miniStat(
-                label: en ? 'total correct' : 'esatti totali',
+                label: l10n.statsTotalCorrect,
                 value: '${s.totalCorrect}/${s.totalMatches}',
               ),
               _miniStat(
-                label: en ? '% correct' : '% esatti',
+                label: l10n.statsMetricPercentCorrect,
                 value: _formatPercent(s.correctRate),
               ),
             ],
@@ -131,11 +121,11 @@ class UserStatsView extends StatelessWidget {
           Row(
             children: [
               _miniStat(
-                label: en ? 'perfect weeks' : 'settimane perfette',
+                label: l10n.statsMetricPerfectWeeks,
                 value: '${s.perfectWeeks}',
               ),
               _miniStat(
-                label: en ? 'avg. bonus' : 'bonus medio',
+                label: l10n.statsAvgBonus,
                 value: formatOdds(s.averageBonusPerDay),
               ),
             ],
@@ -147,21 +137,15 @@ class UserStatsView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Highlights',
-                    style: TextStyle(fontWeight: FontWeight.w800),
+                  Text(
+                    l10n.statsHighlights,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    '${en ? 'Best matchday' : 'Miglior giornata'}: $bestLabel',
-                  ),
-                  Text(
-                    '${en ? 'Worst matchday' : 'Peggior giornata'}: $worstLabel',
-                  ),
+                  Text(l10n.statsBestMatchday(bestLabel)),
+                  Text(l10n.statsWorstMatchday(worstLabel)),
                   const SizedBox(height: 8),
-                  Text(
-                    '${en ? 'Total bonus' : 'Bonus totale'}: ${s.totalBonus}',
-                  ),
+                  Text(l10n.statsTotalBonus('${s.totalBonus}')),
                 ],
               ),
             ),
@@ -174,7 +158,7 @@ class UserStatsView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    en ? 'Trophies (history)' : 'Trofei (storico)',
+                    l10n.profileTrophiesHistory,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
