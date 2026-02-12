@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
-import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/season_leaderboard_entry.dart';
@@ -27,15 +25,6 @@ class _StatsPageState extends State<StatsPage> {
   late final List<PlayerSeasonStats> _stats;
 
   String? _selectedMemberId;
-
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   @override
   void initState() {
@@ -127,7 +116,7 @@ class _StatsPageState extends State<StatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final s = _selectedStats;
 
     final totalLabel = formatOdds(s.totalPoints);
@@ -145,7 +134,7 @@ class _StatsPageState extends State<StatsPage> {
         : 'G${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
 
     return Scaffold(
-      appBar: AppBar(title: Text(_t(app, 'Statistiche', 'Stats'))),
+      appBar: AppBar(title: Text(l10n.statsTitle)),
       body: SafeArea(
         child: Column(
           children: [
@@ -158,11 +147,11 @@ class _StatsPageState extends State<StatsPage> {
                     segments: [
                       ButtonSegment(
                         value: 0,
-                        label: Text(_t(app, 'personali', 'personal')),
+                        label: Text(l10n.statsSegmentPersonal),
                       ),
                       ButtonSegment(
                         value: 1,
-                        label: Text(_t(app, 'gruppo', 'group')),
+                        label: Text(l10n.statsSegmentGroup),
                       ),
                     ],
                     selected: {_segment},
@@ -200,15 +189,15 @@ class _StatsPageState extends State<StatsPage> {
                       segments: [
                         ButtonSegment(
                           value: GroupMetric.avgPoints,
-                          label: Text(_t(app, 'media', 'average')),
+                          label: Text(l10n.statsMetricAverage),
                         ),
                         ButtonSegment(
                           value: GroupMetric.totalPoints,
-                          label: Text(_t(app, 'totale', 'total')),
+                          label: Text(l10n.statsMetricTotal),
                         ),
                         ButtonSegment(
                           value: GroupMetric.correctRate,
-                          label: Text(_t(app, '% esatti', '% correct')),
+                          label: Text(l10n.statsMetricPercentCorrect),
                         ),
                         ButtonSegment(
                           value: GroupMetric.perfectWeeks,
@@ -232,11 +221,11 @@ class _StatsPageState extends State<StatsPage> {
                         Row(
                           children: [
                             _miniStat(
-                              label: _t(app, 'totale', 'total'),
+                              label: l10n.statsTotal,
                               value: totalLabel,
                             ),
                             _miniStat(
-                              label: _t(app, 'media/giornata', 'avg/matchday'),
+                              label: l10n.statsAvgMatchday,
                               value: avgLabel,
                             ),
                           ],
@@ -244,15 +233,11 @@ class _StatsPageState extends State<StatsPage> {
                         Row(
                           children: [
                             _miniStat(
-                              label: _t(
-                                app,
-                                'giornate giocate',
-                                'matchdays played',
-                              ),
+                              label: l10n.statsMatchdaysPlayed,
                               value: '${s.daysPlayed}',
                             ),
                             _miniStat(
-                              label: _t(app, 'quota media', 'avg odds'),
+                              label: l10n.statsAvgOdds,
                               value: oddsLabel,
                             ),
                           ],
@@ -260,11 +245,11 @@ class _StatsPageState extends State<StatsPage> {
                         Row(
                           children: [
                             _miniStat(
-                              label: _t(app, 'esatti totali', 'total correct'),
+                              label: l10n.statsTotalCorrect,
                               value: '${s.totalCorrect}/${s.totalMatches}',
                             ),
                             _miniStat(
-                              label: _t(app, '% esatti', '% correct'),
+                              label: l10n.statsMetricPercentCorrect,
                               value: _formatPercent(s.correctRate),
                             ),
                           ],
@@ -272,15 +257,11 @@ class _StatsPageState extends State<StatsPage> {
                         Row(
                           children: [
                             _miniStat(
-                              label: _t(
-                                app,
-                                'settimane perfette',
-                                'perfect weeks',
-                              ),
+                              label: l10n.statsMetricPerfectWeeks,
                               value: '${s.perfectWeeks}',
                             ),
                             _miniStat(
-                              label: _t(app, 'bonus medio', 'avg bonus'),
+                              label: l10n.statsAvgBonus,
                               value: formatOdds(s.averageBonusPerDay),
                             ),
                           ],
@@ -293,22 +274,16 @@ class _StatsPageState extends State<StatsPage> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 Text(
-                                  'Highlights',
+                                  l10n.statsHighlights,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                Text(
-                                  '${_t(app, 'Miglior giornata', 'Best matchday')}: $bestLabel',
-                                ),
-                                Text(
-                                  '${_t(app, 'Peggior giornata', 'Worst matchday')}: $worstLabel',
-                                ),
+                                Text(l10n.statsBestMatchday(bestLabel)),
+                                Text(l10n.statsWorstMatchday(worstLabel)),
                                 const SizedBox(height: 8),
-                                Text(
-                                  '${_t(app, 'Bonus totale', 'Total bonus')}: ${s.totalBonus}',
-                                ),
+                                Text(l10n.statsTotalBonus('${s.totalBonus}')),
                               ],
                             ),
                           ),
@@ -376,8 +351,8 @@ class _StatsPageState extends State<StatsPage> {
                             title: Text(p.member.displayName),
                             subtitle: Text(
                               '${p.member.teamName}\n'
-                              '${_t(app, 'giornate', 'matchdays')}: ${p.daysPlayed} • '
-                              '${_t(app, 'esatti', 'correct')}: ${p.totalCorrect}/${p.totalMatches}',
+                              '${l10n.statsMatchdays}: ${p.daysPlayed} • '
+                              '${l10n.statsCorrect}: ${p.totalCorrect}/${p.totalMatches}',
                             ),
                             isThreeLine: true,
                             trailing: Text(

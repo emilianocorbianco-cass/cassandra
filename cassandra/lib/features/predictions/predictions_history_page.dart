@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
@@ -19,16 +19,6 @@ class PredictionsHistoryPage extends StatefulWidget {
 
 class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
   bool _initialized = false;
-
-  bool _isEnglish() {
-    final app = CassandraScope.of(context);
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(String it, String en) => _isEnglish() ? en : it;
 
   @override
   void didChangeDependencies() {
@@ -63,28 +53,23 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    final en = Localizations.localeOf(
+      context,
+    ).languageCode.toLowerCase().startsWith('en');
 
     final savedDays = app.currentUserPicksByMatchday.keys.toList()
       ..sort((a, b) => b.compareTo(a));
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_t('Storico pronostici', 'Predictions history')),
-      ),
+      appBar: AppBar(title: Text(l10n.predHistoryTitle)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
         children: [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(
-                _t(
-                  'Qui trovi le giornate che hai salvato/inviato.\n'
-                      'Se non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.',
-                  'Here you can find the matchdays you saved/submitted.\n'
-                      'If we don\'t have historical fixtures via API, we use a DEMO fallback to show details anyway.',
-                ),
-              ),
+              child: Text(l10n.predHistoryInfo),
             ),
           ),
           const SizedBox(height: 8),
@@ -92,14 +77,7 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
-                  _t(
-                    'Nessuna giornata salvata.\n'
-                        'Vai su Pronostici e "invia" almeno una giornata per vederla qui.',
-                    'No matchday saved.\n'
-                        'Go to Predictions and submit at least one matchday to see it here.',
-                  ),
-                ),
+                child: Text(l10n.predHistoryEmpty),
               ),
             ),
           ...savedDays.map((dayNumber) {
@@ -130,7 +108,6 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
                         }
                       : md.outcomesByMatchId);
 
-            final en = _isEnglish();
             final daysLabel = formatMatchdayDays(
               matches.map((m) => m.kickoff),
               english: en,
@@ -143,16 +120,18 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
             }).length;
 
             final resultsLabel = gradedCount == totalMatches
-                ? '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches'
-                : '${en ? 'results' : 'risultati'}: $gradedCount/$totalMatches (${en ? 'partial' : 'parziale'})';
+                ? l10n.groupResultsLabel(gradedCount, totalMatches)
+                : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
             final tag = canUseSaved
-                ? 'SALVATI'
-                : (canUseCached ? 'API' : 'DEMO');
+                ? l10n.predHistoryTagSaved
+                : (canUseCached
+                      ? l10n.predHistoryTagApi
+                      : l10n.predHistoryTagDemo);
 
             return Card(
               child: ListTile(
-                title: Text(en ? 'Matchday $dayNumber' : 'Giornata $dayNumber'),
+                title: Text(l10n.groupMatchdayTitle(dayNumber)),
                 subtitle: Text('$daysLabel\n$resultsLabel'),
                 trailing: Text(tag),
                 onTap: () {

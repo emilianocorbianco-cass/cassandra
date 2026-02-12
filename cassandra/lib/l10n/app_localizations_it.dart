@@ -407,4 +407,160 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get settingsKindEmpty => 'vuota';
+
+  @override
+  String get predHistoryTitle => 'Storico pronostici';
+
+  @override
+  String get predHistoryInfo =>
+      'Qui trovi le giornate che hai salvato/inviato.\nSe non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.';
+
+  @override
+  String get predHistoryEmpty =>
+      'Nessuna giornata salvata.\nVai su Pronostici e invia almeno una giornata per vederla qui.';
+
+  @override
+  String get predHistoryTagSaved => 'SALVATI';
+
+  @override
+  String get predHistoryTagApi => 'API';
+
+  @override
+  String get predHistoryTagDemo => 'DEMO';
+
+  @override
+  String get serieATitle => 'Live';
+
+  @override
+  String get serieASegmentResults => 'risultati';
+
+  @override
+  String get serieASegmentStandings => 'classifica';
+
+  @override
+  String get serieADataDemo => 'dati: demo';
+
+  @override
+  String serieAErrorLoadingBackendCache(Object errorMessage) {
+    return 'Errore caricando cache backend: $errorMessage';
+  }
+
+  @override
+  String get serieANoMatchDataAvailable => 'Nessun dato partite disponibile';
+
+  @override
+  String get serieANoMatchesToShow => 'Nessuna partita da mostrare';
+
+  @override
+  String get serieANoResults => 'Nessun risultato';
+
+  @override
+  String get serieANoUpcomingMatches => 'Nessuna partita in programma';
+
+  @override
+  String get kickoffLabel => 'Kickoff';
+
+  @override
+  String get leaderboardsTitle => 'Classifiche';
+
+  @override
+  String get leaderboardsDemoBanner =>
+      'Dati di esempio - i dati reali appariranno dopo il primo invio';
+
+  @override
+  String get leaderboardsDataRefreshing => 'aggiornamento...';
+
+  @override
+  String get leaderboardsDataRealApi => 'reali (API)';
+
+  @override
+  String get leaderboardsDataEmpty => 'vuota';
+
+  @override
+  String get leaderboardsNever => 'mai';
+
+  @override
+  String leaderboardsDataLine(Object kind, Object updatedLabel) {
+    return 'dati: $kind • agg. $updatedLabel';
+  }
+
+  @override
+  String get leaderboardsOverall => 'generale';
+
+  @override
+  String get leaderboardsMatchdays => 'giornate';
+
+  @override
+  String get leaderboardsPoints => 'punti';
+
+  @override
+  String get leaderboardsAverage => 'media';
+
+  @override
+  String leaderboardsMatchdayLiveTitle(Object dayNumber) {
+    return 'Giornata $dayNumber (LIVE)';
+  }
+
+  @override
+  String get statsTitle => 'Statistiche';
+
+  @override
+  String get statsSegmentPersonal => 'personali';
+
+  @override
+  String get statsSegmentGroup => 'gruppo';
+
+  @override
+  String get statsMetricAverage => 'media';
+
+  @override
+  String get statsMetricTotal => 'totale';
+
+  @override
+  String get statsMetricPercentCorrect => '% esatti';
+
+  @override
+  String get statsMetricPerfectWeeks => 'settimane perfette';
+
+  @override
+  String get statsTotal => 'totale';
+
+  @override
+  String get statsAvgMatchday => 'media/giornata';
+
+  @override
+  String get statsMatchdaysPlayed => 'giornate giocate';
+
+  @override
+  String get statsAvgOdds => 'quota media';
+
+  @override
+  String get statsTotalCorrect => 'esatti totali';
+
+  @override
+  String get statsAvgBonus => 'bonus medio';
+
+  @override
+  String get statsHighlights => 'Highlights';
+
+  @override
+  String statsBestMatchday(Object value) {
+    return 'Miglior giornata: $value';
+  }
+
+  @override
+  String statsWorstMatchday(Object value) {
+    return 'Peggior giornata: $value';
+  }
+
+  @override
+  String statsTotalBonus(Object value) {
+    return 'Bonus totale: $value';
+  }
+
+  @override
+  String get statsMatchdays => 'giornate';
+
+  @override
+  String get statsCorrect => 'esatti';
 }

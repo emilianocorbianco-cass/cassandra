@@ -406,4 +406,160 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsKindEmpty => 'empty';
+
+  @override
+  String get predHistoryTitle => 'Predictions history';
+
+  @override
+  String get predHistoryInfo =>
+      'Here you can find the matchdays you saved/submitted.\nIf we don\'t have historical fixtures via API, we use a DEMO fallback to show details anyway.';
+
+  @override
+  String get predHistoryEmpty =>
+      'No matchday saved.\nGo to Predictions and submit at least one matchday to see it here.';
+
+  @override
+  String get predHistoryTagSaved => 'SAVED';
+
+  @override
+  String get predHistoryTagApi => 'API';
+
+  @override
+  String get predHistoryTagDemo => 'DEMO';
+
+  @override
+  String get serieATitle => 'Live';
+
+  @override
+  String get serieASegmentResults => 'results';
+
+  @override
+  String get serieASegmentStandings => 'standings';
+
+  @override
+  String get serieADataDemo => 'data: demo';
+
+  @override
+  String serieAErrorLoadingBackendCache(Object errorMessage) {
+    return 'Error loading backend cache: $errorMessage';
+  }
+
+  @override
+  String get serieANoMatchDataAvailable => 'No match data available';
+
+  @override
+  String get serieANoMatchesToShow => 'No matches to show';
+
+  @override
+  String get serieANoResults => 'No results';
+
+  @override
+  String get serieANoUpcomingMatches => 'No upcoming matches';
+
+  @override
+  String get kickoffLabel => 'Kickoff';
+
+  @override
+  String get leaderboardsTitle => 'Standings';
+
+  @override
+  String get leaderboardsDemoBanner =>
+      'Sample data - real data will appear after first submission';
+
+  @override
+  String get leaderboardsDataRefreshing => 'refreshing...';
+
+  @override
+  String get leaderboardsDataRealApi => 'real (API)';
+
+  @override
+  String get leaderboardsDataEmpty => 'empty';
+
+  @override
+  String get leaderboardsNever => 'never';
+
+  @override
+  String leaderboardsDataLine(Object kind, Object updatedLabel) {
+    return 'data: $kind • upd. $updatedLabel';
+  }
+
+  @override
+  String get leaderboardsOverall => 'overall';
+
+  @override
+  String get leaderboardsMatchdays => 'matchdays';
+
+  @override
+  String get leaderboardsPoints => 'points';
+
+  @override
+  String get leaderboardsAverage => 'average';
+
+  @override
+  String leaderboardsMatchdayLiveTitle(Object dayNumber) {
+    return 'Matchday $dayNumber (LIVE)';
+  }
+
+  @override
+  String get statsTitle => 'Stats';
+
+  @override
+  String get statsSegmentPersonal => 'personal';
+
+  @override
+  String get statsSegmentGroup => 'group';
+
+  @override
+  String get statsMetricAverage => 'average';
+
+  @override
+  String get statsMetricTotal => 'total';
+
+  @override
+  String get statsMetricPercentCorrect => '% correct';
+
+  @override
+  String get statsMetricPerfectWeeks => 'perfect weeks';
+
+  @override
+  String get statsTotal => 'total';
+
+  @override
+  String get statsAvgMatchday => 'avg/matchday';
+
+  @override
+  String get statsMatchdaysPlayed => 'matchdays played';
+
+  @override
+  String get statsAvgOdds => 'avg odds';
+
+  @override
+  String get statsTotalCorrect => 'total correct';
+
+  @override
+  String get statsAvgBonus => 'avg bonus';
+
+  @override
+  String get statsHighlights => 'Highlights';
+
+  @override
+  String statsBestMatchday(Object value) {
+    return 'Best matchday: $value';
+  }
+
+  @override
+  String statsWorstMatchday(Object value) {
+    return 'Worst matchday: $value';
+  }
+
+  @override
+  String statsTotalBonus(Object value) {
+    return 'Total bonus: $value';
+  }
+
+  @override
+  String get statsMatchdays => 'matchdays';
+
+  @override
+  String get statsCorrect => 'correct';
 }

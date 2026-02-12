@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
-import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
@@ -36,15 +35,6 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   // Firestore-based season data
   List<SeasonLeaderboardEntry>? _firestoreSeasonEntries;
   bool _firestoreLoading = false;
-
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   late final List<MatchdayData> _matchdays;
 
@@ -179,6 +169,10 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    final en = Localizations.localeOf(
+      context,
+    ).languageCode.toLowerCase().startsWith('en');
 
     app.ensureOutcomesHistoryLoaded();
 
@@ -300,18 +294,12 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text(_t(app, 'Classifiche', 'Standings'))),
+      appBar: AppBar(title: Text(l10n.leaderboardsTitle)),
       body: SafeArea(
         child: Column(
           children: [
             if (_firestoreSeasonEntries == null)
-              DemoBanner(
-                label: _t(
-                  app,
-                  'Dati di esempio \u2014 i dati reali appariranno dopo il primo invio',
-                  'Sample data \u2014 real data will appear after first submission',
-                ),
-              ),
+              DemoBanner(label: l10n.leaderboardsDemoBanner),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -330,10 +318,12 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                           }).length;
 
                     final kind = _firestoreLoading
-                        ? _t(app, 'aggiornamento...', 'refreshing...')
+                        ? l10n.leaderboardsDataRefreshing
                         : app.cachedPredictionMatchesAreReal
-                        ? _t(app, 'reali (API)', 'real (API)')
-                        : (total > 0 ? 'demo' : _t(app, 'vuota', 'empty'));
+                        ? l10n.leaderboardsDataRealApi
+                        : (total > 0
+                              ? l10n.settingsKindDemo
+                              : l10n.leaderboardsDataEmpty);
 
                     final updated = app.cachedPredictionMatchesUpdatedAt;
                     String fmt(DateTime dt) {
@@ -345,23 +335,21 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                     }
 
                     final updatedLabel = (updated == null)
-                        ? _t(app, 'mai', 'never')
+                        ? l10n.leaderboardsNever
                         : fmt(updated);
 
                     final resultsLabel = (total == 0)
                         ? null
                         : (graded == total
-                              ? '${_t(app, 'risultati', 'results')}: $graded/$total'
-                              : '${_t(app, 'risultati', 'results')}: $graded/$total (${_t(app, 'parziale', 'partial')})');
+                              ? l10n.groupResultsLabel(graded, total)
+                              : l10n.groupResultsLabelPartial(graded, total));
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Text(
-                              '${_t(app, 'dati', 'data')}: $kind • ${_t(app, 'agg.', 'upd.')} $updatedLabel',
-                            ),
+                            Text(l10n.leaderboardsDataLine(kind, updatedLabel)),
                           ],
                         ),
                         if (resultsLabel != null) ...[
@@ -387,11 +375,11 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                     segments: [
                       ButtonSegment(
                         value: 0,
-                        label: Text(_t(app, 'generale', 'overall')),
+                        label: Text(l10n.leaderboardsOverall),
                       ),
                       ButtonSegment(
                         value: 1,
-                        label: Text(_t(app, 'giornate', 'matchdays')),
+                        label: Text(l10n.leaderboardsMatchdays),
                       ),
                     ],
                     selected: {_segment},
@@ -404,11 +392,11 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                       segments: [
                         ButtonSegment(
                           value: _GeneralMode.points,
-                          label: Text(_t(app, 'punti', 'points')),
+                          label: Text(l10n.leaderboardsPoints),
                         ),
                         ButtonSegment(
                           value: _GeneralMode.average,
-                          label: Text(_t(app, 'media', 'average')),
+                          label: Text(l10n.leaderboardsAverage),
                         ),
                       ],
                       selected: {_generalMode},
@@ -429,7 +417,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                         final isLive = useLive && md.dayNumber == liveDayNumber;
                         final daysLabel = formatMatchdayDays(
                           md.matches.map((m) => m.kickoff),
-                          english: _isEnglish(app),
+                          english: en,
                         );
 
                         return Card(
@@ -447,8 +435,10 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                             ),
                             title: Text(
                               isLive
-                                  ? '${_t(app, 'Giornata', 'Matchday')} ${md.dayNumber} (LIVE)'
-                                  : '${_t(app, 'Giornata', 'Matchday')} ${md.dayNumber}',
+                                  ? l10n.leaderboardsMatchdayLiveTitle(
+                                      md.dayNumber,
+                                    )
+                                  : l10n.groupMatchdayTitle(md.dayNumber),
                             ),
                             subtitle: Text(() {
                               final total = md.matches.length;
@@ -459,8 +449,11 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                 return !o.isPending;
                               }).length;
                               final rl = (graded == total)
-                                  ? '${_t(app, 'risultati', 'results')}: $graded/$total'
-                                  : '${_t(app, 'risultati', 'results')}: $graded/$total (${_t(app, 'parziale', 'partial')})';
+                                  ? l10n.groupResultsLabel(graded, total)
+                                  : l10n.groupResultsLabelPartial(
+                                      graded,
+                                      total,
+                                    );
                               return '$daysLabel\n$rl';
                             }()),
                             isThreeLine: true,

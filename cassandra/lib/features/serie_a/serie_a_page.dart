@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/state/app_settings.dart';
 import '../../app/state/app_state.dart';
 import '../../app/widgets/team_name.dart';
 import '../group/mock_group_data.dart';
@@ -25,15 +25,6 @@ class _SerieAPageState extends State<SerieAPage> {
   bool _didLoad = false;
 
   late Future<_SerieAData> _future;
-
-  bool _isEnglish(AppState app) {
-    final code = app.language == CassandraLanguage.system
-        ? Localizations.localeOf(context).languageCode
-        : (app.language == CassandraLanguage.en ? 'en' : 'it');
-    return code.toLowerCase().startsWith('en');
-  }
-
-  String _t(AppState app, String it, String en) => _isEnglish(app) ? en : it;
 
   @override
   void initState() {
@@ -122,9 +113,10 @@ class _SerieAPageState extends State<SerieAPage> {
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Live')),
+      appBar: AppBar(title: Text(l10n.serieATitle)),
       body: SafeArea(
         child: FutureBuilder<_SerieAData>(
           future: _future,
@@ -137,7 +129,7 @@ class _SerieAPageState extends State<SerieAPage> {
 
             final updatedLabel = _updatedAt == null
                 ? ''
-                : ' \u2022 ${_t(app, 'agg.', 'upd.')} ${formatKickoff(_updatedAt!)}';
+                : ' \u2022 ${l10n.shortUpdated} ${formatKickoff(_updatedAt!)}';
 
             return Column(
               children: [
@@ -150,11 +142,11 @@ class _SerieAPageState extends State<SerieAPage> {
                         segments: [
                           ButtonSegment(
                             value: 0,
-                            label: Text(_t(app, 'risultati', 'results')),
+                            label: Text(l10n.serieASegmentResults),
                           ),
                           ButtonSegment(
                             value: 1,
-                            label: Text(_t(app, 'classifica', 'standings')),
+                            label: Text(l10n.serieASegmentStandings),
                           ),
                         ],
                         selected: {_segment},
@@ -164,20 +156,15 @@ class _SerieAPageState extends State<SerieAPage> {
                       const SizedBox(height: 8),
                       Text(
                         demoActive
-                            ? _t(app, 'dati: demo', 'data: demo')
+                            ? l10n.serieADataDemo
                             : (data?.errorMessage != null
-                                  ? _t(
-                                      app,
-                                      'Errore caricando cache backend: ${data?.errorMessage}',
-                                      'Error loading backend cache: ${data?.errorMessage}',
+                                  ? l10n.serieAErrorLoadingBackendCache(
+                                      data?.errorMessage ?? '',
                                     )
                                   : (data?.fromBackend == true
-                                        ? _t(
-                                            app,
-                                            'dati: cache backend$updatedLabel',
-                                            'data: backend cache$updatedLabel',
-                                          )
-                                        : _t(app, 'dati: demo', 'data: demo'))),
+                                        ? l10n.settingsDataBackendCache +
+                                              updatedLabel
+                                        : l10n.serieADataDemo)),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -195,7 +182,7 @@ class _SerieAPageState extends State<SerieAPage> {
                                   _segment,
                                   demoMatches,
                                   app.cachedPredictionOutcomesByMatchId,
-                                  app,
+                                  l10n,
                                 )
                               : _buildList(
                                   context,
@@ -205,7 +192,6 @@ class _SerieAPageState extends State<SerieAPage> {
                                         outcomesByMatchId: {},
                                         fromBackend: false,
                                       ),
-                                  app,
                                 ),
                         ),
                 ),
@@ -218,17 +204,10 @@ class _SerieAPageState extends State<SerieAPage> {
   }
 
   Widget _buildGroupLeaderboard(BuildContext context, AppState appState) {
+    final l10n = AppLocalizations.of(context)!;
     final cachedMatches = appState.cachedPredictionMatches;
     if (cachedMatches == null || cachedMatches.isEmpty) {
-      return Center(
-        child: Text(
-          _t(
-            appState,
-            'Nessun dato partite disponibile',
-            'No match data available',
-          ),
-        ),
-      );
+      return Center(child: Text(l10n.serieANoMatchDataAvailable));
     }
 
     final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
@@ -267,18 +246,15 @@ class _SerieAPageState extends State<SerieAPage> {
     );
   }
 
-  Widget _buildList(BuildContext context, _SerieAData data, AppState app) {
+  Widget _buildList(BuildContext context, _SerieAData data) {
+    final l10n = AppLocalizations.of(context)!;
     final matches = List<PredictionMatch>.of(data.matches)
       ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     if (matches.isEmpty) {
       return ListView(
         children: [
           const SizedBox(height: 120),
-          Center(
-            child: Text(
-              _t(app, 'Nessuna partita da mostrare', 'No matches to show'),
-            ),
-          ),
+          Center(child: Text(l10n.serieANoMatchesToShow)),
         ],
       );
     }
@@ -314,9 +290,7 @@ class _SerieAPageState extends State<SerieAPage> {
                 ),
               ],
             ),
-            subtitle: Text(
-              '${_t(app, 'Kickoff', 'Kickoff')}: ${formatKickoff(m.kickoff)}',
-            ),
+            subtitle: Text('${l10n.kickoffLabel}: ${formatKickoff(m.kickoff)}'),
             trailing: Text(
               trailing,
               textAlign: TextAlign.right,
@@ -343,22 +317,12 @@ class _SerieAData {
   });
 }
 
-bool _isEnglishTop(BuildContext context, AppState app) {
-  final code = app.language == CassandraLanguage.system
-      ? Localizations.localeOf(context).languageCode
-      : (app.language == CassandraLanguage.en ? 'en' : 'it');
-  return code.toLowerCase().startsWith('en');
-}
-
-String _tTop(BuildContext context, AppState app, String it, String en) =>
-    _isEnglishTop(context, app) ? en : it;
-
 Widget _buildDemoList(
   BuildContext context,
   int segment,
   List<PredictionMatch> all,
   Map<String, MatchOutcome> outcomes,
-  AppState app,
+  AppLocalizations l10n,
 ) {
   final matches = all.where((m) {
     final o = outcomes[m.id] ?? MatchOutcome.pending;
@@ -368,14 +332,7 @@ Widget _buildDemoList(
   if (matches.isEmpty) {
     return Center(
       child: Text(
-        segment == 0
-            ? _tTop(context, app, 'Nessun risultato', 'No results')
-            : _tTop(
-                context,
-                app,
-                'Nessuna partita in programma',
-                'No upcoming matches',
-              ),
+        segment == 0 ? l10n.serieANoResults : l10n.serieANoUpcomingMatches,
       ),
     );
   }
@@ -387,8 +344,7 @@ Widget _buildDemoList(
     itemBuilder: (context, i) {
       final m = matches[i];
       final o = outcomes[m.id] ?? MatchOutcome.pending;
-      final subtitle =
-          '${_tTop(context, app, 'Kickoff', 'Kickoff')}: ${formatKickoff(m.kickoff)}';
+      final subtitle = '${l10n.kickoffLabel}: ${formatKickoff(m.kickoff)}';
       final trailing = o.isPending ? '' : _demoOutcomeLabel(o);
 
       return Card(

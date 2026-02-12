@@ -194,5 +194,83 @@
   "settingsReset": "Reset",
   "settingsKindBackendCache": "backend cache",
   "settingsKindDemo": "demo",
-  "settingsKindEmpty": "empty"
+  "settingsKindEmpty": "empty",
+  "predHistoryTitle": "Predictions history",
+  "predHistoryInfo": "Here you can find the matchdays you saved/submitted.\nIf we don't have historical fixtures via API, we use a DEMO fallback to show details anyway.",
+  "predHistoryEmpty": "No matchday saved.\nGo to Predictions and submit at least one matchday to see it here.",
+  "predHistoryTagSaved": "SAVED",
+  "predHistoryTagApi": "API",
+  "predHistoryTagDemo": "DEMO",
+  "serieATitle": "Live",
+  "serieASegmentResults": "results",
+  "serieASegmentStandings": "standings",
+  "serieADataDemo": "data: demo",
+  "serieAErrorLoadingBackendCache": "Error loading backend cache: {errorMessage}",
+  "@serieAErrorLoadingBackendCache": {
+    "placeholders": {
+      "errorMessage": {}
+    }
+  },
+  "serieANoMatchDataAvailable": "No match data available",
+  "serieANoMatchesToShow": "No matches to show",
+  "serieANoResults": "No results",
+  "serieANoUpcomingMatches": "No upcoming matches",
+  "kickoffLabel": "Kickoff",
+  "leaderboardsTitle": "Standings",
+  "leaderboardsDemoBanner": "Sample data - real data will appear after first submission",
+  "leaderboardsDataRefreshing": "refreshing...",
+  "leaderboardsDataRealApi": "real (API)",
+  "leaderboardsDataEmpty": "empty",
+  "leaderboardsNever": "never",
+  "leaderboardsDataLine": "data: {kind} • upd. {updatedLabel}",
+  "@leaderboardsDataLine": {
+    "placeholders": {
+      "kind": {},
+      "updatedLabel": {}
+    }
+  },
+  "leaderboardsOverall": "overall",
+  "leaderboardsMatchdays": "matchdays",
+  "leaderboardsPoints": "points",
+  "leaderboardsAverage": "average",
+  "leaderboardsMatchdayLiveTitle": "Matchday {dayNumber} (LIVE)",
+  "@leaderboardsMatchdayLiveTitle": {
+    "placeholders": {
+      "dayNumber": {}
+    }
+  },
+  "statsTitle": "Stats",
+  "statsSegmentPersonal": "personal",
+  "statsSegmentGroup": "group",
+  "statsMetricAverage": "average",
+  "statsMetricTotal": "total",
+  "statsMetricPercentCorrect": "% correct",
+  "statsMetricPerfectWeeks": "perfect weeks",
+  "statsTotal": "total",
+  "statsAvgMatchday": "avg/matchday",
+  "statsMatchdaysPlayed": "matchdays played",
+  "statsAvgOdds": "avg odds",
+  "statsTotalCorrect": "total correct",
+  "statsAvgBonus": "avg bonus",
+  "statsHighlights": "Highlights",
+  "statsBestMatchday": "Best matchday: {value}",
+  "@statsBestMatchday": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "statsWorstMatchday": "Worst matchday: {value}",
+  "@statsWorstMatchday": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "statsTotalBonus": "Total bonus: {value}",
+  "@statsTotalBonus": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "statsMatchdays": "matchdays",
+  "statsCorrect": "correct"
 }

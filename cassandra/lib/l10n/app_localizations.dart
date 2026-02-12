@@ -811,6 +811,288 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'empty'**
   String get settingsKindEmpty;
+
+  /// No description provided for @predHistoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions history'**
+  String get predHistoryTitle;
+
+  /// No description provided for @predHistoryInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Here you can find the matchdays you saved/submitted.\nIf we don\'t have historical fixtures via API, we use a DEMO fallback to show details anyway.'**
+  String get predHistoryInfo;
+
+  /// No description provided for @predHistoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matchday saved.\nGo to Predictions and submit at least one matchday to see it here.'**
+  String get predHistoryEmpty;
+
+  /// No description provided for @predHistoryTagSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'SAVED'**
+  String get predHistoryTagSaved;
+
+  /// No description provided for @predHistoryTagApi.
+  ///
+  /// In en, this message translates to:
+  /// **'API'**
+  String get predHistoryTagApi;
+
+  /// No description provided for @predHistoryTagDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'DEMO'**
+  String get predHistoryTagDemo;
+
+  /// No description provided for @serieATitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get serieATitle;
+
+  /// No description provided for @serieASegmentResults.
+  ///
+  /// In en, this message translates to:
+  /// **'results'**
+  String get serieASegmentResults;
+
+  /// No description provided for @serieASegmentStandings.
+  ///
+  /// In en, this message translates to:
+  /// **'standings'**
+  String get serieASegmentStandings;
+
+  /// No description provided for @serieADataDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'data: demo'**
+  String get serieADataDemo;
+
+  /// No description provided for @serieAErrorLoadingBackendCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Error loading backend cache: {errorMessage}'**
+  String serieAErrorLoadingBackendCache(Object errorMessage);
+
+  /// No description provided for @serieANoMatchDataAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No match data available'**
+  String get serieANoMatchDataAvailable;
+
+  /// No description provided for @serieANoMatchesToShow.
+  ///
+  /// In en, this message translates to:
+  /// **'No matches to show'**
+  String get serieANoMatchesToShow;
+
+  /// No description provided for @serieANoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No results'**
+  String get serieANoResults;
+
+  /// No description provided for @serieANoUpcomingMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'No upcoming matches'**
+  String get serieANoUpcomingMatches;
+
+  /// No description provided for @kickoffLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Kickoff'**
+  String get kickoffLabel;
+
+  /// No description provided for @leaderboardsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Standings'**
+  String get leaderboardsTitle;
+
+  /// No description provided for @leaderboardsDemoBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Sample data - real data will appear after first submission'**
+  String get leaderboardsDemoBanner;
+
+  /// No description provided for @leaderboardsDataRefreshing.
+  ///
+  /// In en, this message translates to:
+  /// **'refreshing...'**
+  String get leaderboardsDataRefreshing;
+
+  /// No description provided for @leaderboardsDataRealApi.
+  ///
+  /// In en, this message translates to:
+  /// **'real (API)'**
+  String get leaderboardsDataRealApi;
+
+  /// No description provided for @leaderboardsDataEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'empty'**
+  String get leaderboardsDataEmpty;
+
+  /// No description provided for @leaderboardsNever.
+  ///
+  /// In en, this message translates to:
+  /// **'never'**
+  String get leaderboardsNever;
+
+  /// No description provided for @leaderboardsDataLine.
+  ///
+  /// In en, this message translates to:
+  /// **'data: {kind} • upd. {updatedLabel}'**
+  String leaderboardsDataLine(Object kind, Object updatedLabel);
+
+  /// No description provided for @leaderboardsOverall.
+  ///
+  /// In en, this message translates to:
+  /// **'overall'**
+  String get leaderboardsOverall;
+
+  /// No description provided for @leaderboardsMatchdays.
+  ///
+  /// In en, this message translates to:
+  /// **'matchdays'**
+  String get leaderboardsMatchdays;
+
+  /// No description provided for @leaderboardsPoints.
+  ///
+  /// In en, this message translates to:
+  /// **'points'**
+  String get leaderboardsPoints;
+
+  /// No description provided for @leaderboardsAverage.
+  ///
+  /// In en, this message translates to:
+  /// **'average'**
+  String get leaderboardsAverage;
+
+  /// No description provided for @leaderboardsMatchdayLiveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Matchday {dayNumber} (LIVE)'**
+  String leaderboardsMatchdayLiveTitle(Object dayNumber);
+
+  /// No description provided for @statsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stats'**
+  String get statsTitle;
+
+  /// No description provided for @statsSegmentPersonal.
+  ///
+  /// In en, this message translates to:
+  /// **'personal'**
+  String get statsSegmentPersonal;
+
+  /// No description provided for @statsSegmentGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'group'**
+  String get statsSegmentGroup;
+
+  /// No description provided for @statsMetricAverage.
+  ///
+  /// In en, this message translates to:
+  /// **'average'**
+  String get statsMetricAverage;
+
+  /// No description provided for @statsMetricTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'total'**
+  String get statsMetricTotal;
+
+  /// No description provided for @statsMetricPercentCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'% correct'**
+  String get statsMetricPercentCorrect;
+
+  /// No description provided for @statsMetricPerfectWeeks.
+  ///
+  /// In en, this message translates to:
+  /// **'perfect weeks'**
+  String get statsMetricPerfectWeeks;
+
+  /// No description provided for @statsTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'total'**
+  String get statsTotal;
+
+  /// No description provided for @statsAvgMatchday.
+  ///
+  /// In en, this message translates to:
+  /// **'avg/matchday'**
+  String get statsAvgMatchday;
+
+  /// No description provided for @statsMatchdaysPlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'matchdays played'**
+  String get statsMatchdaysPlayed;
+
+  /// No description provided for @statsAvgOdds.
+  ///
+  /// In en, this message translates to:
+  /// **'avg odds'**
+  String get statsAvgOdds;
+
+  /// No description provided for @statsTotalCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'total correct'**
+  String get statsTotalCorrect;
+
+  /// No description provided for @statsAvgBonus.
+  ///
+  /// In en, this message translates to:
+  /// **'avg bonus'**
+  String get statsAvgBonus;
+
+  /// No description provided for @statsHighlights.
+  ///
+  /// In en, this message translates to:
+  /// **'Highlights'**
+  String get statsHighlights;
+
+  /// No description provided for @statsBestMatchday.
+  ///
+  /// In en, this message translates to:
+  /// **'Best matchday: {value}'**
+  String statsBestMatchday(Object value);
+
+  /// No description provided for @statsWorstMatchday.
+  ///
+  /// In en, this message translates to:
+  /// **'Worst matchday: {value}'**
+  String statsWorstMatchday(Object value);
+
+  /// No description provided for @statsTotalBonus.
+  ///
+  /// In en, this message translates to:
+  /// **'Total bonus: {value}'**
+  String statsTotalBonus(Object value);
+
+  /// No description provided for @statsMatchdays.
+  ///
+  /// In en, this message translates to:
+  /// **'matchdays'**
+  String get statsMatchdays;
+
+  /// No description provided for @statsCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'correct'**
+  String get statsCorrect;
 }
 
 class _AppLocalizationsDelegate

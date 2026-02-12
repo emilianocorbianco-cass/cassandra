@@ -194,5 +194,83 @@
   "settingsReset": "Reset",
   "settingsKindBackendCache": "cache backend",
   "settingsKindDemo": "demo",
-  "settingsKindEmpty": "vuota"
+  "settingsKindEmpty": "vuota",
+  "predHistoryTitle": "Storico pronostici",
+  "predHistoryInfo": "Qui trovi le giornate che hai salvato/inviato.\nSe non abbiamo fixture storiche via API, usiamo un fallback DEMO per mostrare comunque il dettaglio.",
+  "predHistoryEmpty": "Nessuna giornata salvata.\nVai su Pronostici e invia almeno una giornata per vederla qui.",
+  "predHistoryTagSaved": "SALVATI",
+  "predHistoryTagApi": "API",
+  "predHistoryTagDemo": "DEMO",
+  "serieATitle": "Live",
+  "serieASegmentResults": "risultati",
+  "serieASegmentStandings": "classifica",
+  "serieADataDemo": "dati: demo",
+  "serieAErrorLoadingBackendCache": "Errore caricando cache backend: {errorMessage}",
+  "@serieAErrorLoadingBackendCache": {
+    "placeholders": {
+      "errorMessage": {}
+    }
+  },
+  "serieANoMatchDataAvailable": "Nessun dato partite disponibile",
+  "serieANoMatchesToShow": "Nessuna partita da mostrare",
+  "serieANoResults": "Nessun risultato",
+  "serieANoUpcomingMatches": "Nessuna partita in programma",
+  "kickoffLabel": "Kickoff",
+  "leaderboardsTitle": "Classifiche",
+  "leaderboardsDemoBanner": "Dati di esempio - i dati reali appariranno dopo il primo invio",
+  "leaderboardsDataRefreshing": "aggiornamento...",
+  "leaderboardsDataRealApi": "reali (API)",
+  "leaderboardsDataEmpty": "vuota",
+  "leaderboardsNever": "mai",
+  "leaderboardsDataLine": "dati: {kind} • agg. {updatedLabel}",
+  "@leaderboardsDataLine": {
+    "placeholders": {
+      "kind": {},
+      "updatedLabel": {}
+    }
+  },
+  "leaderboardsOverall": "generale",
+  "leaderboardsMatchdays": "giornate",
+  "leaderboardsPoints": "punti",
+  "leaderboardsAverage": "media",
+  "leaderboardsMatchdayLiveTitle": "Giornata {dayNumber} (LIVE)",
+  "@leaderboardsMatchdayLiveTitle": {
+    "placeholders": {
+      "dayNumber": {}
+    }
+  },
+  "statsTitle": "Statistiche",
+  "statsSegmentPersonal": "personali",
+  "statsSegmentGroup": "gruppo",
+  "statsMetricAverage": "media",
+  "statsMetricTotal": "totale",
+  "statsMetricPercentCorrect": "% esatti",
+  "statsMetricPerfectWeeks": "settimane perfette",
+  "statsTotal": "totale",
+  "statsAvgMatchday": "media/giornata",
+  "statsMatchdaysPlayed": "giornate giocate",
+  "statsAvgOdds": "quota media",
+  "statsTotalCorrect": "esatti totali",
+  "statsAvgBonus": "bonus medio",
+  "statsHighlights": "Highlights",
+  "statsBestMatchday": "Miglior giornata: {value}",
+  "@statsBestMatchday": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "statsWorstMatchday": "Peggior giornata: {value}",
+  "@statsWorstMatchday": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "statsTotalBonus": "Bonus totale: {value}",
+  "@statsTotalBonus": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "statsMatchdays": "giornate",
+  "statsCorrect": "esatti"
 }
