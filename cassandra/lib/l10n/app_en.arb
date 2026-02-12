@@ -175,7 +175,7 @@
   "settingsLanguageSystem": "System",
   "settingsLanguageIt": "IT",
   "settingsLanguageEn": "EN",
-  "settingsTranslationNote": "Note: many labels are still hardcoded for now. We will translate in batches.",
+  "settingsTranslationNote": "Note: translations are continuously maintained.",
   "settingsPicksPrivacyDefault": "Picks privacy (default)",
   "settingsPrivacyPublic": "Public",
   "settingsPrivacyFriends": "Friends",
@@ -416,8 +416,8 @@
   "predictionsUseBackendCache": "Use backend cache",
   "predictionsForceDemoData": "Force demo data",
   "predictionsSampleDataBanner": "Sample data - wait for backend sync",
-  "predictionsPastSegment": "past predictions",
-  "predictionsUpcomingSegment": "upcoming predictions",
+  "predictionsPastSegment": "Past predictions",
+  "predictionsUpcomingSegment": "Upcoming predictions",
   "predictionsDebugShifted": "debug: shifted {shifted} • <48h {under48} • >48h {over48}",
   "@predictionsDebugShifted": {
     "placeholders": {
@@ -448,8 +448,8 @@
       "visibility": {}
     }
   },
-  "predictionsSubmitWithoutShowing": "submit without showing",
-  "predictionsSubmitAndShow": "submit and show",
+  "predictionsSubmitWithoutShowing": "Submit without showing",
+  "predictionsSubmitAndShow": "Submit and show",
   "commonNoDataAvailable": "No data available",
   "predictionsBaseLabel": "Base",
   "predictionsDataDemoFixturesNotSaved": "Data: DEMO (fixtures not saved)",
