@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
-import '../../app/widgets/team_name.dart';
 import 'models/mock_prediction_data.dart';
 import 'models/pick_option.dart';
 import 'models/prediction_match.dart';
@@ -34,8 +33,6 @@ class PredictionsPage extends StatefulWidget {
 
 class _PredictionsPageState extends State<PredictionsPage>
     with AutomaticKeepAliveClientMixin {
-  bool _forceDemoFixtures = false;
-
   bool _isLoadingRealFixtures = false;
 
   @override
@@ -83,7 +80,6 @@ class _PredictionsPageState extends State<PredictionsPage>
   bool _usingRealFixtures = false;
   bool _loadingFixtures = false;
   bool _didLoadFixtures = false;
-  DateTime? _fixturesUpdatedAt;
   List<ApiFootballStanding>? _standings;
   final Map<String, PickOption> _picks = {};
   int _segment = 0; // 0 = futuri, 1 = passati
@@ -120,8 +116,6 @@ class _PredictionsPageState extends State<PredictionsPage>
         cached.isNotEmpty &&
         scope.cachedPredictionMatchesAreReal) {
       _usingRealFixtures = true;
-      _fixturesUpdatedAt =
-          scope.cachedPredictionMatchesUpdatedAt ?? DateTime.now();
     }
 
     if (_didLoadFixtures) return;
@@ -151,17 +145,7 @@ class _PredictionsPageState extends State<PredictionsPage>
       matches.map((m) => m.kickoff),
       english: l10n.localeName.startsWith('en'),
     );
-    final appState = CassandraScope.of(context);
-    final progress = appState.matchdayProgressFor(_effectiveMatchdayNumber);
-    final status = progress == null
-        ? ''
-        : ' • ${String.fromCharCode(0x1F512)} ${progress.isLocked ? "LOCK" : "OPEN"}'
-              ' • P:${progress.primaryDone ? "OK" : "..."}'
-              ' • F:${progress.finalDone ? "OK" : "..."}'
-              ' • ${progress.playedFixtures}/${progress.totalFixtures}'
-              '${progress.voidFixtures > 0 ? " • ${l10n.predictionsVoidCount(progress.voidFixtures)}" : ""}'
-              ' • ${progress.isValidMatchday ? l10n.predictionsValidStatus : l10n.predictionsInvalidStatus}';
-    return '${l10n.groupMatchdayLabel(_effectiveMatchdayNumber, daysLabel)}$status';
+    return l10n.groupMatchdayLabel(_effectiveMatchdayNumber, daysLabel);
   }
 
   double? _oddsForPick(PredictionMatch match, PickOption pick) {
@@ -210,11 +194,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
     setState(() => _picks[matchId] = pick);
     CassandraScope.of(context).setCurrentUserPick(matchId, pick);
-  }
-
-  void _clearPick(String matchId) {
-    setState(() => _picks.remove(matchId));
-    CassandraScope.of(context).setCurrentUserPick(matchId, PickOption.none);
   }
 
   Future<bool> _confirmSubmitIfMissing(int missing) async {
@@ -322,121 +301,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     );
   }
 
-  Future<void> _showDebugScorePreview() async {
-    final l10n = AppLocalizations.of(context)!;
-    final rnd = Random();
-    const outcomesList = [
-      MatchOutcome.home,
-      MatchOutcome.draw,
-      MatchOutcome.away,
-    ];
-    final outcomes = <String, MatchOutcome>{};
-    for (final m in _matches) {
-      outcomes[m.id] = outcomesList[rnd.nextInt(outcomesList.length)];
-    }
-    final day = CassandraScoringEngine.computeDayScore(
-      matches: _matches,
-      picksByMatchId: _picks,
-      outcomesByMatchId: outcomes,
-    );
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        final byId = {for (final b in day.matchBreakdowns) b.matchId: b};
-        final height = MediaQuery.of(context).size.height * 0.75;
-        return SafeArea(
-          child: SizedBox(
-            height: height,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    l10n.predictionsDebugScoreTitle,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(l10n.predictionsDebugBase(formatOdds(day.baseTotal))),
-                  Text(l10n.predictionsDebugBonus('${day.bonusPoints}')),
-                  Text(l10n.predictionsDebugTotal(formatOdds(day.total))),
-                  const SizedBox(height: 6),
-                  Text(l10n.predictionsDebugCorrect('${day.correctCount}/10')),
-                  Text(
-                    l10n.predictionsDebugAvgOdds(
-                      day.averageOddsPlayed == null
-                          ? '-'
-                          : formatOdds(day.averageOddsPlayed!),
-                    ),
-                  ),
-                  const Divider(height: 20),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: _matches.length,
-                      itemBuilder: (context, i) {
-                        final m = _matches[i];
-                        final b = byId[m.id]!;
-                        final outcome = outcomes[m.id]!;
-                        final pick = _pickFor(m.id);
-                        final sign = b.basePoints >= 0 ? '+' : '';
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TeamName(
-                                      name: m.homeTeam,
-                                      logoUrl: m.homeTeamLogo,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  const Text(' - '),
-                                  Expanded(
-                                    child: TeamName(
-                                      name: m.awayTeam,
-                                      logoUrl: m.awayTeamLogo,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      reversed: true,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                l10n.predictionsDebugPickRow(
-                                  pick.label,
-                                  outcome.label,
-                                  '$sign${formatOdds(b.basePoints)}',
-                                ),
-                              ),
-                              if (b.note.isNotEmpty)
-                                Text(
-                                  b.note,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _tryLoadRealFixtures({bool showLoader = false}) async {
     final appState = CassandraScope.of(context);
     final fs = appState.firestoreService;
@@ -455,8 +319,6 @@ class _PredictionsPageState extends State<PredictionsPage>
             _shownMatchdayNumber = scope.uiMatchdayNumber;
             _matches = cached;
             _usingRealFixtures = false;
-            _fixturesUpdatedAt =
-                scope.cachedPredictionMatchesUpdatedAt ?? DateTime.now();
           });
         }
         // Compute MatchdayProgress for demo fixtures
@@ -562,7 +424,6 @@ class _PredictionsPageState extends State<PredictionsPage>
         _shownMatchdayNumber = doc.dayNumber;
         _matches = matches;
         _usingRealFixtures = true;
-        _fixturesUpdatedAt = doc.updatedAt;
         _standings = standings.isEmpty ? null : standings;
       });
       scope.setCachedPredictionMatches(
@@ -855,15 +716,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     );
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
-    final dataLabel = (demoActive || _forceDemoFixtures)
-        ? l10n.settingsDataDemo
-        : (_usingRealFixtures
-              ? l10n.predictionsDataRealBackendCache
-              : l10n.settingsDataDemo);
-    final updatedLabel =
-        (_usingRealFixtures && !demoActive && _fixturesUpdatedAt != null)
-        ? ' • ${l10n.shortUpdated} ${formatKickoff(_fixturesUpdatedAt!)}'
-        : '';
+    final isOffline = !_usingRealFixtures;
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -871,7 +724,7 @@ class _PredictionsPageState extends State<PredictionsPage>
         actions: [
           IconButton(
             tooltip: l10n.predictionsRefreshMatches,
-            onPressed: (_loadingFixtures || demoActive || _forceDemoFixtures)
+            onPressed: (_loadingFixtures || demoActive)
                 ? null
                 : () => _tryLoadRealFixturesOnce(showLoader: true, force: true),
             icon: _loadingFixtures
@@ -882,31 +735,6 @@ class _PredictionsPageState extends State<PredictionsPage>
                   )
                 : const Icon(Icons.refresh),
           ),
-          if (kDebugMode)
-            IconButton(
-              tooltip: _forceDemoFixtures
-                  ? l10n.predictionsUseBackendCache
-                  : l10n.predictionsForceDemoData,
-              icon: Icon(_forceDemoFixtures ? Icons.public : Icons.science),
-              onPressed: () async {
-                final enableDemo = !_forceDemoFixtures;
-                setState(() {
-                  _forceDemoFixtures = enableDemo;
-                  if (enableDemo) {
-                    _usingRealFixtures = false;
-                    _matches = mockPredictionMatches();
-                  }
-                });
-                if (!enableDemo) {
-                  await _tryLoadRealFixturesOnce(showLoader: true, force: true);
-                }
-              },
-            ),
-          if (kDebugMode)
-            IconButton(
-              icon: const Icon(Icons.calculate),
-              onPressed: _showDebugScorePreview,
-            ),
         ],
       ),
       body: SafeArea(
@@ -936,91 +764,105 @@ class _PredictionsPageState extends State<PredictionsPage>
                     },
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    matchdayLabel,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(lockLabel, style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(height: 4),
-                  Text(
-                    scoreLabel,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$dataLabel$updatedLabel',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CassandraColors.slate,
+                  Card(
+                    margin: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: CassandraColors.primary.withValues(alpha: 0.15),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (kDebugMode)
-                    Builder(
-                      builder: (context) {
-                        var shifted = 0;
-                        var under48 = 0;
-                        var over48 = 0;
-                        for (final m in matches) {
-                          final origin = appState.originKickoffFor(
-                            matchId: m.id,
-                            fallbackKickoff: m.kickoff,
-                          );
-                          if (!m.kickoff.isAtSameMomentAs(origin)) {
-                            shifted++;
-                            final d = m.kickoff.difference(origin);
-                            if (d < const Duration(hours: 48)) {
-                              under48++;
-                            } else {
-                              over48++;
-                            }
-                          }
-                        }
-                        return Text(
-                          l10n.predictionsDebugShifted(
-                            shifted,
-                            under48,
-                            over48,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            matchdayLabel,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: CassandraColors.slate),
-                        );
-                      },
-                    ),
-
-                  if (kDebugMode)
-                    Text(
-                      l10n.predictionsDebugPlayedVoid(
-                        '${appState.matchdayProgressFor(_effectiveMatchdayNumber)?.playedFixtures ?? '-'}',
-                        '${appState.matchdayProgressFor(_effectiveMatchdayNumber)?.voidFixtures ?? '-'}',
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              if (lockLabel.isNotEmpty)
+                                Expanded(
+                                  child: _buildMetaChip(
+                                    icon: _locked
+                                        ? Icons.lock_outline
+                                        : Icons.schedule_outlined,
+                                    label: lockLabel,
+                                    backgroundColor: _locked
+                                        ? CassandraColors.primary.withValues(
+                                            alpha: 0.13,
+                                          )
+                                        : CassandraColors.bg,
+                                    borderColor: _locked
+                                        ? CassandraColors.primary.withValues(
+                                            alpha: 0.35,
+                                          )
+                                        : CassandraColors.primary.withValues(
+                                            alpha: 0.22,
+                                          ),
+                                  ),
+                                ),
+                              if (isOffline && lockLabel.isNotEmpty)
+                                const SizedBox(width: 8),
+                              if (isOffline)
+                                Flexible(
+                                  child: _buildMetaChip(
+                                    icon: Icons.wifi_off_outlined,
+                                    label: l10n.predictionsOfflineStatus,
+                                    backgroundColor: isOffline
+                                        ? CassandraColors.primary.withValues(
+                                            alpha: 0.12,
+                                          )
+                                        : CassandraColors.bg,
+                                    borderColor: isOffline
+                                        ? CassandraColors.primary.withValues(
+                                            alpha: 0.35,
+                                          )
+                                        : CassandraColors.primary.withValues(
+                                            alpha: 0.22,
+                                          ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (lockLabel.isNotEmpty || isOffline)
+                            const SizedBox(height: 10),
+                          Text(
+                            scoreLabel,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            l10n.predictionsPicksSummary(
+                              pickedCountForScoring,
+                              scoringMatches.length,
+                              avgLabel,
+                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: CassandraColors.slate),
+                          ),
+                          if (_submittedVisibility != null &&
+                              _submittedAt != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              l10n.predictionsLastSubmit(
+                                formatKickoff(_submittedAt!),
+                                _submittedVisibility == VisibilityChoice.public
+                                    ? l10n.predictionsVisibilityPublic
+                                    : l10n.predictionsVisibilityPrivate,
+                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: CassandraColors.slate),
+                            ),
+                          ],
+                        ],
                       ),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  const SizedBox(height: 6),
-                  Text(
-                    l10n.predictionsPicksSummary(
-                      pickedCountForScoring,
-                      scoringMatches.length,
-                      avgLabel,
-                    ),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CassandraColors.slate,
                     ),
                   ),
-                  if (_submittedVisibility != null && _submittedAt != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      l10n.predictionsLastSubmit(
-                        formatKickoff(_submittedAt!),
-                        _submittedVisibility == VisibilityChoice.public
-                            ? l10n.predictionsVisibilityPublic
-                            : l10n.predictionsVisibilityPrivate,
-                      ),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: CassandraColors.slate,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -1040,7 +882,6 @@ class _PredictionsPageState extends State<PredictionsPage>
                             pick: pick,
                             locked: _locked,
                             onPick: (p) => _setPick(match.id, p),
-                            onClear: () => _clearPick(match.id),
                           );
                         }
                         return SerieAStandingsTable(standings: _standings!);
@@ -1053,43 +894,123 @@ class _PredictionsPageState extends State<PredictionsPage>
       bottomNavigationBar: _segment == 1
           ? null
           : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _locked
-                            ? null
-                            : () => _submit(VisibilityChoice.private),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(
-                            color: CassandraColors.primary,
-                          ),
-                          foregroundColor: CassandraColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: Text(l10n.predictionsSubmitWithoutShowing),
-                      ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: CassandraColors.bg.withValues(alpha: 0.96),
+                  border: Border(
+                    top: BorderSide(
+                      color: CassandraColors.primary.withValues(alpha: 0.14),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _locked
-                            ? null
-                            : () => _submit(VisibilityChoice.public),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: CassandraColors.primary,
-                          foregroundColor: CassandraColors.bg,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: Text(l10n.predictionsSubmitAndShow),
-                      ),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: CassandraColors.primary.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
                     ),
                   ],
                 ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _locked
+                              ? null
+                              : () => _submit(VisibilityChoice.private),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: CassandraColors.primary.withValues(
+                                alpha: 0.65,
+                              ),
+                            ),
+                            foregroundColor: CassandraColors.primary,
+                            backgroundColor: CassandraColors.bg,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                          ),
+                          child: Text(
+                            l10n.predictionsSubmitWithoutShowing,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _locked
+                              ? null
+                              : () => _submit(VisibilityChoice.public),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: CassandraColors.primary,
+                            foregroundColor: CassandraColors.bg,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                          ),
+                          icon: const Icon(Icons.visibility_outlined, size: 18),
+                          label: Text(
+                            l10n.predictionsSubmitAndShow,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
+    );
+  }
+
+  Widget _buildMetaChip({
+    required IconData icon,
+    required String label,
+    Color? backgroundColor,
+    Color? borderColor,
+  }) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: backgroundColor ?? CassandraColors.bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color:
+                borderColor ?? CassandraColors.primary.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: CassandraColors.primary),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: CassandraColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

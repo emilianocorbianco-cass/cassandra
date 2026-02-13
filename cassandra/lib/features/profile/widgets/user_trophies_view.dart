@@ -72,7 +72,7 @@ class UserTrophiesView extends StatelessWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(l10n.profileTrophiesDescription(member.displayName)),
+              child: Text(l10n.profileTrophiesDescription(member.uiName)),
             ),
           ),
           const SizedBox(height: 8),

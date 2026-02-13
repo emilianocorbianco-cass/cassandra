@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/state/cassandra_scope.dart';
+import '../../app/state/app_state.dart';
 import '../../app/theme/cassandra_colors.dart';
 import 'widgets/group_image_picker.dart';
 import '../badges/badge_engine.dart';
@@ -16,7 +17,6 @@ import '../predictions/models/prediction_match.dart';
 import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
 
-import '../../app/widgets/demo_banner.dart';
 import 'create_group_page.dart';
 import 'join_group_page.dart';
 import 'mock_group_data.dart';
@@ -54,6 +54,7 @@ class _GroupPageState extends State<GroupPage> {
   // Firestore state
   List<GroupMember>? _firestoreMembers;
   Map<String, Map<String, PickOption>>? _firestorePicksByMemberId;
+  String? _firestoreGroupId;
   bool _firestoreLoading = false;
 
   @override
@@ -101,32 +102,80 @@ class _GroupPageState extends State<GroupPage> {
     });
   }
 
+  bool _canUseFirestoreGroup(AppState appState) =>
+      appState.firestoreService != null &&
+      appState.isAuthenticated &&
+      appState.activeGroupId != null;
+
+  void _ensureFirestoreMembersLoaded(AppState appState) {
+    if (!_canUseFirestoreGroup(appState)) {
+      if (_firestoreMembers != null ||
+          _firestorePicksByMemberId != null ||
+          _firestoreGroupId != null ||
+          _firestoreLoading) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _firestoreMembers = null;
+            _firestorePicksByMemberId = null;
+            _firestoreGroupId = null;
+            _firestoreLoading = false;
+          });
+        });
+      }
+      return;
+    }
+
+    final groupId = appState.activeGroupId!;
+    final groupChanged = _firestoreGroupId != groupId;
+    final neverLoaded = _firestoreMembers == null && !_firestoreLoading;
+    if (!groupChanged && !neverLoaded) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (groupChanged) {
+        setState(() {
+          _firestoreGroupId = groupId;
+          _firestoreMembers = null;
+          _firestorePicksByMemberId = null;
+        });
+      }
+      _refreshFromFirestore();
+    });
+  }
+
   Future<void> _refreshFromFirestore() async {
     final appState = CassandraScope.of(context);
-    if (appState.activeGroupId == null) return;
+    if (!_canUseFirestoreGroup(appState)) return;
+    final groupId = appState.activeGroupId!;
+    if (_firestoreLoading) return;
 
     setState(() => _firestoreLoading = true);
     try {
       final members = await appState.fetchFirestoreGroupMembers();
-      if (members.isEmpty) {
-        setState(() => _firestoreLoading = false);
-        return;
-      }
-
-      final uids = members.map((m) => m.id).toList();
-      final picks = await appState.fetchFirestorePicksForMatchday(
-        dayNumber: appState.uiMatchdayNumber,
-        uids: uids,
-      );
+      final uids = members.map((m) => m.id).toList(growable: false);
+      final picks = uids.isEmpty
+          ? const <String, Map<String, PickOption>>{}
+          : await appState.fetchFirestorePicksForMatchday(
+              dayNumber: appState.uiMatchdayNumber,
+              uids: uids,
+            );
 
       if (!mounted) return;
       setState(() {
+        _firestoreGroupId = groupId;
         _firestoreMembers = members;
         _firestorePicksByMemberId = picks;
         _firestoreLoading = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _firestoreLoading = false);
+      if (!mounted) return;
+      setState(() {
+        _firestoreGroupId = groupId;
+        _firestoreMembers = const <GroupMember>[];
+        _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
+        _firestoreLoading = false;
+      });
     }
   }
 
@@ -188,10 +237,76 @@ class _GroupPageState extends State<GroupPage> {
   @override
   Widget build(BuildContext context) {
     final appState = CassandraScope.of(context);
+    _ensureFirestoreMembersLoaded(appState);
     final l10n = AppLocalizations.of(context)!;
 
     if (!appState.hasGroup) {
-      return CreateGroupPage(onGroupCreated: () => setState(() {}));
+      return Scaffold(
+        appBar: AppBar(centerTitle: true, title: Text(l10n.groupTitle)),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(
+                            builder: (_) => CreateGroupPage(
+                              onGroupCreated: () {
+                                Navigator.of(
+                                  context,
+                                  rootNavigator: true,
+                                ).pop();
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: CassandraColors.primary,
+                        foregroundColor: CassandraColors.bg,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text(l10n.groupEmptyCreateButton),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(
+                            builder: (_) => JoinGroupPage(
+                              onJoined: () {
+                                Navigator.of(
+                                  context,
+                                  rootNavigator: true,
+                                ).pop();
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text(l10n.groupEmptyJoinButton),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
     final en = Localizations.localeOf(
@@ -233,18 +348,6 @@ class _GroupPageState extends State<GroupPage> {
         ? l10n.groupResultsLabel(gradedCount, totalMatches)
         : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
-    final dataLabel = _firestoreLoading
-        ? l10n.groupDataRefreshing
-        : appState.cachedPredictionMatchesAreReal
-        ? l10n.groupDataRealApi
-        : l10n.groupDataDemo;
-
-    final updatedLabel =
-        (appState.cachedPredictionMatchesAreReal &&
-            appState.cachedPredictionMatchesUpdatedAt != null)
-        ? ' \u2022 ${l10n.shortUpdated} ${formatKickoff(appState.cachedPredictionMatchesUpdatedAt!)}'
-        : '';
-
     final overrideMember = GroupMember(
       id: appState.profile.id,
       displayName: appState.profile.displayName,
@@ -253,9 +356,10 @@ class _GroupPageState extends State<GroupPage> {
       favoriteTeam: appState.profile.favoriteTeam,
     );
 
-    // Use Firestore members if available, fallback to mock
-    final members =
-        _firestoreMembers ?? mockGroupMembers(overrideMember: overrideMember);
+    final useFirestoreMembers = _canUseFirestoreGroup(appState);
+    final members = useFirestoreMembers
+        ? (_firestoreMembers ?? const <GroupMember>[])
+        : <GroupMember>[overrideMember];
 
     appState.ensureCurrentUserPicksLoaded();
     appState.ensureMemberPicksLoaded();
@@ -267,10 +371,11 @@ class _GroupPageState extends State<GroupPage> {
 
     // Use Firestore picks if available, fallback to mock
     final Map<String, Map<String, PickOption>> overridePicksByMemberId;
-    if (_firestorePicksByMemberId != null) {
+    if (useFirestoreMembers) {
       overridePicksByMemberId = {
-        ..._firestorePicksByMemberId!,
-        overrideMember.id: currentUserPicksForDay,
+        ...?_firestorePicksByMemberId,
+        if (currentUserPicksForDay.isNotEmpty)
+          overrideMember.id: currentUserPicksForDay,
       };
     } else {
       overridePicksByMemberId = {
@@ -309,6 +414,7 @@ class _GroupPageState extends State<GroupPage> {
 
     return Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         title: Text(l10n.groupTitle),
         actions: [
           IconButton(
@@ -342,25 +448,10 @@ class _GroupPageState extends State<GroupPage> {
             ),
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(24),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '$dataLabel$updatedLabel',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ),
-        ),
       ),
       body: SafeArea(
         child: Column(
           children: [
-            if (_firestoreMembers == null)
-              DemoBanner(label: l10n.groupSampleDataBanner),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
@@ -418,23 +509,21 @@ class _GroupPageState extends State<GroupPage> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: _segment == 1
+              child:
+                  useFirestoreMembers &&
+                      _firestoreLoading &&
+                      _firestoreMembers == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : useFirestoreMembers && members.isEmpty
+                  ? Center(child: Text(l10n.commonNoDataAvailable))
+                  : _segment == 1
                   ? RefreshIndicator(
                       onRefresh: _refreshFromFirestore,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                        itemCount: seasonMatchdaysDesc.length + 1,
+                        itemCount: seasonMatchdaysDesc.length,
                         itemBuilder: (context, i) {
-                          if (i == 0) {
-                            return Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(l10n.groupHistoryDemoCard),
-                              ),
-                            );
-                          }
-
-                          final md = seasonMatchdaysDesc[i - 1];
+                          final md = seasonMatchdaysDesc[i];
 
                           final daysLabel = formatMatchdayDays(
                             md.matches.map((m) => m.kickoff),
@@ -542,16 +631,13 @@ class _GroupPageState extends State<GroupPage> {
                                       backgroundColor: _avatarColorFromSeed(
                                         e.member.avatarSeed,
                                       ),
-                                      text: e.member.displayName
-                                          .substring(0, 1)
-                                          .toUpperCase(),
+                                      text: e.member.avatarInitial,
                                       badges: badges,
                                     ),
                                   ],
                                 ),
                               ),
-                              title: Text(e.member.displayName),
-                              subtitle: Text(e.member.teamName),
+                              title: Text(e.member.uiName),
                               trailing: Text(
                                 pts,
                                 style: TextStyle(

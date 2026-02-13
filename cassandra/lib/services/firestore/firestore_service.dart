@@ -148,6 +148,49 @@ class FirestoreService {
     await batch.commit();
   }
 
+  Future<void> deleteGroupAsAdmin({
+    required String groupId,
+    required String adminUid,
+  }) async {
+    final groupRef = _db.collection('groups').doc(groupId);
+    final groupSnap = await groupRef.get();
+    if (!groupSnap.exists) return;
+
+    final data = groupSnap.data();
+    final actualAdminUid = data?['adminUid'] as String?;
+    if (actualAdminUid != adminUid) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'permission-denied',
+        message: 'Only group admin can delete the group',
+      );
+    }
+
+    final membersSnap = await groupRef.collection('members').get();
+    final memberUids = membersSnap.docs
+        .map((d) => d.id)
+        .toList(growable: false);
+
+    // 2 writes per member (user update + member delete). Keep below 500 ops.
+    const chunkSize = 200;
+    for (var i = 0; i < memberUids.length; i += chunkSize) {
+      final end = (i + chunkSize > memberUids.length)
+          ? memberUids.length
+          : i + chunkSize;
+      final batch = _db.batch();
+      for (final uid in memberUids.sublist(i, end)) {
+        batch.set(_db.collection('users').doc(uid), {
+          'groupIds': FieldValue.arrayRemove([groupId]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        batch.delete(groupRef.collection('members').doc(uid));
+      }
+      await batch.commit();
+    }
+
+    await groupRef.delete();
+  }
+
   Future<List<GroupMemberDocument>> getGroupMembers(String groupId) async {
     final snap = await _db
         .collection('groups')

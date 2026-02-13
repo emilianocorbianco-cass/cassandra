@@ -5,6 +5,9 @@ import '../../features/predictions/models/prediction_match.dart';
 class FirestoreSerializers {
   FirestoreSerializers._();
 
+  static DateTime _parseKickoffLocal(String raw) =>
+      DateTime.parse(raw).toLocal();
+
   static Map<String, dynamic> predictionMatchToMap(PredictionMatch m) {
     return {
       'id': m.id,
@@ -28,7 +31,7 @@ class FirestoreSerializers {
     final odds = j['odds'] as Map<String, dynamic>;
     return PredictionMatch(
       id: j['id'] as String,
-      kickoff: DateTime.parse(j['kickoff'] as String),
+      kickoff: _parseKickoffLocal(j['kickoff'] as String),
       homeTeam: j['home'] as String,
       awayTeam: j['away'] as String,
       homeTeamLogo: j['homeLogo'] as String?,

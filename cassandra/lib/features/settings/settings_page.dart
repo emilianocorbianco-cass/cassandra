@@ -12,6 +12,7 @@ import 'package:cassandra/features/group/mock_group_data.dart';
 import 'package:cassandra/features/group/models/group_member.dart';
 import 'package:cassandra/features/predictions/models/pick_option.dart';
 import 'package:cassandra/features/group/widgets/group_image_picker.dart';
+import 'package:cassandra/services/firestore/models/group_document.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -24,17 +25,21 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _fixturesRefreshing = false;
 
   final _teamNameCtrl = TextEditingController();
-  final _favoriteTeamCtrl = TextEditingController();
 
   bool _initialized = false;
+  bool _favoriteTeamsLoading = false;
+  bool _favoriteTeamsLoaded = false;
+  List<_FavoriteTeamOption> _favoriteTeamOptions = const [];
+  String? _selectedFavoriteTeam;
 
   CassandraLanguage _language = CassandraLanguage.system;
   PredictionVisibility _defaultVisibility = PredictionVisibility.friends;
+  Future<GroupDocument?>? _activeGroupDocFuture;
+  String? _activeGroupDocFutureGroupId;
 
   @override
   void dispose() {
     _teamNameCtrl.dispose();
-    _favoriteTeamCtrl.dispose();
     super.dispose();
   }
 
@@ -46,18 +51,144 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final app = CassandraScope.of(context);
     _teamNameCtrl.text = app.teamName;
-    _favoriteTeamCtrl.text = app.favoriteTeam;
+    _selectedFavoriteTeam = app.favoriteTeam.trim().isEmpty
+        ? null
+        : app.favoriteTeam.trim();
 
     _language = app.language;
     _defaultVisibility = app.defaultVisibility;
 
     _initialized = true;
+    _ensureFavoriteTeamsLoaded(app);
+  }
+
+  void _ensureFavoriteTeamsLoaded(AppState app) {
+    if (_favoriteTeamsLoaded || _favoriteTeamsLoading) return;
+    _favoriteTeamsLoading = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadFavoriteTeams(app);
+    });
+  }
+
+  void _upsertFavoriteTeamOption(
+    Map<String, _FavoriteTeamOption> out, {
+    required String name,
+    String? logoUrl,
+  }) {
+    final cleanedName = name.trim();
+    if (cleanedName.isEmpty) return;
+    final cleanedLogo = (logoUrl ?? '').trim();
+    final key = cleanedName.toLowerCase();
+    final prev = out[key];
+    if (prev == null) {
+      out[key] = _FavoriteTeamOption(
+        name: cleanedName,
+        logoUrl: cleanedLogo.isEmpty ? null : cleanedLogo,
+      );
+      return;
+    }
+    if ((prev.logoUrl == null || prev.logoUrl!.isEmpty) &&
+        cleanedLogo.isNotEmpty) {
+      out[key] = _FavoriteTeamOption(name: cleanedName, logoUrl: cleanedLogo);
+    }
+  }
+
+  Future<void> _loadFavoriteTeams(AppState app) async {
+    final optionsByKey = <String, _FavoriteTeamOption>{};
+
+    final matches = app.cachedPredictionMatches;
+    if (matches != null && matches.isNotEmpty) {
+      for (final m in matches) {
+        _upsertFavoriteTeamOption(
+          optionsByKey,
+          name: m.homeTeam,
+          logoUrl: m.homeTeamLogo,
+        );
+        _upsertFavoriteTeamOption(
+          optionsByKey,
+          name: m.awayTeam,
+          logoUrl: m.awayTeamLogo,
+        );
+      }
+    }
+
+    if (app.firestoreService != null && app.isAuthenticated) {
+      try {
+        final standings = await app.firestoreService!.getSeasonStandings(
+          seasonKey: app.currentSeasonKey,
+        );
+        for (final s in standings) {
+          _upsertFavoriteTeamOption(
+            optionsByKey,
+            name: s.teamName,
+            logoUrl: s.teamLogo,
+          );
+        }
+      } catch (_) {
+        // Best effort.
+      }
+    }
+
+    final options = optionsByKey.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    final selected = (_selectedFavoriteTeam ?? '').trim();
+    if (selected.isNotEmpty &&
+        !options.any((o) => o.name.toLowerCase() == selected.toLowerCase())) {
+      options.insert(0, _FavoriteTeamOption(name: selected, logoUrl: null));
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _favoriteTeamOptions = options;
+      _favoriteTeamsLoading = false;
+      _favoriteTeamsLoaded = true;
+      if (selected.isNotEmpty) {
+        _selectedFavoriteTeam = options
+            .firstWhere(
+              (o) => o.name.toLowerCase() == selected.toLowerCase(),
+              orElse: () => _FavoriteTeamOption(name: selected, logoUrl: null),
+            )
+            .name;
+      }
+    });
+  }
+
+  Widget _favoriteTeamItem(_FavoriteTeamOption option) {
+    final logo = option.logoUrl;
+    return Row(
+      children: [
+        if (logo != null && logo.isNotEmpty)
+          ClipOval(
+            child: Image.network(
+              logo,
+              width: 18,
+              height: 18,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox(
+                width: 18,
+                height: 18,
+                child: Icon(Icons.shield_outlined, size: 16),
+              ),
+            ),
+          )
+        else
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: Icon(Icons.shield_outlined, size: 16),
+          ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(option.name, overflow: TextOverflow.ellipsis)),
+      ],
+    );
   }
 
   Future<void> _save(AppState app) async {
     final l10n = AppLocalizations.of(context)!;
     await app.updateTeamName(_teamNameCtrl.text);
-    await app.updateFavoriteTeam(_favoriteTeamCtrl.text);
+    await app.updateFavoriteTeam(_selectedFavoriteTeam ?? '');
     await app.updateLanguage(_language);
     await app.updateDefaultVisibility(_defaultVisibility);
 
@@ -73,7 +204,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     setState(() {
       _teamNameCtrl.text = app.teamName;
-      _favoriteTeamCtrl.text = app.favoriteTeam;
+      _selectedFavoriteTeam = app.favoriteTeam.trim().isEmpty
+          ? null
+          : app.favoriteTeam.trim();
       _language = app.language;
       _defaultVisibility = app.defaultVisibility;
     });
@@ -275,10 +408,72 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _syncActiveGroupDocFuture(AppState app) {
+    final groupId = app.activeGroupId;
+    if (!app.hasGroup || groupId == null || app.firestoreService == null) {
+      _activeGroupDocFuture = null;
+      _activeGroupDocFutureGroupId = null;
+      return;
+    }
+    if (_activeGroupDocFuture != null &&
+        _activeGroupDocFutureGroupId == groupId) {
+      return;
+    }
+    _activeGroupDocFutureGroupId = groupId;
+    _activeGroupDocFuture = app.fetchActiveGroupDocument();
+  }
+
+  Future<void> _confirmDeleteGroup(AppState app) async {
+    final l10n = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.settingsDeleteGroup),
+        content: Text(l10n.settingsDeleteGroupQuestion),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.settingsCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text(l10n.settingsDelete),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final err = await app.deleteActiveGroupIfAdmin();
+    if (!mounted) return;
+
+    if (err == null) {
+      _activeGroupDocFuture = null;
+      _activeGroupDocFutureGroupId = null;
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.settingsDeleteGroupDone)));
+      return;
+    }
+
+    final msg = err == 'Not admin'
+        ? l10n.settingsDeleteGroupOnlyAdmin
+        : err == 'Not authenticated'
+        ? l10n.groupSignInRequired
+        : l10n.settingsDeleteGroupFailed;
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
+    _ensureFavoriteTeamsLoaded(app);
+    _syncActiveGroupDocFuture(app);
     final hasFixturesCache = app.cachedPredictionMatches != null;
     final dataLabel = !hasFixturesCache
         ? l10n.settingsCacheEmpty
@@ -521,12 +716,50 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _favoriteTeamCtrl,
-            decoration: InputDecoration(
-              labelText: l10n.settingsFavoriteTeamLabel,
-              hintText: l10n.settingsFavoriteTeamHint,
-            ),
+          Builder(
+            builder: (_) {
+              final selectedValue =
+                  _favoriteTeamOptions.any(
+                    (o) => o.name == _selectedFavoriteTeam,
+                  )
+                  ? _selectedFavoriteTeam
+                  : null;
+
+              return DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'fav-team-${selectedValue ?? 'none'}-${_favoriteTeamOptions.length}',
+                ),
+                isExpanded: true,
+                initialValue: selectedValue,
+                items: _favoriteTeamOptions
+                    .map(
+                      (o) => DropdownMenuItem<String>(
+                        value: o.name,
+                        child: _favoriteTeamItem(o),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _favoriteTeamOptions.isEmpty
+                    ? null
+                    : (value) => setState(() => _selectedFavoriteTeam = value),
+                decoration: InputDecoration(
+                  labelText: l10n.settingsFavoriteTeamLabel,
+                  hintText: _favoriteTeamsLoading
+                      ? l10n.groupDataRefreshing
+                      : l10n.settingsFavoriteTeamHint,
+                  suffixIcon:
+                      (_selectedFavoriteTeam != null &&
+                          _selectedFavoriteTeam!.isNotEmpty)
+                      ? IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            setState(() => _selectedFavoriteTeam = null);
+                          },
+                        )
+                      : null,
+                ),
+              );
+            },
           ),
 
           if (app.hasGroup) ...[
@@ -564,6 +797,45 @@ class _SettingsPageState extends State<SettingsPage> {
                       app.updateGroupAdminApproval(value);
                     },
                   ),
+                  if (app.firestoreService == null) ...[
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.delete_forever,
+                        color: Colors.red,
+                      ),
+                      title: Text(
+                        l10n.settingsDeleteGroup,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      onTap: () => _confirmDeleteGroup(app),
+                    ),
+                  ] else if (_activeGroupDocFuture != null)
+                    FutureBuilder<GroupDocument?>(
+                      future: _activeGroupDocFuture,
+                      builder: (context, snapshot) {
+                        final doc = snapshot.data;
+                        final isAdmin =
+                            doc != null && doc.adminUid == app.profile.id;
+                        if (!isAdmin) return const SizedBox.shrink();
+                        return Column(
+                          children: [
+                            const Divider(height: 1),
+                            ListTile(
+                              leading: const Icon(
+                                Icons.delete_forever,
+                                color: Colors.red,
+                              ),
+                              title: Text(
+                                l10n.settingsDeleteGroup,
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                              onTap: () => _confirmDeleteGroup(app),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
@@ -722,4 +994,11 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
+}
+
+class _FavoriteTeamOption {
+  const _FavoriteTeamOption({required this.name, this.logoUrl});
+
+  final String name;
+  final String? logoUrl;
 }

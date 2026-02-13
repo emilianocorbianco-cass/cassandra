@@ -22,6 +22,9 @@ class OddsButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final fg = selected ? CassandraColors.bg : CassandraColors.primary;
     final bg = selected ? CassandraColors.primary : Colors.transparent;
+    final sideColor = selected
+        ? CassandraColors.primary
+        : CassandraColors.primary.withValues(alpha: 0.8);
 
     return Expanded(
       child: Padding(
@@ -31,15 +34,32 @@ class OddsButton extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             foregroundColor: fg,
             backgroundColor: bg,
-            side: const BorderSide(color: CassandraColors.primary),
+            side: BorderSide(color: sideColor, width: selected ? 2 : 1.2),
             padding: const EdgeInsets.symmetric(vertical: 10),
+            elevation: selected ? 1 : 0,
+            shadowColor: CassandraColors.primary.withValues(alpha: 0.25),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+                  letterSpacing: selected ? 0.2 : 0,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(formatOdds(odds), style: const TextStyle(fontSize: 12)),
+              Text(
+                formatOdds(odds),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ),

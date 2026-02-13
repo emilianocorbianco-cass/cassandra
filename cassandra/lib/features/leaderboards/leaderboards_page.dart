@@ -6,7 +6,6 @@ import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
 import '../badges/season_badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
-import '../group/mock_group_data.dart';
 import '../group/models/group_member.dart';
 import '../predictions/models/formatters.dart';
 import '../scoring/models/score_breakdown.dart';
@@ -35,6 +34,8 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   // Firestore-based season data
   List<SeasonLeaderboardEntry>? _firestoreSeasonEntries;
   bool _firestoreLoading = false;
+  bool _autoRefreshRequested = false;
+  String? _autoRefreshGroupId;
 
   late final List<MatchdayData> _matchdays;
 
@@ -132,6 +133,30 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     }
   }
 
+  void _ensureSeasonLoaded() {
+    final app = CassandraScope.of(context);
+    final groupId = app.activeGroupId;
+    if (groupId == null ||
+        app.firestoreService == null ||
+        !app.isAuthenticated) {
+      _autoRefreshRequested = false;
+      _autoRefreshGroupId = null;
+      return;
+    }
+
+    final needsRefresh =
+        !_autoRefreshRequested ||
+        _autoRefreshGroupId != groupId ||
+        (_firestoreSeasonEntries == null && !_firestoreLoading);
+    if (!needsRefresh) return;
+    _autoRefreshRequested = true;
+    _autoRefreshGroupId = groupId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _refreshSeasonFromFirestore();
+    });
+  }
+
   Color _avatarColorFromSeed(int seed) {
     final hue = (seed % 360).toDouble();
     return HSLColor.fromAHSL(1, hue, 0.45, 0.65).toColor();
@@ -169,6 +194,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    _ensureSeasonLoaded();
     final l10n = AppLocalizations.of(context)!;
     final en = Localizations.localeOf(
       context,
@@ -256,7 +282,9 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       favoriteTeam: app.profile.favoriteTeam,
     );
 
-    final members = mockGroupMembers(overrideMember: overrideMember);
+    final members = (_firestoreSeasonEntries?.isNotEmpty ?? false)
+        ? _firestoreSeasonEntries!.map((e) => e.member).toList()
+        : <GroupMember>[overrideMember];
 
     final entries = buildMockSeasonLeaderboardEntries(
       matchdays: matchdays,
@@ -523,16 +551,13 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                       backgroundColor: _avatarColorFromSeed(
                                         e.member.avatarSeed,
                                       ),
-                                      text: e.member.displayName
-                                          .substring(0, 1)
-                                          .toUpperCase(),
+                                      text: e.member.avatarInitial,
                                       badges: badges,
                                     ),
                                   ],
                                 ),
                               ),
-                              title: Text(e.member.displayName),
-                              subtitle: Text(e.member.teamName),
+                              title: Text(e.member.uiName),
                               trailing: Text(
                                 metricLabel,
                                 style: const TextStyle(

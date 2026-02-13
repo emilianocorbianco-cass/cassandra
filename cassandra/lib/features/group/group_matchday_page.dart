@@ -205,14 +205,12 @@ class GroupMatchdayPage extends StatelessWidget {
                       ),
                       title: Text(
                         isMe
-                            ? '${r.member.teamName} (${l10n.groupYou})'
-                            : r.member.teamName,
+                            ? '${r.member.uiName} (${l10n.groupYou})'
+                            : r.member.uiName,
                       ),
                       subtitle: Text(
-                        '${r.member.displayName}\n'
                         '${l10n.statsCorrect}: ${r.day.correctCount}/$totalMatches • bonus: ${r.day.bonusPoints} • ${l10n.statsAvgOdds}: $avg',
                       ),
-                      isThreeLine: true,
                       trailing: Text(
                         total,
                         style: const TextStyle(fontWeight: FontWeight.w800),

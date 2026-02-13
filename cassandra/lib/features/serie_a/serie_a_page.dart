@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../app/state/app_state.dart';
 import '../../app/widgets/team_name.dart';
-import '../group/mock_group_data.dart';
 import '../group/models/group_member.dart';
 import '../group/widgets/group_matchday_leaderboard.dart';
 import '../predictions/models/formatters.dart';
@@ -26,6 +25,11 @@ class _SerieAPageState extends State<SerieAPage> {
   bool _didLoad = false;
 
   late Future<_SerieAData> _future;
+  List<GroupMember>? _firestoreMembers;
+  Map<String, Map<String, PickOption>> _firestorePicksByMemberId =
+      const <String, Map<String, PickOption>>{};
+  String? _firestoreGroupId;
+  bool _firestoreLeaderboardLoading = false;
 
   @override
   void initState() {
@@ -136,13 +140,94 @@ class _SerieAPageState extends State<SerieAPage> {
       _future = _load();
     });
     await _future;
+    await _refreshFirestoreLeaderboard();
     if (!mounted) return;
     setState(() {});
+  }
+
+  bool _canUseFirestoreGroupLeaderboard(AppState app) =>
+      app.firestoreService != null &&
+      app.isAuthenticated &&
+      app.activeGroupId != null;
+
+  void _ensureFirestoreLeaderboardLoaded(AppState app) {
+    if (!_canUseFirestoreGroupLeaderboard(app)) {
+      if (_firestoreMembers != null ||
+          _firestorePicksByMemberId.isNotEmpty ||
+          _firestoreGroupId != null ||
+          _firestoreLeaderboardLoading) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _firestoreMembers = null;
+            _firestorePicksByMemberId =
+                const <String, Map<String, PickOption>>{};
+            _firestoreGroupId = null;
+            _firestoreLeaderboardLoading = false;
+          });
+        });
+      }
+      return;
+    }
+
+    final groupId = app.activeGroupId!;
+    final groupChanged = _firestoreGroupId != groupId;
+    final neverLoaded =
+        _firestoreMembers == null && !_firestoreLeaderboardLoading;
+    if (!groupChanged && !neverLoaded) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (groupChanged) {
+        setState(() {
+          _firestoreGroupId = groupId;
+          _firestoreMembers = null;
+          _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
+        });
+      }
+      _refreshFirestoreLeaderboard();
+    });
+  }
+
+  Future<void> _refreshFirestoreLeaderboard() async {
+    final app = CassandraScope.of(context);
+    if (!_canUseFirestoreGroupLeaderboard(app)) return;
+    final groupId = app.activeGroupId!;
+    if (_firestoreLeaderboardLoading) return;
+
+    setState(() => _firestoreLeaderboardLoading = true);
+    try {
+      final members = await app.fetchFirestoreGroupMembers();
+      final uids = members.map((m) => m.id).toList(growable: false);
+      final picks = uids.isEmpty
+          ? const <String, Map<String, PickOption>>{}
+          : await app.fetchFirestorePicksForMatchday(
+              dayNumber: app.uiMatchdayNumber,
+              uids: uids,
+            );
+
+      if (!mounted) return;
+      setState(() {
+        _firestoreGroupId = groupId;
+        _firestoreMembers = members;
+        _firestorePicksByMemberId = picks;
+        _firestoreLeaderboardLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _firestoreGroupId = groupId;
+        _firestoreMembers = const <GroupMember>[];
+        _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
+        _firestoreLeaderboardLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
+    _ensureFirestoreLeaderboardLoaded(app);
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
@@ -235,6 +320,13 @@ class _SerieAPageState extends State<SerieAPage> {
 
   Widget _buildGroupLeaderboard(BuildContext context, AppState appState) {
     final l10n = AppLocalizations.of(context)!;
+    final useFirestoreMembers = _canUseFirestoreGroupLeaderboard(appState);
+    if (useFirestoreMembers &&
+        _firestoreLeaderboardLoading &&
+        _firestoreMembers == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final cachedMatches = appState.cachedPredictionMatches;
     if (cachedMatches == null || cachedMatches.isEmpty) {
       return Center(child: Text(l10n.serieANoMatchDataAvailable));
@@ -248,25 +340,29 @@ class _SerieAPageState extends State<SerieAPage> {
           }
         : <String, MatchOutcome>{};
 
-    final overrideMember = GroupMember(
-      id: appState.profile.id,
-      displayName: appState.profile.displayName,
-      teamName: appState.profile.teamName,
-      avatarSeed: appState.currentUserAvatarSeed,
-      favoriteTeam: appState.profile.favoriteTeam,
-    );
+    final members = useFirestoreMembers
+        ? (_firestoreMembers ?? const <GroupMember>[])
+        : <GroupMember>[
+            GroupMember(
+              id: appState.profile.id,
+              displayName: appState.profile.displayName,
+              teamName: appState.profile.teamName,
+              avatarSeed: appState.currentUserAvatarSeed,
+              favoriteTeam: appState.profile.favoriteTeam,
+            ),
+          ];
+    if (members.isEmpty) {
+      return Center(child: Text(l10n.commonNoDataAvailable));
+    }
 
-    final members = mockGroupMembers(overrideMember: overrideMember);
-
-    appState.ensureCurrentUserPicksLoaded();
-    appState.ensureMemberPicksLoaded();
-
-    final currentUserPicks = appState.currentUserPicksByMatchId;
-
-    final overridePicksByMemberId = <String, Map<String, PickOption>>{
-      ...appState.memberPicksByMemberId,
-      overrideMember.id: currentUserPicks,
-    };
+    if (!useFirestoreMembers) {
+      appState.ensureCurrentUserPicksLoaded();
+    }
+    final overridePicksByMemberId = useFirestoreMembers
+        ? _firestorePicksByMemberId
+        : <String, Map<String, PickOption>>{
+            appState.profile.id: appState.currentUserPicksByMatchId,
+          };
 
     return GroupMatchdayLeaderboard(
       matches: cachedMatches,

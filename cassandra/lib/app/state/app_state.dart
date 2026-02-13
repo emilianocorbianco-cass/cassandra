@@ -536,6 +536,109 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String?> deleteActiveGroupIfAdmin() async {
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (groupId == null) return 'No group';
+
+    if (fs == null) {
+      _groupName = null;
+      _groupInviteCode = null;
+      _deleteGroupImageFile();
+      _groupImagePath = null;
+      _groupAdminApproval = false;
+      _activeGroupId = null;
+      _firestoreGroupIds = [];
+      await _prefs?.remove(_kGroupNameV1);
+      await _prefs?.remove(_kGroupInviteCodeV1);
+      await _prefs?.remove(_kGroupImagePathV1);
+      await _prefs?.remove(_kGroupAdminApprovalV1);
+      notifyListeners();
+      return null;
+    }
+
+    if (!isAuthenticated || _profile.id.isEmpty) return 'Not authenticated';
+
+    GroupDocument? group;
+    try {
+      group = await fs.getGroup(groupId);
+    } catch (_) {
+      return 'Delete group failed';
+    }
+
+    if (group == null) {
+      _firestoreGroupIds = _firestoreGroupIds
+          .where((id) => id != groupId)
+          .toList();
+      _activeGroupId = _firestoreGroupIds.isNotEmpty
+          ? _firestoreGroupIds.first
+          : null;
+      if (_activeGroupId == null) {
+        _groupName = null;
+        _groupInviteCode = null;
+        _deleteGroupImageFile();
+        _groupImagePath = null;
+        _groupAdminApproval = false;
+        await _prefs?.remove(_kGroupNameV1);
+        await _prefs?.remove(_kGroupInviteCodeV1);
+        await _prefs?.remove(_kGroupImagePathV1);
+        await _prefs?.remove(_kGroupAdminApprovalV1);
+      }
+      notifyListeners();
+      return null;
+    }
+
+    if (group.adminUid != _profile.id) return 'Not admin';
+
+    try {
+      await fs.deleteGroupAsAdmin(groupId: groupId, adminUid: _profile.id);
+    } catch (_) {
+      return 'Delete group failed';
+    }
+
+    _firestoreGroupIds = _firestoreGroupIds
+        .where((id) => id != groupId)
+        .toList();
+    _activeGroupId = _firestoreGroupIds.isNotEmpty
+        ? _firestoreGroupIds.first
+        : null;
+
+    _deleteGroupImageFile();
+    _groupImagePath = null;
+    _groupAdminApproval = false;
+
+    if (_activeGroupId == null) {
+      _groupName = null;
+      _groupInviteCode = null;
+      await _prefs?.remove(_kGroupNameV1);
+      await _prefs?.remove(_kGroupInviteCodeV1);
+      await _prefs?.remove(_kGroupImagePathV1);
+      await _prefs?.remove(_kGroupAdminApprovalV1);
+    } else {
+      final next = await fs.getGroup(_activeGroupId!);
+      if (next != null) {
+        _groupName = next.name;
+        _groupInviteCode = next.inviteCode;
+        await _prefs?.setString(_kGroupNameV1, next.name);
+        await _prefs?.setString(_kGroupInviteCodeV1, next.inviteCode);
+        await _prefs?.remove(_kGroupImagePathV1);
+        await _prefs?.setBool(_kGroupAdminApprovalV1, false);
+      } else {
+        _groupName = null;
+        _groupInviteCode = null;
+        _activeGroupId = null;
+        _firestoreGroupIds = [];
+        await _prefs?.remove(_kGroupNameV1);
+        await _prefs?.remove(_kGroupInviteCodeV1);
+        await _prefs?.remove(_kGroupImagePathV1);
+        await _prefs?.remove(_kGroupAdminApprovalV1);
+      }
+    }
+
+    notifyListeners();
+    return null;
+  }
+
   Future<void> updateGroupName(String name) async {
     final cleaned = name.trim();
     if (cleaned.isEmpty) return;
@@ -1637,7 +1740,7 @@ class AppState extends ChangeNotifier {
     final odds = j['odds'] as Map<String, dynamic>;
     return PredictionMatch(
       id: j['id'] as String,
-      kickoff: DateTime.parse(j['kickoff'] as String),
+      kickoff: DateTime.parse(j['kickoff'] as String).toLocal(),
       homeTeam: j['home'] as String,
       awayTeam: j['away'] as String,
       homeTeamLogo: j['homeLogo'] as String?,

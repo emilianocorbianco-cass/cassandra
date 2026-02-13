@@ -84,14 +84,13 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
                   AvatarWithBadges(
                     radius: 18,
                     backgroundColor: _avatarColorFromSeed(e.member.avatarSeed),
-                    text: e.member.displayName.substring(0, 1).toUpperCase(),
+                    text: e.member.avatarInitial,
                     badges: badges,
                   ),
                 ],
               ),
             ),
-            title: Text(e.member.displayName),
-            subtitle: Text(e.member.teamName),
+            title: Text(e.member.uiName),
             trailing: Text(
               pts,
               style: TextStyle(

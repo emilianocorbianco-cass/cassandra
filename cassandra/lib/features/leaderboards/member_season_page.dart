@@ -28,18 +28,7 @@ class MemberSeasonPage extends StatelessWidget {
         : formatOdds(entry.averageOddsPlayed!);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(entry.member.teamName),
-            Text(
-              entry.member.displayName,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
+      appBar: AppBar(title: Text(entry.member.uiName)),
       body: SafeArea(
         child: Column(
           children: [

@@ -98,6 +98,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupTitle => 'My group';
 
   @override
+  String get groupEmptyCreateButton => 'Create a group';
+
+  @override
+  String get groupEmptyJoinButton => 'Join a group';
+
+  @override
   String get groupJoinTooltip => 'Join a group';
 
   @override
@@ -205,6 +211,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDeleteAccount => 'Delete account';
+
+  @override
+  String get settingsDeleteGroup => 'Delete group';
+
+  @override
+  String get settingsDeleteGroupQuestion =>
+      'This action will delete the group for all members. Continue?';
+
+  @override
+  String get settingsDeleteGroupDone => 'Group deleted';
+
+  @override
+  String get settingsDeleteGroupOnlyAdmin =>
+      'Only the group creator can delete it.';
+
+  @override
+  String get settingsDeleteGroupFailed =>
+      'Unable to delete group. Please try again.';
 
   @override
   String get settingsSignIn => 'Sign in';
@@ -796,6 +820,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get predictionsSampleDataBanner =>
       'Sample data - wait for backend sync';
+
+  @override
+  String get predictionsOfflineStatus => 'You\'re offline';
 
   @override
   String get predictionsPastSegment => 'Past predictions';

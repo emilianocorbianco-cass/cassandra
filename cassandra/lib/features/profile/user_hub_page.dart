@@ -4,9 +4,8 @@ import 'package:cassandra/l10n/app_localizations.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../badges/models/badge_counts.dart';
 import '../badges/trophy_engine.dart';
-import '../group/mock_group_data.dart';
 import '../group/models/group_member.dart';
-import '../leaderboards/mock_season_data.dart';
+import '../leaderboards/models/member_matchday_score.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../leaderboards/models/season_leaderboard_entry.dart';
 import '../predictions/models/pick_option.dart';
@@ -15,6 +14,7 @@ import 'widgets/user_stats_view.dart';
 import 'widgets/user_trophies_view.dart';
 import 'package:cassandra/features/predictions/models/formatters.dart';
 import 'package:cassandra/features/scoring/models/match_outcome.dart';
+import '../scoring/models/score_breakdown.dart';
 
 class UserHubPage extends StatefulWidget {
   final GroupMember member;
@@ -45,57 +45,156 @@ class _UserHubPageState extends State<UserHubPage> {
   late SeasonLeaderboardEntry _seasonEntry;
   late BadgeCounts _trophies;
 
-  bool _initialized = false;
-  int? _lastDemoSeed;
+  bool _loading = false;
+  String? _loadedKey;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final appState = CassandraScope.of(context);
-    final seed = appState.demoSeed;
-    if (_initialized && _lastDemoSeed == seed) return;
-    _initialized = true;
-    _lastDemoSeed = seed;
-
-    // Coerente con Classifiche/Stats: stagione demo 16–20
-    final matchdays = mockSeasonMatchdays(
-      startDay: 16,
-      count: 5,
-      demoSeed: seed,
+  void initState() {
+    super.initState();
+    _seasonEntries = const [];
+    _seasonEntry = SeasonLeaderboardEntry(
+      member: widget.member,
+      matchdays: const [],
+      totalPoints: 0,
+      averagePerMatchday: 0,
+      averageOddsPlayed: null,
     );
-
-    // Leggiamo il profilo (nome squadra + squadra del cuore) dai Settings
-
-    final overrideMember = GroupMember(
-      id: appState.profile.id,
-      displayName: appState.profile.displayName,
-      teamName: appState.profile.teamName,
-      avatarSeed: appState.currentUserAvatarSeed,
-      favoriteTeam: appState.profile.favoriteTeam,
-    );
-
-    final members = mockGroupMembers(overrideMember: overrideMember);
-
-    _seasonEntries = buildMockSeasonLeaderboardEntries(
-      matchdays: matchdays,
-      members: members,
-    );
-
-    _seasonEntry = _seasonEntries.firstWhere(
-      (e) => e.member.id == widget.member.id,
-      orElse: () => SeasonLeaderboardEntry(
-        member: widget.member,
-        matchdays: const [],
-        totalPoints: 0,
-        averagePerMatchday: 0,
-        averageOddsPlayed: null,
-      ),
-    );
-
     _trophies = CassandraTrophyEngine.countForMember(
       memberId: widget.member.id,
       seasonEntries: _seasonEntries,
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = CassandraScope.of(context);
+    final key = '${app.activeGroupId ?? 'none'}:${widget.member.id}';
+    if (_loadedKey == key) return;
+    _loadedKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadSeasonData();
+    });
+  }
+
+  Future<void> _loadSeasonData() async {
+    final app = CassandraScope.of(context);
+    final canUseFirestore =
+        app.firestoreService != null &&
+        app.isAuthenticated &&
+        app.activeGroupId != null;
+
+    setState(() => _loading = true);
+    try {
+      List<SeasonLeaderboardEntry> entries;
+      if (canUseFirestore) {
+        final members = await app.fetchFirestoreGroupMembers();
+        final loaded = <SeasonLeaderboardEntry>[];
+        for (final member in members) {
+          final picksDocs = await app.fetchSeasonPicksForUser(member.id);
+          picksDocs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+
+          final perDay = <MemberMatchdayScore>[];
+          for (final pd in picksDocs) {
+            final score = pd.score;
+            perDay.add(
+              MemberMatchdayScore(
+                matchday: MatchdayData(
+                  dayNumber: pd.dayNumber,
+                  matches: const [],
+                  outcomesByMatchId: const {},
+                ),
+                picksByMatchId: pd.picksByMatchId,
+                day: DayScoreBreakdown(
+                  matchBreakdowns: const [],
+                  baseTotal: score?.baseTotal ?? 0,
+                  bonusPoints: score?.bonusPoints ?? 0,
+                  total: score?.total ?? 0,
+                  correctCount: score?.correctCount ?? 0,
+                  averageOddsPlayed: score?.averageOddsPlayed,
+                ),
+              ),
+            );
+          }
+
+          final total = perDay.fold<double>(0, (sum, d) => sum + d.day.total);
+          final avg = perDay.isEmpty ? 0.0 : total / perDay.length;
+          final avgOddsValues = perDay
+              .map((d) => d.day.averageOddsPlayed)
+              .whereType<double>()
+              .toList();
+          final avgOdds = avgOddsValues.isEmpty
+              ? null
+              : avgOddsValues.reduce((a, b) => a + b) / avgOddsValues.length;
+
+          loaded.add(
+            SeasonLeaderboardEntry(
+              member: member,
+              matchdays: perDay,
+              totalPoints: total,
+              averagePerMatchday: avg,
+              averageOddsPlayed: avgOdds,
+            ),
+          );
+        }
+        entries = loaded;
+      } else {
+        entries = const [];
+      }
+
+      if (!entries.any((e) => e.member.id == widget.member.id)) {
+        entries = [
+          ...entries,
+          SeasonLeaderboardEntry(
+            member: widget.member,
+            matchdays: const [],
+            totalPoints: 0,
+            averagePerMatchday: 0,
+            averageOddsPlayed: null,
+          ),
+        ];
+      }
+
+      final selected = entries.firstWhere(
+        (e) => e.member.id == widget.member.id,
+        orElse: () => SeasonLeaderboardEntry(
+          member: widget.member,
+          matchdays: const [],
+          totalPoints: 0,
+          averagePerMatchday: 0,
+          averageOddsPlayed: null,
+        ),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _seasonEntries = entries;
+        _seasonEntry = selected;
+        _trophies = CassandraTrophyEngine.countForMember(
+          memberId: widget.member.id,
+          seasonEntries: entries,
+        );
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _seasonEntries = const [];
+        _seasonEntry = SeasonLeaderboardEntry(
+          member: widget.member,
+          matchdays: const [],
+          totalPoints: 0,
+          averagePerMatchday: 0,
+          averageOddsPlayed: null,
+        );
+        _trophies = CassandraTrophyEngine.countForMember(
+          memberId: widget.member.id,
+          seasonEntries: _seasonEntries,
+        );
+        _loading = false;
+      });
+    }
   }
 
   @override
@@ -137,17 +236,10 @@ class _UserHubPageState extends State<UserHubPage> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
-                  widget.member.teamName,
+                  widget.member.uiName,
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  widget.member.displayName,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
@@ -194,6 +286,9 @@ class _UserHubPageState extends State<UserHubPage> {
               UserTrophiesView(member: widget.member, trophies: _trophies),
             ],
           ),
+          bottomNavigationBar: _loading
+              ? const LinearProgressIndicator(minHeight: 2)
+              : null,
         ),
       ),
     );

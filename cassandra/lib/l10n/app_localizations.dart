@@ -266,6 +266,18 @@ abstract class AppLocalizations {
   /// **'My group'**
   String get groupTitle;
 
+  /// No description provided for @groupEmptyCreateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a group'**
+  String get groupEmptyCreateButton;
+
+  /// No description provided for @groupEmptyJoinButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Join a group'**
+  String get groupEmptyJoinButton;
+
   /// No description provided for @groupJoinTooltip.
   ///
   /// In en, this message translates to:
@@ -445,6 +457,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete account'**
   String get settingsDeleteAccount;
+
+  /// No description provided for @settingsDeleteGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete group'**
+  String get settingsDeleteGroup;
+
+  /// No description provided for @settingsDeleteGroupQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'This action will delete the group for all members. Continue?'**
+  String get settingsDeleteGroupQuestion;
+
+  /// No description provided for @settingsDeleteGroupDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Group deleted'**
+  String get settingsDeleteGroupDone;
+
+  /// No description provided for @settingsDeleteGroupOnlyAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the group creator can delete it.'**
+  String get settingsDeleteGroupOnlyAdmin;
+
+  /// No description provided for @settingsDeleteGroupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to delete group. Please try again.'**
+  String get settingsDeleteGroupFailed;
 
   /// No description provided for @settingsSignIn.
   ///
@@ -1484,6 +1526,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sample data - wait for backend sync'**
   String get predictionsSampleDataBanner;
+
+  /// No description provided for @predictionsOfflineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re offline'**
+  String get predictionsOfflineStatus;
 
   /// No description provided for @predictionsPastSegment.
   ///

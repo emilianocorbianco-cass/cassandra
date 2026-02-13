@@ -5,7 +5,8 @@ String formatOdds(double value) {
 String twoDigits(int n) => n.toString().padLeft(2, '0');
 
 String formatKickoff(DateTime dt) {
-  return '${twoDigits(dt.day)}/${twoDigits(dt.month)} ${twoDigits(dt.hour)}:${twoDigits(dt.minute)}';
+  final local = dt.toLocal();
+  return '${twoDigits(local.day)}/${twoDigits(local.month)} ${twoDigits(local.hour)}:${twoDigits(local.minute)}';
 }
 
 // --- Helpers bilingue IT / EN ---
@@ -80,7 +81,11 @@ String formatMatchdayDaysItalian(Iterable<DateTime> kickoffs) =>
 
 String formatMatchdayDays(Iterable<DateTime> kickoffs, {bool english = false}) {
   final days =
-      kickoffs.map((dt) => DateTime(dt.year, dt.month, dt.day)).toSet().toList()
+      kickoffs
+          .map((dt) => dt.toLocal())
+          .map((dt) => DateTime(dt.year, dt.month, dt.day))
+          .toSet()
+          .toList()
         ..sort((a, b) => a.compareTo(b));
 
   if (days.isEmpty) return '';
