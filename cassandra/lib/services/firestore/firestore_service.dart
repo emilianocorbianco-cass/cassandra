@@ -26,9 +26,9 @@ class FirestoreService {
     required CassandraLanguage language,
     required PredictionVisibility defaultVisibility,
     required int avatarSeed,
-    List<String> groupIds = const [],
+    List<String>? groupIds,
   }) async {
-    await _db.collection('users').doc(uid).set({
+    final data = <String, dynamic>{
       'displayName': profile.displayName,
       'teamName': profile.teamName,
       'favoriteTeam': profile.favoriteTeam,
@@ -37,9 +37,14 @@ class FirestoreService {
       'language': cassandraLanguageToStorage(language),
       'defaultVisibility': predictionVisibilityToStorage(defaultVisibility),
       'avatarSeed': avatarSeed,
-      'groupIds': groupIds,
       'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+
+    if (groupIds != null) {
+      data['groupIds'] = groupIds;
+    }
+
+    await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
   }
 
   Future<Map<String, dynamic>?> getUserProfile(String uid) async {
@@ -51,6 +56,11 @@ class FirestoreService {
   Future<void> updateUserField(String uid, Map<String, dynamic> fields) async {
     fields['updatedAt'] = FieldValue.serverTimestamp();
     await _db.collection('users').doc(uid).update(fields);
+  }
+
+  Future<void> mergeUserField(String uid, Map<String, dynamic> fields) async {
+    fields['updatedAt'] = FieldValue.serverTimestamp();
+    await _db.collection('users').doc(uid).set(fields, SetOptions(merge: true));
   }
 
   // ===== GROUPS =====
@@ -116,11 +126,11 @@ class FirestoreService {
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    // Add groupId to user's groupIds
-    batch.update(_db.collection('users').doc(uid), {
+    // Ensure user profile doc exists, then append groupId.
+    batch.set(_db.collection('users').doc(uid), {
       'groupIds': FieldValue.arrayUnion([groupId]),
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }, SetOptions(merge: true));
 
     await batch.commit();
   }
@@ -140,10 +150,10 @@ class FirestoreService {
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    batch.update(_db.collection('users').doc(uid), {
+    batch.set(_db.collection('users').doc(uid), {
       'groupIds': FieldValue.arrayRemove([groupId]),
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }, SetOptions(merge: true));
 
     await batch.commit();
   }
@@ -207,6 +217,22 @@ class FirestoreService {
         .limit(1)
         .get();
     return snap.docs.isNotEmpty;
+  }
+
+  Future<List<String>> findGroupIdsForMember(String uid) async {
+    final snap = await _db
+        .collectionGroup('members')
+        .where(FieldPath.documentId, isEqualTo: uid)
+        .get();
+
+    final ids = <String>{};
+    for (final doc in snap.docs) {
+      final groupId = doc.reference.parent.parent?.id;
+      if (groupId != null && groupId.isNotEmpty) {
+        ids.add(groupId);
+      }
+    }
+    return ids.toList(growable: false);
   }
 
   // ===== PICKS =====

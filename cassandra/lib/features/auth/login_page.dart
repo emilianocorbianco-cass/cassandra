@@ -38,6 +38,8 @@ class _LoginPageState extends State<LoginPage> {
       final user = credential.user;
       if (user != null && mounted) {
         app.setProfileFromFirebaseUser(user);
+        await app.hydrateProfileFromFirestore(user.uid);
+        if (!mounted) return;
         Navigator.of(
           context,
         ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
@@ -73,6 +75,8 @@ class _LoginPageState extends State<LoginPage> {
       final user = credential.user;
       if (user != null && mounted) {
         app.setProfileFromFirebaseUser(user);
+        await app.hydrateProfileFromFirestore(user.uid);
+        if (!mounted) return;
         Navigator.of(
           context,
         ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));

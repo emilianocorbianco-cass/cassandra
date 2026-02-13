@@ -38,15 +38,8 @@ Future<void> main() async {
     final currentUser = authService.currentUser;
     if (currentUser != null) {
       appState.setProfileFromFirebaseUser(currentUser);
-      // Merge profilo Firestore (fire-and-forget, non blocca avvio)
-      firestoreService
-          .getUserProfile(currentUser.uid)
-          .then((data) {
-            if (data != null) {
-              appState.mergeFirestoreProfile(data);
-            }
-          })
-          .catchError((_) {});
+      // Merge profilo/gruppo Firestore (fire-and-forget, non blocca avvio)
+      appState.hydrateProfileFromFirestore(currentUser.uid).catchError((_) {});
       // One-time migration: upload local data to Firestore
       appState.migrateLocalDataToFirestoreIfNeeded().catchError((_) {});
     }

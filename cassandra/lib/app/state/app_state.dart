@@ -128,12 +128,23 @@ class AppState extends ChangeNotifier {
     final remoteGroupIds = (data['groupIds'] as List<dynamic>?)
         ?.cast<String>()
         .toList();
-    if (remoteGroupIds != null && remoteGroupIds.isNotEmpty) {
+    if (remoteGroupIds != null) {
       _firestoreGroupIds = remoteGroupIds;
+      if (_activeGroupId == null ||
+          !_firestoreGroupIds.contains(_activeGroupId)) {
+        _activeGroupId = _firestoreGroupIds.isNotEmpty
+            ? _firestoreGroupIds.first
+            : null;
+      }
       changed = true;
     }
 
     if (changed) notifyListeners();
+
+    if ((remoteGroupIds?.isNotEmpty ?? false) &&
+        (_groupName == null || _groupInviteCode == null)) {
+      unawaited(refreshActiveGroupMetadataFromFirestore().catchError((_) {}));
+    }
   }
 
   // Firestore group IDs (multi-group)
@@ -157,6 +168,54 @@ class AppState extends ChangeNotifier {
           )
           .catchError((_) {}),
     );
+  }
+
+  Future<void> hydrateProfileFromFirestore([String? uid]) async {
+    final fs = _firestoreService;
+    final targetUid = uid ?? _profile.id;
+    if (fs == null || targetUid.isEmpty) return;
+
+    try {
+      final data = await fs.getUserProfile(targetUid);
+      if (data != null) {
+        mergeFirestoreProfile(data);
+      }
+      if (_firestoreGroupIds.isEmpty) {
+        final recoveredGroupIds = await fs.findGroupIdsForMember(targetUid);
+        if (recoveredGroupIds.isNotEmpty) {
+          _firestoreGroupIds = recoveredGroupIds;
+          _activeGroupId = recoveredGroupIds.first;
+          await fs.mergeUserField(targetUid, {'groupIds': recoveredGroupIds});
+          notifyListeners();
+        }
+      }
+      await refreshActiveGroupMetadataFromFirestore();
+    } catch (_) {
+      // ignore: best-effort hydration
+    }
+  }
+
+  Future<void> refreshActiveGroupMetadataFromFirestore() async {
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs == null || !isAuthenticated || groupId == null) return;
+
+    final group = await fs.getGroup(groupId);
+    if (group == null) return;
+
+    var changed = false;
+    if (_groupName != group.name) {
+      _groupName = group.name;
+      await _prefs?.setString(_kGroupNameV1, group.name);
+      changed = true;
+    }
+    if (_groupInviteCode != group.inviteCode) {
+      _groupInviteCode = group.inviteCode;
+      await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
+      changed = true;
+    }
+
+    if (changed) notifyListeners();
   }
 
   /// Fire-and-forget: sync a single field to Firestore.
@@ -348,7 +407,7 @@ class AppState extends ChangeNotifier {
   String? get groupInviteCode => _groupInviteCode;
   String? get groupImagePath => _groupImagePath;
   bool get groupAdminApproval => _groupAdminApproval;
-  bool get hasGroup => _groupName != null;
+  bool get hasGroup => activeGroupId != null || _groupName != null;
 
   Future<void> updateGroupImagePath(String? path) async {
     _groupImagePath = path;
@@ -854,6 +913,8 @@ class AppState extends ChangeNotifier {
     _groupInviteCode = null;
     _groupImagePath = null;
     _groupAdminApproval = false;
+    _firestoreGroupIds = [];
+    _activeGroupId = null;
     notifyListeners();
   }
 
@@ -875,6 +936,8 @@ class AppState extends ChangeNotifier {
     _groupInviteCode = null;
     _groupImagePath = null;
     _groupAdminApproval = false;
+    _firestoreGroupIds = [];
+    _activeGroupId = null;
 
     await resetAll();
     notifyListeners();
@@ -889,6 +952,8 @@ class AppState extends ChangeNotifier {
     _deleteGroupImageFile();
     _groupImagePath = null;
     _groupAdminApproval = false;
+    _firestoreGroupIds = [];
+    _activeGroupId = null;
     notifyListeners();
 
     if (_prefs == null) return;
