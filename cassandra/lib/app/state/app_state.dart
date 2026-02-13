@@ -1015,13 +1015,15 @@ class AppState extends ChangeNotifier {
   void setMatchdayProgress({
     required int matchdayNumber,
     required MatchdayProgress progress,
+    bool allowAutoAdvance = true,
   }) {
     _matchdayProgressByDay[matchdayNumber] = progress;
 
     _uiMatchdayNumber = matchdayNumber;
 
     // AUTO-ADVANCE: primaryDone
-    if (progress.primaryDone &&
+    if (allowAutoAdvance &&
+        progress.primaryDone &&
         progress.isValidMatchday &&
         matchdayNumber == cassandraMatchdayCursor &&
         _autoAdvancedFromMatchday != matchdayNumber) {

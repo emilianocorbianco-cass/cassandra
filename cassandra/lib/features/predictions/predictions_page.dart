@@ -13,7 +13,7 @@ import '../scoring/scoring_engine.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../l10n/app_localizations.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
-    show computeMatchdayProgress;
+    show MatchdayProgress, computeMatchdayProgress;
 import '../leaderboards/mock_season_data.dart';
 import '../leaderboards/models/matchday_data.dart';
 import 'predictions_matchday_page.dart';
@@ -364,64 +364,89 @@ class _PredictionsPageState extends State<PredictionsPage>
         return;
       }
 
-      final dayNumber = appState.cassandraMatchdayCursor;
-      final results = await Future.wait<dynamic>([
-        fs.getMatchdayData(
+      final standings = await fs.getSeasonStandings(
+        seasonKey: appState.currentSeasonKey,
+      );
+      final now = DateTime.now();
+      var dayNumber = appState.cassandraMatchdayCursor;
+      appState.ensureOriginKickoffsLoaded();
+
+      MatchdayDocument? resolvedDoc;
+      MatchdayProgress? resolvedProgress;
+
+      // Catch-up automatico: salta le giornate già "primaryDone" in un unico load.
+      const maxLookAheadDays = 12;
+      for (var i = 0; i <= maxLookAheadDays; i++) {
+        final candidate = await fs.getMatchdayData(
           seasonKey: appState.currentSeasonKey,
           dayNumber: dayNumber,
-        ),
-        fs.getSeasonStandings(seasonKey: appState.currentSeasonKey),
-      ]);
-      final doc = results[0] as MatchdayDocument?;
-      final standings = results[1] as List<ApiFootballStanding>;
-
-      if (doc == null || doc.matches.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('[fixtures] no firestore data for day=$dayNumber');
+        );
+        if (candidate == null || candidate.matches.isEmpty) {
+          if (kDebugMode) {
+            debugPrint('[fixtures] no firestore data for day=$dayNumber');
+          }
+          dayNumber += 1;
+          continue;
         }
+
+        final matches = candidate.matches;
+        final outcomes = candidate.outcomesByMatchId;
+        for (final m in matches) {
+          appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
+        }
+
+        String statusFor(PredictionMatch m) =>
+            (outcomes[m.id] ?? MatchOutcome.pending).isGraded ? 'FT' : 'NS';
+        final progress = computeMatchdayProgress<PredictionMatch>(
+          matches,
+          now: now,
+          kickoff: (m) => m.kickoff,
+          originKickoff: (m) => appState.originKickoffFor(
+            matchId: m.id,
+            fallbackKickoff: m.kickoff,
+          ),
+          statusShort: (m) => statusFor(m),
+        );
+
+        if (kDebugMode) {
+          debugPrint(
+            '[fixtures] progress day=${candidate.dayNumber} '
+            'primaryDone=${progress.primaryDone} finalDone=${progress.finalDone} '
+            'played=${progress.playedFixtures} void=${progress.voidFixtures}',
+          );
+        }
+
+        resolvedDoc = candidate;
+        resolvedProgress = progress;
+
+        if (!progress.primaryDone) break;
+        dayNumber += 1;
+      }
+
+      await appState.persistOriginKickoffs();
+
+      if (resolvedDoc == null) {
         if (mounted && standings.isNotEmpty) {
           setState(() => _standings = standings);
         }
         return;
       }
 
-      final matches = doc.matches;
-      final outcomes = doc.outcomesByMatchId;
-      final now = DateTime.now();
-
-      appState.ensureOriginKickoffsLoaded();
-      for (final m in matches) {
-        appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
+      if (resolvedDoc.dayNumber != appState.cassandraMatchdayCursor) {
+        await appState.setCassandraMatchdayCursor(resolvedDoc.dayNumber);
       }
-      String statusFor(PredictionMatch m) =>
-          (outcomes[m.id] ?? MatchOutcome.pending).isGraded ? 'FT' : 'NS';
-      final progress = computeMatchdayProgress<PredictionMatch>(
-        matches,
-        now: now,
-        kickoff: (m) => m.kickoff,
-        originKickoff: (m) => appState.originKickoffFor(
-          matchId: m.id,
-          fallbackKickoff: m.kickoff,
-        ),
-        statusShort: (m) => statusFor(m),
-      );
-      await appState.persistOriginKickoffs();
+
+      final matches = resolvedDoc.matches;
+      final outcomes = resolvedDoc.outcomesByMatchId;
       appState.setMatchdayProgress(
-        matchdayNumber: doc.dayNumber,
-        progress: progress,
+        matchdayNumber: resolvedDoc.dayNumber,
+        progress: resolvedProgress!,
+        allowAutoAdvance: false,
       );
-
-      if (kDebugMode) {
-        debugPrint(
-          '[fixtures] progress day=${doc.dayNumber} '
-          'primaryDone=${progress.primaryDone} finalDone=${progress.finalDone} '
-          'played=${progress.playedFixtures} void=${progress.voidFixtures}',
-        );
-      }
 
       if (!mounted) return;
       setState(() {
-        _shownMatchdayNumber = doc.dayNumber;
+        _shownMatchdayNumber = resolvedDoc!.dayNumber;
         _matches = matches;
         _usingRealFixtures = true;
         _standings = standings.isEmpty ? null : standings;
@@ -429,12 +454,12 @@ class _PredictionsPageState extends State<PredictionsPage>
       scope.setCachedPredictionMatches(
         matches,
         isReal: true,
-        updatedAt: doc.updatedAt,
+        updatedAt: resolvedDoc.updatedAt,
       );
       scope.setCachedPredictionOutcomesByMatchId(outcomes);
       appState.setRecentMatchdayDataBulk(
-        matchesByMatchday: {doc.dayNumber: matches},
-        outcomesByMatchday: {doc.dayNumber: outcomes},
+        matchesByMatchday: {resolvedDoc.dayNumber: matches},
+        outcomesByMatchday: {resolvedDoc.dayNumber: outcomes},
       );
     } catch (e, st) {
       if (kDebugMode) {
