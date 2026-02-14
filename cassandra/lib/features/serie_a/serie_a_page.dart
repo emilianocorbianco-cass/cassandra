@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../app/state/app_state.dart';
 import '../../app/widgets/team_name.dart';
+import '../../app/theme/cassandra_colors.dart';
 import '../group/models/group_member.dart';
 import '../group/widgets/group_matchday_leaderboard.dart';
 import '../predictions/models/formatters.dart';
@@ -403,7 +404,11 @@ class _SerieAPageState extends State<SerieAPage> {
       itemBuilder: (context, i) {
         final m = matches[i];
         final o = data.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
-        final trailing = o.isPending ? '—' : o.label.toUpperCase();
+        final liveScore = _liveScoreLabel(m);
+        final liveStatus = _normalizedStatusLabel(m.statusShort);
+        final trailingSecondary = o.isPending
+            ? (liveStatus ?? '—')
+            : o.label.toUpperCase();
 
         return Card(
           child: ListTile(
@@ -428,15 +433,44 @@ class _SerieAPageState extends State<SerieAPage> {
               ],
             ),
             subtitle: Text('${l10n.kickoffLabel}: ${formatKickoff(m.kickoff)}'),
-            trailing: Text(
-              trailing,
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  liveScore,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  trailingSecondary,
+                  textAlign: TextAlign.right,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: CassandraColors.slate,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         );
       },
     );
+  }
+
+  String _liveScoreLabel(PredictionMatch match) {
+    final homeGoals = match.homeGoals;
+    final awayGoals = match.awayGoals;
+    if (homeGoals == null || awayGoals == null) return '—';
+    return '$homeGoals-$awayGoals';
+  }
+
+  String? _normalizedStatusLabel(String? rawStatus) {
+    if (rawStatus == null) return null;
+    final status = rawStatus.trim().toUpperCase();
+    if (status.isEmpty || status == 'NS') return null;
+    return status;
   }
 }
 

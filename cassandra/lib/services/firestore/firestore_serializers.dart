@@ -8,6 +8,13 @@ class FirestoreSerializers {
   static DateTime _parseKickoffLocal(String raw) =>
       DateTime.parse(raw).toLocal();
 
+  static int? _asNullableInt(Object? raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString());
+  }
+
   static Map<String, dynamic> predictionMatchToMap(PredictionMatch m) {
     return {
       'id': m.id,
@@ -16,6 +23,10 @@ class FirestoreSerializers {
       'away': m.awayTeam,
       if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
       if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
+      if (m.homeGoals != null) 'homeGoals': m.homeGoals,
+      if (m.awayGoals != null) 'awayGoals': m.awayGoals,
+      if (m.statusShort != null && m.statusShort!.isNotEmpty)
+        'statusShort': m.statusShort,
       'odds': {
         'home': m.odds.home,
         'draw': m.odds.draw,
@@ -29,6 +40,7 @@ class FirestoreSerializers {
 
   static PredictionMatch predictionMatchFromMap(Map<String, dynamic> j) {
     final odds = j['odds'] as Map<String, dynamic>;
+    final rawStatus = j['statusShort']?.toString().trim();
     return PredictionMatch(
       id: j['id'] as String,
       kickoff: _parseKickoffLocal(j['kickoff'] as String),
@@ -36,6 +48,9 @@ class FirestoreSerializers {
       awayTeam: j['away'] as String,
       homeTeamLogo: j['homeLogo'] as String?,
       awayTeamLogo: j['awayLogo'] as String?,
+      homeGoals: _asNullableInt(j['homeGoals']),
+      awayGoals: _asNullableInt(j['awayGoals']),
+      statusShort: (rawStatus == null || rawStatus.isEmpty) ? null : rawStatus,
       odds: Odds(
         home: (odds['home'] as num).toDouble(),
         draw: (odds['draw'] as num).toDouble(),

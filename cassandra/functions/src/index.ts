@@ -42,6 +42,9 @@ interface MatchDoc {
   away: string;
   homeLogo?: string;
   awayLogo?: string;
+  homeGoals?: number | null;
+  awayGoals?: number | null;
+  statusShort?: string;
   odds: {
     home: number;
     draw: number;
@@ -268,11 +271,47 @@ function buildMatchDoc(
     kickoff: f.kickoffUtc,
     home: f.homeName,
     away: f.awayName,
+    statusShort: f.statusShort,
     odds: { home, draw, away, homeDraw, drawAway, homeAway },
   };
   if (f.homeLogo) doc.homeLogo = f.homeLogo;
   if (f.awayLogo) doc.awayLogo = f.awayLogo;
+  if (f.homeGoals != null) doc.homeGoals = f.homeGoals;
+  if (f.awayGoals != null) doc.awayGoals = f.awayGoals;
   return doc;
+}
+
+function mergeLiveFieldsIntoExistingMatches(
+  existingMatches: unknown,
+  fixtures: ApiFixture[]
+): Record<string, unknown>[] | null {
+  if (!Array.isArray(existingMatches)) return null;
+
+  const fixtureById = new Map<string, ApiFixture>();
+  for (const f of fixtures) {
+    fixtureById.set(f.fixtureId.toString(), f);
+  }
+
+  const updated = existingMatches
+    .filter(
+      (m): m is Record<string, unknown> => typeof m === "object" && m != null
+    )
+    .map((m) => {
+      const id = String(m["id"] ?? "");
+      const fixture = fixtureById.get(id);
+      if (!fixture) return { ...m };
+
+      const next: Record<string, unknown> = {
+        ...m,
+        statusShort: fixture.statusShort,
+        homeGoals: fixture.homeGoals,
+        awayGoals: fixture.awayGoals,
+      };
+
+      return next;
+    });
+
+  return updated;
 }
 
 function deterministicOdds(seed: number, min: number, max: number): number {
@@ -538,14 +577,23 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         );
         continue;
       }
+      const existingMatches = existing.data()?.matches;
+      const mergedMatches = mergeLiveFieldsIntoExistingMatches(
+        existingMatches,
+        fixtures
+      );
+      const livePayload: Record<string, unknown> = {
+        outcomesByMatchId,
+        lockTime: Timestamp.fromDate(lockTime),
+        updatedAt: FieldValue.serverTimestamp(),
+        finalized,
+      };
+      if (mergedMatches != null) {
+        livePayload.matches = mergedMatches;
+      }
 
       await docRef.set(
-        {
-          outcomesByMatchId,
-          lockTime: Timestamp.fromDate(lockTime),
-          updatedAt: FieldValue.serverTimestamp(),
-          finalized,
-        },
+        livePayload,
         { merge: true }
       );
       console.log(
