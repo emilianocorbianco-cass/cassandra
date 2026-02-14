@@ -241,10 +241,29 @@ class _SerieAPageState extends State<SerieAPage> {
             final demoMatches = app.cachedPredictionMatches;
             final demoActive =
                 demoMatches != null && !app.cachedPredictionMatchesAreReal;
+            final hasLiveCache =
+                demoMatches != null &&
+                demoMatches.isNotEmpty &&
+                app.cachedPredictionMatchesAreReal;
+            final effectiveData = hasLiveCache
+                ? _SerieAData(
+                    matches: demoMatches,
+                    outcomesByMatchId: app.cachedPredictionOutcomesByMatchId,
+                    fromBackend: true,
+                  )
+                : (data ??
+                      const _SerieAData(
+                        matches: [],
+                        outcomesByMatchId: {},
+                        fromBackend: false,
+                      ));
+            final updatedAt = hasLiveCache
+                ? app.cachedPredictionMatchesUpdatedAt
+                : _updatedAt;
 
-            final updatedLabel = _updatedAt == null
+            final updatedLabel = updatedAt == null
                 ? ''
-                : ' \u2022 ${l10n.shortUpdated} ${formatKickoff(_updatedAt!)}';
+                : ' \u2022 ${l10n.shortUpdated} ${formatKickoff(updatedAt)}';
 
             return Column(
               children: [
@@ -276,7 +295,7 @@ class _SerieAPageState extends State<SerieAPage> {
                                   ? l10n.serieAErrorLoadingBackendCache(
                                       data?.errorMessage ?? '',
                                     )
-                                  : (data?.fromBackend == true
+                                  : (effectiveData.fromBackend
                                         ? l10n.settingsDataBackendCache +
                                               updatedLabel
                                         : l10n.serieADataDemo)),
@@ -299,15 +318,7 @@ class _SerieAPageState extends State<SerieAPage> {
                                   app.cachedPredictionOutcomesByMatchId,
                                   l10n,
                                 )
-                              : _buildList(
-                                  context,
-                                  data ??
-                                      const _SerieAData(
-                                        matches: [],
-                                        outcomesByMatchId: {},
-                                        fromBackend: false,
-                                      ),
-                                ),
+                              : _buildList(context, effectiveData),
                         ),
                 ),
               ],

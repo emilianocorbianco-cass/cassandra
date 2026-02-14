@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
@@ -10,6 +11,11 @@ import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart';
 import '../theme/app_colors.dart';
+import '../../domain/matchday/matchday_recovery_rules.dart'
+    show MatchdayProgress, computeMatchdayProgress;
+import '../../features/predictions/models/prediction_match.dart';
+import '../../features/scoring/models/match_outcome.dart';
+import '../../services/firestore/models/matchday_document.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -19,65 +25,145 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  bool _prefetchStarted = false;
+  Timer? _liveSyncTimer;
+  bool _liveSyncInFlight = false;
+  bool _didInitialLiveSync = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_prefetchStarted) return;
+    _configureLiveSync();
+  }
 
-    // Se la cache è già reale (es. arrivata da un'altra pagina), non richiamiamo l'API.
+  void _configureLiveSync() {
     final app = CassandraScope.of(context);
-    if (app.cachedPredictionMatches != null &&
-        app.cachedPredictionMatchesAreReal) {
-      _prefetchStarted = true;
+    final canSync = app.firestoreService != null && app.isAuthenticated;
+
+    if (!canSync) {
+      _liveSyncTimer?.cancel();
+      _liveSyncTimer = null;
+      _didInitialLiveSync = false;
       return;
     }
 
-    _prefetchStarted = true;
-    _prefetchNextFixtures();
+    _liveSyncTimer ??= Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_syncLiveFromBackend()),
+    );
+
+    if (!_didInitialLiveSync) {
+      _didInitialLiveSync = true;
+      unawaited(_syncLiveFromBackend());
+    }
   }
 
-  Future<void> _prefetchNextFixtures() async {
+  Future<void> _syncLiveFromBackend() async {
+    if (!mounted || _liveSyncInFlight) return;
+
     final app = CassandraScope.of(context);
-
-    // ── Firestore fast path: try cached matchday data first ──
     final fs = app.firestoreService;
-    if (fs != null) {
-      if (!app.isAuthenticated) return;
-      try {
-        final doc = await fs.getMatchdayData(
-          seasonKey: app.currentSeasonKey,
-          dayNumber: app.cassandraMatchdayCursor,
-        );
-        if (doc != null && doc.matches.isNotEmpty) {
-          app.setCachedPredictionMatches(
-            doc.matches,
-            isReal: true,
-            updatedAt: doc.updatedAt,
-          );
-          app.setCachedPredictionOutcomesByMatchId(doc.outcomesByMatchId);
+    if (fs == null || !app.isAuthenticated) return;
+    _liveSyncInFlight = true;
 
-          // If data is fresh (< 65 min), skip API call
-          if (DateTime.now().difference(doc.updatedAt).inMinutes < 65) {
-            if (kDebugMode) {
-              debugPrint(
-                '[prefetch] Firestore data fresh '
-                '(${doc.matches.length} matches, '
-                '${DateTime.now().difference(doc.updatedAt).inMinutes}min old)',
-              );
-            }
-            return;
-          }
+    try {
+      final standingsFuture = fs.getSeasonStandings(
+        seasonKey: app.currentSeasonKey,
+      );
+      final now = DateTime.now();
+      var dayNumber = app.cassandraMatchdayCursor;
+      app.ensureOriginKickoffsLoaded();
+
+      MatchdayDocument? resolvedDoc;
+      MatchdayProgress? resolvedProgress;
+
+      const maxLookAheadDays = 12;
+      for (var i = 0; i <= maxLookAheadDays; i++) {
+        final candidate = await fs.getMatchdayData(
+          seasonKey: app.currentSeasonKey,
+          dayNumber: dayNumber,
+        );
+        if (candidate == null || candidate.matches.isEmpty) {
+          dayNumber += 1;
+          continue;
         }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[prefetch] Firestore read failed: $e');
+
+        final matches = candidate.matches;
+        final outcomes = candidate.outcomesByMatchId;
+        for (final m in matches) {
+          app.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
+        }
+
+        String statusFor(PredictionMatch m) =>
+            (outcomes[m.id] ?? MatchOutcome.pending).isGraded ? 'FT' : 'NS';
+        final progress = computeMatchdayProgress<PredictionMatch>(
+          matches,
+          now: now,
+          kickoff: (m) => m.kickoff,
+          originKickoff: (m) =>
+              app.originKickoffFor(matchId: m.id, fallbackKickoff: m.kickoff),
+          statusShort: (m) => statusFor(m),
+        );
+
+        app.setMatchdayProgress(
+          matchdayNumber: candidate.dayNumber,
+          progress: progress,
+          allowAutoAdvance: false,
+        );
+
+        resolvedDoc = candidate;
+        resolvedProgress = progress;
+        if (!progress.primaryDone) break;
+        dayNumber += 1;
+      }
+
+      await app.persistOriginKickoffs();
+
+      final standings = await standingsFuture;
+      if (standings.isNotEmpty) {
+        app.setCachedSeasonStandings(standings);
+      }
+
+      if (resolvedDoc != null && resolvedProgress != null) {
+        if (resolvedDoc.dayNumber != app.cassandraMatchdayCursor) {
+          await app.setCassandraMatchdayCursor(resolvedDoc.dayNumber);
+        }
+
+        final shouldUpdateCache =
+            app.cachedPredictionMatches == null ||
+            app.cachedPredictionMatches!.isEmpty ||
+            app.cachedPredictionMatchesUpdatedAt == null ||
+            resolvedDoc.updatedAt.isAfter(
+              app.cachedPredictionMatchesUpdatedAt!,
+            );
+
+        if (shouldUpdateCache) {
+          app.setCachedPredictionMatches(
+            resolvedDoc.matches,
+            isReal: true,
+            updatedAt: resolvedDoc.updatedAt,
+          );
+          app.setCachedPredictionOutcomesByMatchId(
+            resolvedDoc.outcomesByMatchId,
+          );
+          app.setRecentMatchdayDataBulk(
+            matchesByMatchday: {resolvedDoc.dayNumber: resolvedDoc.matches},
+            outcomesByMatchday: {
+              resolvedDoc.dayNumber: resolvedDoc.outcomesByMatchId,
+            },
+          );
+        } else {
+          app.setCachedPredictionOutcomesByMatchId(
+            resolvedDoc.outcomesByMatchId,
+          );
         }
       }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[live-sync] failed: $e');
+      }
+    } finally {
+      _liveSyncInFlight = false;
     }
-
-    // Backend-only mode: niente fallback API lato client.
   }
 
   int _index = 0;
@@ -89,6 +175,12 @@ class _HomeShellState extends State<HomeShell> {
     StatsPage(),
     SettingsPage(),
   ];
+
+  @override
+  void dispose() {
+    _liveSyncTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -22,6 +22,7 @@ import 'dart:math';
 
 import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
+import '../../services/api_football/models/api_football_standing.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
@@ -983,11 +984,46 @@ class AppState extends ChangeNotifier {
 
   // Quote reali (runtime cache per evitare ri-fetch ad ogni apertura)
   Map<int, ApiFootballFixtureOdds>? _cachedRealOdds;
+  List<ApiFootballStanding> _cachedSeasonStandings =
+      const <ApiFootballStanding>[];
+  DateTime? _cachedSeasonStandingsUpdatedAt;
+  String _cachedSeasonStandingsSignature = '';
 
   Map<int, ApiFootballFixtureOdds>? get cachedRealOdds => _cachedRealOdds;
+  List<ApiFootballStanding> get cachedSeasonStandings => _cachedSeasonStandings;
+  DateTime? get cachedSeasonStandingsUpdatedAt =>
+      _cachedSeasonStandingsUpdatedAt;
 
   void setCachedRealOdds(Map<int, ApiFootballFixtureOdds> odds) {
     _cachedRealOdds = Map.unmodifiable(odds);
+  }
+
+  String _standingsSignature(List<ApiFootballStanding> standings) {
+    if (standings.isEmpty) return '';
+    return standings
+        .map((s) => '${s.rank}:${s.teamName}:${s.points}:${s.form ?? ''}')
+        .join('|');
+  }
+
+  void setCachedSeasonStandings(
+    List<ApiFootballStanding> standings, {
+    DateTime? updatedAt,
+  }) {
+    final sig = _standingsSignature(standings);
+    if (updatedAt == null && _cachedSeasonStandingsSignature == sig) {
+      return;
+    }
+
+    final ts = updatedAt ?? DateTime.now();
+    if (_cachedSeasonStandingsSignature == sig &&
+        _cachedSeasonStandingsUpdatedAt == ts) {
+      return;
+    }
+
+    _cachedSeasonStandings = List<ApiFootballStanding>.unmodifiable(standings);
+    _cachedSeasonStandingsUpdatedAt = ts;
+    _cachedSeasonStandingsSignature = sig;
+    notifyListeners();
   }
 
   List<PredictionMatch>? get cachedPredictionMatches =>
@@ -1086,6 +1122,9 @@ class AppState extends ChangeNotifier {
     _cachedPredictionMatchesAreReal = false;
     _cachedPredictionMatchesUpdatedAt = null;
     cachedPredictionOutcomesByMatchId = {};
+    _cachedSeasonStandings = const <ApiFootballStanding>[];
+    _cachedSeasonStandingsUpdatedAt = null;
+    _cachedSeasonStandingsSignature = '';
     notifyListeners();
   }
 

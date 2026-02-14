@@ -394,6 +394,196 @@ function sleep(ms: number): Promise<void> {
 
 // ─── Cloud Function ──────────────────────────────────────────────────────────
 
+interface RefreshOptions {
+  includeOdds: boolean;
+  lastFixtures: number;
+  nextFixtures: number;
+  logPrefix: string;
+}
+
+async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
+  const db = getFirestore();
+  const season = seasonStartYear();
+  const seasonKey = season.toString();
+
+  console.log(`[${options.logPrefix}] Starting for season ${seasonKey}`);
+
+  const leagueId = await resolveLeagueId(season, db);
+  console.log(`[${options.logPrefix}] League ID: ${leagueId}`);
+
+  const [pastJson, nextJson, standingsJson] = await Promise.all([
+    apiGet("fixtures", {
+      league: leagueId.toString(),
+      season: season.toString(),
+      last: options.lastFixtures.toString(),
+      timezone: "Europe/Rome",
+    }),
+    apiGet("fixtures", {
+      league: leagueId.toString(),
+      season: season.toString(),
+      next: options.nextFixtures.toString(),
+      timezone: "Europe/Rome",
+    }),
+    apiGet("standings", {
+      league: leagueId.toString(),
+      season: season.toString(),
+    }),
+  ]);
+
+  const pastFixtures = parseFixtures(pastJson);
+  const nextFixtures = parseFixtures(nextJson);
+  const standings = parseStandings(standingsJson);
+
+  if (standings.length > 0) {
+    await db
+      .collection("seasons")
+      .doc(seasonKey)
+      .collection("standings")
+      .doc("current")
+      .set(
+        {
+          rows: standings,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    console.log(
+      `[${options.logPrefix}] Wrote standings rows=${standings.length}`
+    );
+  }
+
+  const seen = new Set<number>();
+  const allFixtures: ApiFixture[] = [];
+  for (const f of [...pastFixtures, ...nextFixtures]) {
+    if (!seen.has(f.fixtureId)) {
+      seen.add(f.fixtureId);
+      allFixtures.push(f);
+    }
+  }
+
+  console.log(
+    `[${options.logPrefix}] Got ${allFixtures.length} unique fixtures ` +
+      `(past=${pastFixtures.length}, next=${nextFixtures.length})`
+  );
+
+  const byMatchday = new Map<number, ApiFixture[]>();
+  for (const f of allFixtures) {
+    const md = matchdayFromRound(f.round);
+    if (md == null) continue;
+    if (!byMatchday.has(md)) byMatchday.set(md, []);
+    byMatchday.get(md)!.push(f);
+  }
+
+  const now = new Date();
+  const activeMatchdays: number[] = [];
+  for (const [md, fixtures] of byMatchday) {
+    const allFinished = fixtures.every((f) => {
+      const s = f.statusShort.trim().toUpperCase();
+      return ["FT", "AET", "PEN", "WO", "AWD", "CANC"].includes(s);
+    });
+
+    if (!allFinished) {
+      activeMatchdays.push(md);
+      continue;
+    }
+
+    const latestKickoff = fixtures.reduce(
+      (max, f) => {
+        const d = new Date(f.kickoffUtc);
+        return d > max ? d : max;
+      },
+      new Date(0)
+    );
+    const daysSince =
+      (now.getTime() - latestKickoff.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince <= 7) {
+      activeMatchdays.push(md);
+    }
+  }
+
+  activeMatchdays.sort((a, b) => a - b);
+  console.log(
+    `[${options.logPrefix}] Active matchdays: [${activeMatchdays.join(", ")}]`
+  );
+
+  for (const md of activeMatchdays) {
+    const fixtures = byMatchday.get(md)!;
+    const docRef = db
+      .collection("seasons")
+      .doc(seasonKey)
+      .collection("matchdays")
+      .doc(md.toString());
+    const existing = await docRef.get();
+
+    if (existing.exists && existing.data()?.finalized === true) {
+      console.log(`[${options.logPrefix}] Matchday ${md} finalized, skip`);
+      continue;
+    }
+
+    const outcomesByMatchId: Record<string, Outcome> = {};
+    for (const f of fixtures) {
+      outcomesByMatchId[f.fixtureId.toString()] = computeOutcome(f);
+    }
+
+    const kickoffs = fixtures.map((f) => new Date(f.kickoffUtc));
+    const lockTime = kickoffs.reduce((min, d) => (d < min ? d : min));
+    const finalized = Object.values(outcomesByMatchId).every(
+      (o) => o !== "pending"
+    );
+
+    if (!options.includeOdds) {
+      if (!existing.exists) {
+        console.log(
+          `[${options.logPrefix}] Matchday ${md} missing doc, skip write`
+        );
+        continue;
+      }
+
+      await docRef.set(
+        {
+          outcomesByMatchId,
+          lockTime: Timestamp.fromDate(lockTime),
+          updatedAt: FieldValue.serverTimestamp(),
+          finalized,
+        },
+        { merge: true }
+      );
+      console.log(
+        `[${options.logPrefix}] Wrote live outcomes ${md}: finalized=${finalized}`
+      );
+      continue;
+    }
+
+    const oddsByFixture = new Map<number, FixtureOdds>();
+    for (const f of fixtures) {
+      const odds = await fetchOddsForFixture(f.fixtureId);
+      if (odds) oddsByFixture.set(f.fixtureId, odds);
+      await sleep(200);
+    }
+
+    const matches: MatchDoc[] = fixtures
+      .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
+      .map((f) => buildMatchDoc(f, oddsByFixture.get(f.fixtureId) ?? null));
+
+    await docRef.set(
+      {
+        matches,
+        outcomesByMatchId,
+        lockTime: Timestamp.fromDate(lockTime),
+        updatedAt: FieldValue.serverTimestamp(),
+        finalized,
+      },
+      { merge: true }
+    );
+
+    console.log(
+      `[${options.logPrefix}] Wrote matchday ${md}: finalized=${finalized}`
+    );
+  }
+
+  console.log(`[${options.logPrefix}] Done`);
+}
+
 export const refreshMatchdayData = onSchedule(
   {
     region: "europe-west1",
@@ -402,179 +592,28 @@ export const refreshMatchdayData = onSchedule(
     memory: "256MiB",
   },
   async () => {
-    const db = getFirestore();
-    const season = seasonStartYear();
-    const seasonKey = season.toString();
+    await refreshMatchdayDataCore({
+      includeOdds: true,
+      lastFixtures: 40,
+      nextFixtures: 80,
+      logPrefix: "refresh-hourly",
+    });
+  }
+);
 
-    console.log(`[refresh] Starting for season ${seasonKey}`);
-
-    // 1. Resolve league ID (cached in Firestore)
-    const leagueId = await resolveLeagueId(season, db);
-    console.log(`[refresh] League ID: ${leagueId}`);
-
-    // 2. Fetch fixtures (last 40 + next 80)
-    const [pastJson, nextJson, standingsJson] = await Promise.all([
-      apiGet("fixtures", {
-        league: leagueId.toString(),
-        season: season.toString(),
-        last: "40",
-        timezone: "Europe/Rome",
-      }),
-      apiGet("fixtures", {
-        league: leagueId.toString(),
-        season: season.toString(),
-        next: "80",
-        timezone: "Europe/Rome",
-      }),
-      apiGet("standings", {
-        league: leagueId.toString(),
-        season: season.toString(),
-      }),
-    ]);
-
-    const pastFixtures = parseFixtures(pastJson);
-    const nextFixtures = parseFixtures(nextJson);
-    const standings = parseStandings(standingsJson);
-
-    if (standings.length > 0) {
-      await db
-        .collection("seasons")
-        .doc(seasonKey)
-        .collection("standings")
-        .doc("current")
-        .set(
-          {
-            rows: standings,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      console.log(`[refresh] Wrote standings rows=${standings.length}`);
-    }
-
-    // 3. Deduplicate by fixtureId
-    const seen = new Set<number>();
-    const allFixtures: ApiFixture[] = [];
-    for (const f of [...pastFixtures, ...nextFixtures]) {
-      if (!seen.has(f.fixtureId)) {
-        seen.add(f.fixtureId);
-        allFixtures.push(f);
-      }
-    }
-
-    console.log(
-      `[refresh] Got ${allFixtures.length} unique fixtures ` +
-        `(past=${pastFixtures.length}, next=${nextFixtures.length})`
-    );
-
-    // 4. Group by matchday
-    const byMatchday = new Map<number, ApiFixture[]>();
-    for (const f of allFixtures) {
-      const md = matchdayFromRound(f.round);
-      if (md == null) continue;
-      if (!byMatchday.has(md)) byMatchday.set(md, []);
-      byMatchday.get(md)!.push(f);
-    }
-
-    // 5. Determine active matchdays (not all FT, recent window)
-    const now = new Date();
-    const activeMatchdays: number[] = [];
-
-    for (const [md, fixtures] of byMatchday) {
-      const allFinished = fixtures.every((f) => {
-        const s = f.statusShort.trim().toUpperCase();
-        return ["FT", "AET", "PEN", "WO", "AWD", "CANC"].includes(s);
-      });
-
-      if (!allFinished) {
-        activeMatchdays.push(md);
-        continue;
-      }
-
-      // Include recently finished matchdays (last 7 days) for outcome sync
-      const latestKickoff = fixtures.reduce(
-        (max, f) => {
-          const d = new Date(f.kickoffUtc);
-          return d > max ? d : max;
-        },
-        new Date(0)
-      );
-      const daysSince =
-        (now.getTime() - latestKickoff.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSince <= 7) {
-        activeMatchdays.push(md);
-      }
-    }
-
-    activeMatchdays.sort((a, b) => a - b);
-    console.log(`[refresh] Active matchdays: [${activeMatchdays.join(", ")}]`);
-
-    // 6. For each active matchday: check finalized, fetch odds, write
-    for (const md of activeMatchdays) {
-      const fixtures = byMatchday.get(md)!;
-
-      // Skip if already finalized in Firestore
-      const docRef = db
-        .collection("seasons")
-        .doc(seasonKey)
-        .collection("matchdays")
-        .doc(md.toString());
-      const existing = await docRef.get();
-      if (existing.exists && existing.data()?.finalized === true) {
-        console.log(`[refresh] Matchday ${md} already finalized, skipping`);
-        continue;
-      }
-
-      // Fetch odds for each fixture (with rate limiting)
-      const oddsByFixture = new Map<number, FixtureOdds>();
-      for (const f of fixtures) {
-        const odds = await fetchOddsForFixture(f.fixtureId);
-        if (odds) oddsByFixture.set(f.fixtureId, odds);
-        await sleep(200); // Rate limiting: 200ms between calls
-      }
-
-      console.log(
-        `[refresh] Matchday ${md}: ${fixtures.length} fixtures, ` +
-          `${oddsByFixture.size} with odds`
-      );
-
-      // Build match documents
-      const matches: MatchDoc[] = fixtures
-        .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
-        .map((f) => buildMatchDoc(f, oddsByFixture.get(f.fixtureId) ?? null));
-
-      // Compute outcomes
-      const outcomesByMatchId: Record<string, Outcome> = {};
-      for (const f of fixtures) {
-        outcomesByMatchId[f.fixtureId.toString()] = computeOutcome(f);
-      }
-
-      // Compute lockTime (earliest kickoff)
-      const kickoffs = fixtures.map((f) => new Date(f.kickoffUtc));
-      const lockTime = kickoffs.reduce((min, d) => (d < min ? d : min));
-
-      // Determine if finalized (all graded)
-      const finalized = Object.values(outcomesByMatchId).every(
-        (o) => o !== "pending"
-      );
-
-      // Write to Firestore
-      await docRef.set(
-        {
-          matches,
-          outcomesByMatchId,
-          lockTime: Timestamp.fromDate(lockTime),
-          updatedAt: FieldValue.serverTimestamp(),
-          finalized,
-        },
-        { merge: true }
-      );
-
-      console.log(
-        `[refresh] Wrote matchday ${md}: finalized=${finalized}`
-      );
-    }
-
-    console.log("[refresh] Done");
+export const refreshLiveMatchdayData = onSchedule(
+  {
+    region: "europe-west1",
+    schedule: "every 1 minutes",
+    timeoutSeconds: 180,
+    memory: "256MiB",
+  },
+  async () => {
+    await refreshMatchdayDataCore({
+      includeOdds: false,
+      lastFixtures: 20,
+      nextFixtures: 40,
+      logPrefix: "refresh-live",
+    });
   }
 );

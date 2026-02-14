@@ -49,11 +49,9 @@ class _PredictionsPageState extends State<PredictionsPage>
   List<PredictionMatch> get matches {
     final appState = CassandraScope.of(context);
     final cached = appState.cachedPredictionMatches;
-    if (cached != null && !appState.cachedPredictionMatchesAreReal) {
-      return cached;
-    }
+    if (cached != null && cached.isNotEmpty) return cached;
     if (_matches.isNotEmpty) return _matches;
-    return cached ?? _matches;
+    return _matches;
   }
 
   String get matchdayLabel {
@@ -427,6 +425,7 @@ class _PredictionsPageState extends State<PredictionsPage>
 
       if (resolvedDoc == null) {
         if (mounted && standings.isNotEmpty) {
+          appState.setCachedSeasonStandings(standings);
           setState(() => _standings = standings);
         }
         return;
@@ -451,6 +450,10 @@ class _PredictionsPageState extends State<PredictionsPage>
         _usingRealFixtures = true;
         _standings = standings.isEmpty ? null : standings;
       });
+      appState.setCachedSeasonStandings(
+        standings,
+        updatedAt: resolvedDoc.updatedAt,
+      );
       scope.setCachedPredictionMatches(
         matches,
         isReal: true,
@@ -682,6 +685,11 @@ class _PredictionsPageState extends State<PredictionsPage>
 
     final appState = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
+    final usingRealFixturesNow =
+        _usingRealFixtures || appState.cachedPredictionMatchesAreReal;
+    final standingsEffective = appState.cachedSeasonStandings.isNotEmpty
+        ? appState.cachedSeasonStandings
+        : _standings;
 
     // Mentre i dati reali si caricano, mostra spinner
     if (matches.isEmpty) {
@@ -741,7 +749,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     );
     final avg = _averageOddsPlayed;
     final avgLabel = avg == null ? '-' : formatOdds(avg);
-    final isOffline = !_usingRealFixtures;
+    final isOffline = !usingRealFixturesNow;
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -765,7 +773,7 @@ class _PredictionsPageState extends State<PredictionsPage>
       body: SafeArea(
         child: Column(
           children: [
-            if (!_usingRealFixtures)
+            if (!usingRealFixturesNow)
               DemoBanner(label: l10n.predictionsSampleDataBanner),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
@@ -897,7 +905,8 @@ class _PredictionsPageState extends State<PredictionsPage>
                   ? _buildHistory(context)
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: matches.length + (_standings != null ? 1 : 0),
+                      itemCount:
+                          matches.length + (standingsEffective != null ? 1 : 0),
                       itemBuilder: (context, i) {
                         if (i < matches.length) {
                           final match = matches[i];
@@ -909,7 +918,9 @@ class _PredictionsPageState extends State<PredictionsPage>
                             onPick: (p) => _setPick(match.id, p),
                           );
                         }
-                        return SerieAStandingsTable(standings: _standings!);
+                        return SerieAStandingsTable(
+                          standings: standingsEffective!,
+                        );
                       },
                     ),
             ),
