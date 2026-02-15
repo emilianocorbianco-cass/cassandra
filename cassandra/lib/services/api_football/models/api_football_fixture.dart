@@ -1,3 +1,5 @@
+import '../../../domain/serie_a/team_name_normalizer.dart';
+
 class ApiFootballFixture {
   ApiFootballFixture({
     required this.fixtureId,
@@ -49,8 +51,8 @@ class ApiFootballFixture {
     return ApiFootballFixture(
       fixtureId: fixtureId,
       kickoffUtc: kickoff,
-      homeName: home['name']?.toString() ?? 'Home',
-      awayName: away['name']?.toString() ?? 'Away',
+      homeName: normalizeSerieATeamName(home['name']?.toString() ?? 'Home'),
+      awayName: normalizeSerieATeamName(away['name']?.toString() ?? 'Away'),
       statusShort: status['short']?.toString() ?? '',
       homeGoals: asNullableInt(goals['home']),
       awayGoals: asNullableInt(goals['away']),

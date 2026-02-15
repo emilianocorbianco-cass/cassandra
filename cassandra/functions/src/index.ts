@@ -122,6 +122,18 @@ function seasonStartYear(): number {
   // JS months: 0=Jan ... 6=Jul. month>=7 in plan → >=6 in 0-indexed
 }
 
+function normalizeSerieATeamName(rawName: string): string {
+  const name = rawName.trim();
+  switch (name.toLowerCase()) {
+  case "as roma":
+    return "Roma";
+  case "ac milan":
+    return "Milan";
+  default:
+    return name;
+  }
+}
+
 function matchdayFromRound(round: string | null): number | null {
   if (!round) return null;
   const m = round.trim().match(/(\d{1,2})\s*$/);
@@ -148,8 +160,8 @@ function parseFixtures(json: Record<string, unknown>): ApiFixture[] {
       return {
         fixtureId: Number(fixture["id"]) || 0,
         kickoffUtc: String(fixture["date"] ?? ""),
-        homeName: String(home["name"] ?? "Home"),
-        awayName: String(away["name"] ?? "Away"),
+        homeName: normalizeSerieATeamName(String(home["name"] ?? "Home")),
+        awayName: normalizeSerieATeamName(String(away["name"] ?? "Away")),
         homeLogo: home["logo"] ? String(home["logo"]) : null,
         awayLogo: away["logo"] ? String(away["logo"]) : null,
         statusShort: String(status["short"] ?? ""),
@@ -191,7 +203,7 @@ function parseStandings(json: Record<string, unknown>): StandingDoc[] {
 
       return {
         rank: asInt(entry["rank"]),
-        teamName: String(team["name"] ?? "?"),
+        teamName: normalizeSerieATeamName(String(team["name"] ?? "?")),
         teamLogo: team["logo"] ? String(team["logo"]) : null,
         played: asInt(all["played"]),
         wins: asInt(all["win"]),

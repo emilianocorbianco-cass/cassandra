@@ -1,4 +1,5 @@
 import '../../features/predictions/models/prediction_match.dart';
+import '../../domain/serie_a/team_name_normalizer.dart';
 
 /// Serializzatori condivisi per convertire modelli di dominio <-> Firestore maps.
 /// Estratti da AppState per riuso in FirestoreService.
@@ -19,8 +20,8 @@ class FirestoreSerializers {
     return {
       'id': m.id,
       'kickoff': m.kickoff.toIso8601String(),
-      'home': m.homeTeam,
-      'away': m.awayTeam,
+      'home': normalizeSerieATeamName(m.homeTeam),
+      'away': normalizeSerieATeamName(m.awayTeam),
       if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
       if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
       if (m.homeGoals != null) 'homeGoals': m.homeGoals,
@@ -44,8 +45,8 @@ class FirestoreSerializers {
     return PredictionMatch(
       id: j['id'] as String,
       kickoff: _parseKickoffLocal(j['kickoff'] as String),
-      homeTeam: j['home'] as String,
-      awayTeam: j['away'] as String,
+      homeTeam: normalizeSerieATeamName(j['home'] as String),
+      awayTeam: normalizeSerieATeamName(j['away'] as String),
       homeTeamLogo: j['homeLogo'] as String?,
       awayTeamLogo: j['awayLogo'] as String?,
       homeGoals: _asNullableInt(j['homeGoals']),

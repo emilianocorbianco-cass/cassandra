@@ -1,3 +1,5 @@
+import '../../../domain/serie_a/team_name_normalizer.dart';
+
 class ApiFootballStanding {
   ApiFootballStanding({
     required this.rank,
@@ -36,7 +38,7 @@ class ApiFootballStanding {
 
     return ApiFootballStanding(
       rank: asInt(json['rank']),
-      teamName: team['name']?.toString() ?? '?',
+      teamName: normalizeSerieATeamName(team['name']?.toString() ?? '?'),
       teamLogo: team['logo']?.toString(),
       played: asInt(all['played']),
       wins: asInt(all['win']),
@@ -55,7 +57,7 @@ class ApiFootballStanding {
 
     return ApiFootballStanding(
       rank: asInt(map['rank']),
-      teamName: map['teamName']?.toString() ?? '?',
+      teamName: normalizeSerieATeamName(map['teamName']?.toString() ?? '?'),
       teamLogo: map['teamLogo']?.toString(),
       played: asInt(map['played']),
       wins: asInt(map['wins']),

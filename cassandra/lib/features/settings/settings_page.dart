@@ -485,7 +485,12 @@ class _SettingsPageState extends State<SettingsPage> {
         : '';
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.settingsTitle)),
+      appBar: AppBar(
+        title: Text(
+          l10n.settingsTitle,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

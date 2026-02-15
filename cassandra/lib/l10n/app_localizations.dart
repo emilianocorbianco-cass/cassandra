@@ -1542,8 +1542,20 @@ abstract class AppLocalizations {
   /// No description provided for @predictionsUpcomingSegment.
   ///
   /// In en, this message translates to:
-  /// **'Upcoming predictions'**
+  /// **'Predictions'**
   String get predictionsUpcomingSegment;
+
+  /// No description provided for @predictionsCorrectLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Correct predictions {correct}/{total}'**
+  String predictionsCorrectLine(Object correct, Object total);
+
+  /// No description provided for @predictionsPointsLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Points: {total} (Base {base} - Bonus {bonus})'**
+  String predictionsPointsLine(Object total, Object base, Object bonus);
 
   /// No description provided for @predictionsDebugShifted.
   ///

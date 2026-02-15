@@ -285,7 +285,12 @@ class _StatsPageState extends State<StatsPage> {
         : 'G${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.statsTitle)),
+      appBar: AppBar(
+        title: Text(
+          l10n.statsTitle,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [

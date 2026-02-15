@@ -54,19 +54,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     return _matches;
   }
 
-  String get matchdayLabel {
-    final appState = CassandraScope.of(context);
-    final l10n = AppLocalizations.of(context)!;
-    final isEnglish = l10n.localeName.startsWith('en');
-    if (demoActive) {
-      return l10n.groupMatchdayLabel(
-        appState.uiMatchdayNumber,
-        formatMatchdayDays(matches.map((m) => m.kickoff), english: isEnglish),
-      );
-    }
-    return _matchdayLabel;
-  }
-
   int get _matchdayNumber => CassandraScope.of(context).cassandraMatchdayCursor;
   int? _shownMatchdayNumber;
   int get _effectiveMatchdayNumber {
@@ -76,7 +63,6 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
-  bool _loadingFixtures = false;
   bool _didLoadFixtures = false;
   List<ApiFootballStanding>? _standings;
   final Map<String, PickOption> _picks = {};
@@ -137,44 +123,36 @@ class _PredictionsPageState extends State<PredictionsPage>
   DateTime? get _lockTime =>
       _firstKickoff?.subtract(const Duration(minutes: 30));
   bool get _locked => _lockTime != null && DateTime.now().isAfter(_lockTime!);
-  String get _matchdayLabel {
-    final l10n = AppLocalizations.of(context)!;
-    final daysLabel = formatMatchdayDays(
-      matches.map((m) => m.kickoff),
-      english: l10n.localeName.startsWith('en'),
-    );
-    return l10n.groupMatchdayLabel(_effectiveMatchdayNumber, daysLabel);
+
+  String _capitalize(String value) {
+    if (value.isEmpty) return value;
+    return '${value[0].toUpperCase()}${value.substring(1)}';
   }
 
-  double? _oddsForPick(PredictionMatch match, PickOption pick) {
-    switch (pick) {
-      case PickOption.none:
-        return null;
-      case PickOption.home:
-        return match.odds.home;
-      case PickOption.draw:
-        return match.odds.draw;
-      case PickOption.away:
-        return match.odds.away;
-      case PickOption.homeDraw:
-        return match.odds.homeDraw;
-      case PickOption.drawAway:
-        return match.odds.drawAway;
-      case PickOption.homeAway:
-        return match.odds.homeAway;
-    }
+  String _formattedDayMonth(DateTime date, {required bool english}) {
+    final local = date.toLocal();
+    final weekday = english
+        ? englishWeekdayName(local.weekday)
+        : italianWeekdayName(local.weekday);
+    final month = english
+        ? englishMonthName(local.month)
+        : italianMonthName(local.month);
+    return '${_capitalize(weekday)} ${local.day} ${_capitalize(month)}';
   }
 
-  double? get _averageOddsPlayed {
-    final values = <double>[];
-    for (final match in _matches) {
-      final pick = _pickFor(match.id);
-      final odds = _oddsForPick(match, pick);
-      if (odds != null) values.add(odds);
-    }
-    if (values.isEmpty) return null;
-    final sum = values.reduce((a, b) => a + b);
-    return sum / values.length;
+  String _matchdayDateRangeLabel({required bool english}) {
+    if (matches.isEmpty) return '';
+    final days =
+        matches
+            .map((m) => m.kickoff.toLocal())
+            .map((dt) => DateTime(dt.year, dt.month, dt.day))
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.compareTo(b));
+    if (days.isEmpty) return '';
+    final start = _formattedDayMonth(days.first, english: english);
+    final end = _formattedDayMonth(days.last, english: english);
+    return start == end ? start : '$start -> $end';
   }
 
   void _setPick(String matchId, PickOption pick) {
@@ -299,13 +277,9 @@ class _PredictionsPageState extends State<PredictionsPage>
     );
   }
 
-  Future<void> _tryLoadRealFixtures({bool showLoader = false}) async {
+  Future<void> _tryLoadRealFixtures() async {
     final appState = CassandraScope.of(context);
     final fs = appState.firestoreService;
-
-    if (showLoader && mounted) {
-      setState(() => _loadingFixtures = true);
-    }
 
     try {
       final scope = appState;
@@ -468,10 +442,6 @@ class _PredictionsPageState extends State<PredictionsPage>
       if (kDebugMode) {
         debugPrint('[fixtures] load failed: $e');
         debugPrint('$st');
-      }
-    } finally {
-      if (showLoader && mounted) {
-        setState(() => _loadingFixtures = false);
       }
     }
   }
@@ -694,7 +664,13 @@ class _PredictionsPageState extends State<PredictionsPage>
     // Mentre i dati reali si caricano, mostra spinner
     if (matches.isEmpty) {
       return Scaffold(
-        appBar: AppBar(centerTitle: true, title: Text(l10n.tabPredictions)),
+        appBar: AppBar(
+          centerTitle: true,
+          title: Text(
+            l10n.tabPredictions,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -713,9 +689,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     final scoringMatches = matches
         .where((m) => !voidedByPostponement.contains(m.id))
         .toList(growable: false);
-    final pickedCountForScoring = scoringMatches
-        .where((m) => !_pickFor(m.id).isNone)
-        .length;
     final lockLabel = _locked
         ? l10n.predictionsPicksLocked
         : _lockTime != null
@@ -736,39 +709,27 @@ class _PredictionsPageState extends State<PredictionsPage>
         : (dayScore.bonusPoints > 0
               ? '+${dayScore.bonusPoints}'
               : '${dayScore.bonusPoints}');
-    final scoreAvgLabel = dayScore.averageOddsPlayed == null
-        ? '—'
-        : formatOdds(dayScore.averageOddsPlayed!);
-    final scoreLabel = l10n.predictionsScoreSummary(
+    final matchdayTitle = l10n.groupMatchdayTitle(_effectiveMatchdayNumber);
+    final matchdayRange = _matchdayDateRangeLabel(
+      english: l10n.localeName.startsWith('en'),
+    );
+    final correctLine = l10n.predictionsCorrectLine(
+      dayScore.correctCount,
+      matches.length,
+    );
+    final pointsLine = l10n.predictionsPointsLine(
       formatOdds(dayScore.total),
       formatOdds(dayScore.baseTotal),
       bonusSigned,
-      dayScore.correctCount,
-      dayScore.matchBreakdowns.length,
-      scoreAvgLabel,
     );
-    final avg = _averageOddsPlayed;
-    final avgLabel = avg == null ? '-' : formatOdds(avg);
     final isOffline = !usingRealFixturesNow;
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text(l10n.tabPredictions),
-        actions: [
-          IconButton(
-            tooltip: l10n.predictionsRefreshMatches,
-            onPressed: (_loadingFixtures || demoActive)
-                ? null
-                : () => _tryLoadRealFixturesOnce(showLoader: true, force: true),
-            icon: _loadingFixtures
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-          ),
-        ],
+        title: Text(
+          l10n.tabPredictions,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -784,11 +745,17 @@ class _PredictionsPageState extends State<PredictionsPage>
                     segments: [
                       ButtonSegment(
                         value: 1,
-                        label: Text(l10n.predictionsPastSegment),
+                        label: Text(
+                          l10n.predictionsPastSegment,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                       ButtonSegment(
                         value: 0,
-                        label: Text(l10n.predictionsUpcomingSegment),
+                        label: Text(
+                          l10n.predictionsUpcomingSegment,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ],
                     selected: {_segment},
@@ -806,16 +773,24 @@ class _PredictionsPageState extends State<PredictionsPage>
                       ),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            matchdayLabel,
+                            matchdayTitle,
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
-                          const SizedBox(height: 8),
+                          if (matchdayRange.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              matchdayRange,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                          const SizedBox(height: 6),
                           Row(
                             children: [
                               if (lockLabel.isNotEmpty)
@@ -863,18 +838,15 @@ class _PredictionsPageState extends State<PredictionsPage>
                             ],
                           ),
                           if (lockLabel.isNotEmpty || isOffline)
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
                           Text(
-                            scoreLabel,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                            correctLine,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Text(
-                            l10n.predictionsPicksSummary(
-                              pickedCountForScoring,
-                              scoringMatches.length,
-                              avgLabel,
-                            ),
+                            pointsLine,
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: CassandraColors.slate),
                           ),
@@ -1050,10 +1022,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     );
   }
 
-  Future<void> _tryLoadRealFixturesOnce({
-    bool showLoader = false,
-    bool force = false,
-  }) async {
+  Future<void> _tryLoadRealFixturesOnce({bool force = false}) async {
     if (_isLoadingRealFixtures) {
       return;
     }
@@ -1062,7 +1031,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
     _isLoadingRealFixtures = true;
     try {
-      await _tryLoadRealFixtures(showLoader: showLoader);
+      await _tryLoadRealFixtures();
       _didLoadFixtures = true;
     } finally {
       _isLoadingRealFixtures = false;

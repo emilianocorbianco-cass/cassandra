@@ -828,7 +828,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsPastSegment => 'Past predictions';
 
   @override
-  String get predictionsUpcomingSegment => 'Upcoming predictions';
+  String get predictionsUpcomingSegment => 'Predictions';
+
+  @override
+  String predictionsCorrectLine(Object correct, Object total) {
+    return 'Correct predictions $correct/$total';
+  }
+
+  @override
+  String predictionsPointsLine(Object total, Object base, Object bonus) {
+    return 'Points: $total (Base $base - Bonus $bonus)';
+  }
 
   @override
   String predictionsDebugShifted(

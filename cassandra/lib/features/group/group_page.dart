@@ -242,7 +242,13 @@ class _GroupPageState extends State<GroupPage> {
 
     if (!appState.hasGroup) {
       return Scaffold(
-        appBar: AppBar(centerTitle: true, title: Text(l10n.groupTitle)),
+        appBar: AppBar(
+          centerTitle: true,
+          title: Text(
+            l10n.groupTitle,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
         body: SafeArea(
           child: Center(
             child: Padding(
@@ -415,7 +421,10 @@ class _GroupPageState extends State<GroupPage> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text(l10n.groupTitle),
+        title: Text(
+          l10n.groupTitle,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.group_add),

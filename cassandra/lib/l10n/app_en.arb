@@ -430,7 +430,22 @@
   "predictionsSampleDataBanner": "Sample data - wait for backend sync",
   "predictionsOfflineStatus": "You're offline",
   "predictionsPastSegment": "Past predictions",
-  "predictionsUpcomingSegment": "Upcoming predictions",
+  "predictionsUpcomingSegment": "Predictions",
+  "predictionsCorrectLine": "Correct predictions {correct}/{total}",
+  "@predictionsCorrectLine": {
+    "placeholders": {
+      "correct": {},
+      "total": {}
+    }
+  },
+  "predictionsPointsLine": "Points: {total} (Base {base} - Bonus {bonus})",
+  "@predictionsPointsLine": {
+    "placeholders": {
+      "total": {},
+      "base": {},
+      "bonus": {}
+    }
+  },
   "predictionsDebugShifted": "debug: shifted {shifted} • <48h {under48} • >48h {over48}",
   "@predictionsDebugShifted": {
     "placeholders": {

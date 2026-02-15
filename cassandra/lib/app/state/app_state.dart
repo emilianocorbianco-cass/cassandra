@@ -23,6 +23,7 @@ import 'dart:math';
 import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
+import '../../domain/serie_a/team_name_normalizer.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
@@ -1827,8 +1828,8 @@ class AppState extends ChangeNotifier {
     return {
       'id': m.id,
       'kickoff': m.kickoff.toIso8601String(),
-      'home': m.homeTeam,
-      'away': m.awayTeam,
+      'home': normalizeSerieATeamName(m.homeTeam),
+      'away': normalizeSerieATeamName(m.awayTeam),
       if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
       if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
       if (m.homeGoals != null) 'homeGoals': m.homeGoals,
@@ -1852,8 +1853,8 @@ class AppState extends ChangeNotifier {
     return PredictionMatch(
       id: j['id'] as String,
       kickoff: DateTime.parse(j['kickoff'] as String).toLocal(),
-      homeTeam: j['home'] as String,
-      awayTeam: j['away'] as String,
+      homeTeam: normalizeSerieATeamName(j['home'] as String),
+      awayTeam: normalizeSerieATeamName(j['away'] as String),
       homeTeamLogo: j['homeLogo'] as String?,
       awayTeamLogo: j['awayLogo'] as String?,
       homeGoals: _asNullableInt(j['homeGoals']),

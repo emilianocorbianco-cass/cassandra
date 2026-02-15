@@ -5,11 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../app/state/app_state.dart';
 import '../../app/widgets/team_name.dart';
 import '../../app/theme/cassandra_colors.dart';
-import '../group/models/group_member.dart';
-import '../group/widgets/group_matchday_leaderboard.dart';
 import '../predictions/models/formatters.dart';
-import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
+import '../predictions/widgets/serie_a_standings_table.dart';
 import '../scoring/models/match_outcome.dart';
 import '../../app/state/cassandra_scope.dart';
 
@@ -21,16 +19,10 @@ class SerieAPage extends StatefulWidget {
 }
 
 class _SerieAPageState extends State<SerieAPage> {
-  int _segment = 0; // 0 = risultati (last), 1 = classifica gruppo
-  DateTime? _updatedAt;
+  int _segment = 0; // 0 = risultati, 1 = classifica Serie A
   bool _didLoad = false;
 
   late Future<_SerieAData> _future;
-  List<GroupMember>? _firestoreMembers;
-  Map<String, Map<String, PickOption>> _firestorePicksByMemberId =
-      const <String, Map<String, PickOption>>{};
-  String? _firestoreGroupId;
-  bool _firestoreLeaderboardLoading = false;
 
   @override
   void initState() {
@@ -48,11 +40,25 @@ class _SerieAPageState extends State<SerieAPage> {
   Future<_SerieAData> _load() async {
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
+    final fs = app.firestoreService;
 
     if (app.cachedPredictionMatches != null &&
         app.cachedPredictionMatches!.isNotEmpty &&
         app.cachedPredictionMatchesAreReal) {
-      _updatedAt = app.cachedPredictionMatchesUpdatedAt;
+      if (app.cachedSeasonStandings.isEmpty &&
+          fs != null &&
+          app.isAuthenticated) {
+        try {
+          final standings = await fs.getSeasonStandings(
+            seasonKey: app.currentSeasonKey,
+          );
+          if (standings.isNotEmpty) {
+            app.setCachedSeasonStandings(standings);
+          }
+        } catch (_) {
+          // Best effort: non blocca la pagina risultati.
+        }
+      }
       return _SerieAData(
         matches: app.cachedPredictionMatches!,
         outcomesByMatchId: {
@@ -64,7 +70,6 @@ class _SerieAPageState extends State<SerieAPage> {
       );
     }
 
-    final fs = app.firestoreService;
     if (fs == null) {
       return const _SerieAData(
         matches: [],
@@ -82,10 +87,21 @@ class _SerieAPageState extends State<SerieAPage> {
     }
 
     try {
+      final standingsFuture = fs.getSeasonStandings(
+        seasonKey: app.currentSeasonKey,
+      );
       final doc = await fs.getMatchdayData(
         seasonKey: app.currentSeasonKey,
         dayNumber: app.cassandraMatchdayCursor,
       );
+      try {
+        final standings = await standingsFuture;
+        if (standings.isNotEmpty) {
+          app.setCachedSeasonStandings(standings);
+        }
+      } catch (_) {
+        // Best effort: risultati possono comunque essere mostrati.
+      }
       if (doc == null || doc.matches.isEmpty) {
         return const _SerieAData(
           matches: [],
@@ -94,7 +110,6 @@ class _SerieAPageState extends State<SerieAPage> {
         );
       }
 
-      _updatedAt = doc.updatedAt;
       app.setCachedPredictionMatches(
         doc.matches,
         isReal: true,
@@ -141,98 +156,22 @@ class _SerieAPageState extends State<SerieAPage> {
       _future = _load();
     });
     await _future;
-    await _refreshFirestoreLeaderboard();
     if (!mounted) return;
     setState(() {});
-  }
-
-  bool _canUseFirestoreGroupLeaderboard(AppState app) =>
-      app.firestoreService != null &&
-      app.isAuthenticated &&
-      app.activeGroupId != null;
-
-  void _ensureFirestoreLeaderboardLoaded(AppState app) {
-    if (!_canUseFirestoreGroupLeaderboard(app)) {
-      if (_firestoreMembers != null ||
-          _firestorePicksByMemberId.isNotEmpty ||
-          _firestoreGroupId != null ||
-          _firestoreLeaderboardLoading) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          setState(() {
-            _firestoreMembers = null;
-            _firestorePicksByMemberId =
-                const <String, Map<String, PickOption>>{};
-            _firestoreGroupId = null;
-            _firestoreLeaderboardLoading = false;
-          });
-        });
-      }
-      return;
-    }
-
-    final groupId = app.activeGroupId!;
-    final groupChanged = _firestoreGroupId != groupId;
-    final neverLoaded =
-        _firestoreMembers == null && !_firestoreLeaderboardLoading;
-    if (!groupChanged && !neverLoaded) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (groupChanged) {
-        setState(() {
-          _firestoreGroupId = groupId;
-          _firestoreMembers = null;
-          _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
-        });
-      }
-      _refreshFirestoreLeaderboard();
-    });
-  }
-
-  Future<void> _refreshFirestoreLeaderboard() async {
-    final app = CassandraScope.of(context);
-    if (!_canUseFirestoreGroupLeaderboard(app)) return;
-    final groupId = app.activeGroupId!;
-    if (_firestoreLeaderboardLoading) return;
-
-    setState(() => _firestoreLeaderboardLoading = true);
-    try {
-      final members = await app.fetchFirestoreGroupMembers();
-      final uids = members.map((m) => m.id).toList(growable: false);
-      final picks = uids.isEmpty
-          ? const <String, Map<String, PickOption>>{}
-          : await app.fetchFirestorePicksForMatchday(
-              dayNumber: app.uiMatchdayNumber,
-              uids: uids,
-            );
-
-      if (!mounted) return;
-      setState(() {
-        _firestoreGroupId = groupId;
-        _firestoreMembers = members;
-        _firestorePicksByMemberId = picks;
-        _firestoreLeaderboardLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _firestoreGroupId = groupId;
-        _firestoreMembers = const <GroupMember>[];
-        _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
-        _firestoreLeaderboardLoading = false;
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
-    _ensureFirestoreLeaderboardLoaded(app);
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.serieATitle)),
+      appBar: AppBar(
+        title: Text(
+          l10n.serieATitle,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       body: SafeArea(
         child: FutureBuilder<_SerieAData>(
           future: _future,
@@ -258,13 +197,6 @@ class _SerieAPageState extends State<SerieAPage> {
                         outcomesByMatchId: {},
                         fromBackend: false,
                       ));
-            final updatedAt = hasLiveCache
-                ? app.cachedPredictionMatchesUpdatedAt
-                : _updatedAt;
-
-            final updatedLabel = updatedAt == null
-                ? ''
-                : ' \u2022 ${l10n.shortUpdated} ${formatKickoff(updatedAt)}';
 
             return Column(
               children: [
@@ -277,30 +209,26 @@ class _SerieAPageState extends State<SerieAPage> {
                         segments: [
                           ButtonSegment(
                             value: 0,
-                            label: Text(l10n.serieASegmentResults),
+                            label: Text(
+                              l10n.serieASegmentResults,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                           ButtonSegment(
                             value: 1,
-                            label: Text(l10n.serieASegmentStandings),
+                            label: Text(
+                              l10n.serieASegmentStandings,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ],
                         selected: {_segment},
                         onSelectionChanged: (s) =>
                             setState(() => _segment = s.first),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        demoActive
-                            ? l10n.serieADataDemo
-                            : (data?.errorMessage != null
-                                  ? l10n.serieAErrorLoadingBackendCache(
-                                      data?.errorMessage ?? '',
-                                    )
-                                  : (effectiveData.fromBackend
-                                        ? l10n.settingsDataBackendCache +
-                                              updatedLabel
-                                        : l10n.serieADataDemo)),
-                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -308,7 +236,7 @@ class _SerieAPageState extends State<SerieAPage> {
                 const Divider(height: 1),
                 Expanded(
                   child: _segment == 1
-                      ? _buildGroupLeaderboard(context, app)
+                      ? _buildSerieAStandings(context, app)
                       : RefreshIndicator(
                           onRefresh: demoActive ? () async {} : _reload,
                           child: demoActive
@@ -330,57 +258,23 @@ class _SerieAPageState extends State<SerieAPage> {
     );
   }
 
-  Widget _buildGroupLeaderboard(BuildContext context, AppState appState) {
+  Widget _buildSerieAStandings(BuildContext context, AppState appState) {
     final l10n = AppLocalizations.of(context)!;
-    final useFirestoreMembers = _canUseFirestoreGroupLeaderboard(appState);
-    if (useFirestoreMembers &&
-        _firestoreLeaderboardLoading &&
-        _firestoreMembers == null) {
-      return const Center(child: CircularProgressIndicator());
+    final standings = appState.cachedSeasonStandings;
+    if (standings.isEmpty) {
+      return ListView(
+        children: [
+          const SizedBox(height: 120),
+          Center(child: Text(l10n.commonNoDataAvailable)),
+        ],
+      );
     }
-
-    final cachedMatches = appState.cachedPredictionMatches;
-    if (cachedMatches == null || cachedMatches.isEmpty) {
-      return Center(child: Text(l10n.serieANoMatchDataAvailable));
-    }
-
-    final outcomesByMatchId = appState.cachedPredictionMatchesAreReal
-        ? <String, MatchOutcome>{
-            for (final m in cachedMatches)
-              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
-                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
-          }
-        : <String, MatchOutcome>{};
-
-    final members = useFirestoreMembers
-        ? (_firestoreMembers ?? const <GroupMember>[])
-        : <GroupMember>[
-            GroupMember(
-              id: appState.profile.id,
-              displayName: appState.profile.displayName,
-              teamName: appState.profile.teamName,
-              avatarSeed: appState.currentUserAvatarSeed,
-              favoriteTeam: appState.profile.favoriteTeam,
-            ),
-          ];
-    if (members.isEmpty) {
-      return Center(child: Text(l10n.commonNoDataAvailable));
-    }
-
-    if (!useFirestoreMembers) {
-      appState.ensureCurrentUserPicksLoaded();
-    }
-    final overridePicksByMemberId = useFirestoreMembers
-        ? _firestorePicksByMemberId
-        : <String, Map<String, PickOption>>{
-            appState.profile.id: appState.currentUserPicksByMatchId,
-          };
-
-    return GroupMatchdayLeaderboard(
-      matches: cachedMatches,
-      outcomesByMatchId: outcomesByMatchId,
-      members: members,
-      overridePicksByMemberId: overridePicksByMemberId,
+    return RefreshIndicator(
+      onRefresh: _reload,
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 16),
+        children: [SerieAStandingsTable(standings: standings)],
+      ),
     );
   }
 
