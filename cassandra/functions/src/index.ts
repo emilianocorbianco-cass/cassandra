@@ -565,8 +565,9 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       .collection("matchdays")
       .doc(md.toString());
     const existing = await docRef.get();
+    const existingData = existing.data();
 
-    if (existing.exists && existing.data()?.finalized === true) {
+    if (existing.exists && existingData?.finalized === true) {
       console.log(`[${options.logPrefix}] Matchday ${md} finalized, skip`);
       continue;
     }
@@ -589,7 +590,7 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         );
         continue;
       }
-      const existingMatches = existing.data()?.matches;
+      const existingMatches = existingData?.matches;
       const mergedMatches = mergeLiveFieldsIntoExistingMatches(
         existingMatches,
         fixtures
@@ -614,6 +615,35 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       continue;
     }
 
+    // Odds freeze: once a matchday has stored matches, we only update live fields.
+    // This keeps the first available odds snapshot stable for the whole matchday.
+    const existingMatches = existingData?.matches;
+    if (Array.isArray(existingMatches) && existingMatches.length > 0) {
+      const mergedMatches = mergeLiveFieldsIntoExistingMatches(
+        existingMatches,
+        fixtures
+      );
+      const frozenPayload: Record<string, unknown> = {
+        outcomesByMatchId,
+        lockTime: Timestamp.fromDate(lockTime),
+        updatedAt: FieldValue.serverTimestamp(),
+        finalized,
+        oddsFrozen: true,
+      };
+      if (existingData?.oddsFrozenAt == null) {
+        frozenPayload.oddsFrozenAt = FieldValue.serverTimestamp();
+      }
+      if (mergedMatches != null) {
+        frozenPayload.matches = mergedMatches;
+      }
+
+      await docRef.set(frozenPayload, { merge: true });
+      console.log(
+        `[${options.logPrefix}] Kept frozen odds for matchday ${md}: finalized=${finalized}`
+      );
+      continue;
+    }
+
     const oddsByFixture = new Map<number, FixtureOdds>();
     for (const f of fixtures) {
       const odds = await fetchOddsForFixture(f.fixtureId);
@@ -632,6 +662,8 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         lockTime: Timestamp.fromDate(lockTime),
         updatedAt: FieldValue.serverTimestamp(),
         finalized,
+        oddsFrozen: true,
+        oddsFrozenAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );

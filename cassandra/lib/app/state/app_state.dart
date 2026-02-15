@@ -1354,13 +1354,37 @@ class AppState extends ChangeNotifier {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) return {};
 
+    DateTime? lockTime;
+    try {
+      final md = await fs.getMatchdayData(
+        seasonKey: currentSeasonKey,
+        dayNumber: dayNumber,
+      );
+      lockTime = md?.lockTime;
+    } catch (_) {
+      lockTime = null;
+    }
+
     final docs = await fs.getPicksForMatchday(
       seasonKey: currentSeasonKey,
       dayNumber: dayNumber,
       uids: uids,
     );
 
-    return {for (final d in docs) d.uid: d.picksByMatchId};
+    final revealPublicToOthers = lockTime == null
+        ? true
+        : !DateTime.now().isBefore(lockTime);
+    final requesterUid = _profile.id;
+
+    return {
+      for (final d in docs)
+        d.uid:
+            (d.uid == requesterUid ||
+                (d.visibility.toLowerCase() == 'public' &&
+                    revealPublicToOthers))
+            ? d.picksByMatchId
+            : const <String, PickOption>{},
+    };
   }
 
   /// Fetch active group metadata from Firestore.
