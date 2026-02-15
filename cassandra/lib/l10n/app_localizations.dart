@@ -974,6 +974,90 @@ abstract class AppLocalizations {
   /// **'No upcoming matches'**
   String get serieANoUpcomingMatches;
 
+  /// No description provided for @liveStatusFirstHalf.
+  ///
+  /// In en, this message translates to:
+  /// **'First Half'**
+  String get liveStatusFirstHalf;
+
+  /// No description provided for @liveStatusHalftime.
+  ///
+  /// In en, this message translates to:
+  /// **'Halftime'**
+  String get liveStatusHalftime;
+
+  /// No description provided for @liveStatusSecondHalf.
+  ///
+  /// In en, this message translates to:
+  /// **'Second Half'**
+  String get liveStatusSecondHalf;
+
+  /// No description provided for @liveStatusFinal.
+  ///
+  /// In en, this message translates to:
+  /// **'Final'**
+  String get liveStatusFinal;
+
+  /// No description provided for @liveNoEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'No key events available'**
+  String get liveNoEvents;
+
+  /// No description provided for @liveEventGoal.
+  ///
+  /// In en, this message translates to:
+  /// **'Goal'**
+  String get liveEventGoal;
+
+  /// No description provided for @liveEventPenaltyScored.
+  ///
+  /// In en, this message translates to:
+  /// **'Penalty scored'**
+  String get liveEventPenaltyScored;
+
+  /// No description provided for @liveEventPenaltyMissed.
+  ///
+  /// In en, this message translates to:
+  /// **'Penalty missed'**
+  String get liveEventPenaltyMissed;
+
+  /// No description provided for @liveEventPenalty.
+  ///
+  /// In en, this message translates to:
+  /// **'Penalty'**
+  String get liveEventPenalty;
+
+  /// No description provided for @liveEventSubstitution.
+  ///
+  /// In en, this message translates to:
+  /// **'Substitution'**
+  String get liveEventSubstitution;
+
+  /// No description provided for @liveEventYellowCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Yellow card'**
+  String get liveEventYellowCard;
+
+  /// No description provided for @liveEventRedCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Red card'**
+  String get liveEventRedCard;
+
+  /// No description provided for @liveEventWoodwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Post/Crossbar'**
+  String get liveEventWoodwork;
+
+  /// No description provided for @liveEventGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Event'**
+  String get liveEventGeneric;
+
   /// No description provided for @kickoffLabel.
   ///
   /// In en, this message translates to:

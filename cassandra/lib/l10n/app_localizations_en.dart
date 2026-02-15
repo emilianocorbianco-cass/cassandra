@@ -499,6 +499,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serieANoUpcomingMatches => 'No upcoming matches';
 
   @override
+  String get liveStatusFirstHalf => 'First Half';
+
+  @override
+  String get liveStatusHalftime => 'Halftime';
+
+  @override
+  String get liveStatusSecondHalf => 'Second Half';
+
+  @override
+  String get liveStatusFinal => 'Final';
+
+  @override
+  String get liveNoEvents => 'No key events available';
+
+  @override
+  String get liveEventGoal => 'Goal';
+
+  @override
+  String get liveEventPenaltyScored => 'Penalty scored';
+
+  @override
+  String get liveEventPenaltyMissed => 'Penalty missed';
+
+  @override
+  String get liveEventPenalty => 'Penalty';
+
+  @override
+  String get liveEventSubstitution => 'Substitution';
+
+  @override
+  String get liveEventYellowCard => 'Yellow card';
+
+  @override
+  String get liveEventRedCard => 'Red card';
+
+  @override
+  String get liveEventWoodwork => 'Post/Crossbar';
+
+  @override
+  String get liveEventGeneric => 'Event';
+
+  @override
   String get kickoffLabel => 'Kickoff';
 
   @override

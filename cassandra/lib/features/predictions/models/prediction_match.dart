@@ -17,6 +17,26 @@ class Odds {
   });
 }
 
+class MatchLiveEvent {
+  final int minute;
+  final int? extraMinute;
+  final String type;
+  final String? detail;
+  final String? teamName;
+  final String? playerName;
+  final String? assistName;
+
+  const MatchLiveEvent({
+    required this.minute,
+    required this.type,
+    this.extraMinute,
+    this.detail,
+    this.teamName,
+    this.playerName,
+    this.assistName,
+  });
+}
+
 class PredictionMatch {
   final String id;
   final String homeTeam;
@@ -28,6 +48,7 @@ class PredictionMatch {
   final int? homeGoals;
   final int? awayGoals;
   final String? statusShort;
+  final List<MatchLiveEvent> liveEvents;
 
   const PredictionMatch({
     required this.id,
@@ -40,5 +61,6 @@ class PredictionMatch {
     this.homeGoals,
     this.awayGoals,
     this.statusShort,
+    this.liveEvents = const [],
   });
 }

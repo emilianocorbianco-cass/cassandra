@@ -45,6 +45,7 @@ interface MatchDoc {
   homeGoals?: number | null;
   awayGoals?: number | null;
   statusShort?: string;
+  events?: MatchEventDoc[];
   odds: {
     home: number;
     draw: number;
@@ -53,6 +54,16 @@ interface MatchDoc {
     drawAway: number;
     homeAway: number;
   };
+}
+
+interface MatchEventDoc {
+  minute: number;
+  extraMinute?: number | null;
+  type: string;
+  detail?: string;
+  teamName?: string;
+  playerName?: string;
+  assistName?: string;
 }
 
 type Outcome = "home" | "draw" | "away" | "pending" | "voided";
@@ -229,6 +240,64 @@ function computeOutcome(f: ApiFixture): Outcome {
   return "draw";
 }
 
+function isInProgressStatus(rawStatus: string | null | undefined): boolean {
+  const status = (rawStatus ?? "").trim().toUpperCase();
+  return ["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"].includes(status);
+}
+
+function isFinalStatus(rawStatus: string | null | undefined): boolean {
+  const status = (rawStatus ?? "").trim().toUpperCase();
+  return ["FT", "AET", "PEN", "WO", "AWD", "CANC"].includes(status);
+}
+
+function hasWoodworkKeyword(raw: string): boolean {
+  const s = raw.trim().toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes("woodwork") ||
+    s.includes("crossbar") ||
+    s.includes("post") ||
+    s.includes("bar")
+  );
+}
+
+function normalizeEventType(typeRaw: string, detailRaw: string, commentsRaw: string): string | null {
+  const type = typeRaw.trim().toLowerCase();
+  const detail = detailRaw.trim().toLowerCase();
+  const comments = commentsRaw.trim().toLowerCase();
+
+  if (type === "goal") {
+    if (detail.includes("missed penalty")) return "penalty_missed";
+    if (detail.includes("penalty")) return "penalty_scored";
+    if (hasWoodworkKeyword(detail) || hasWoodworkKeyword(comments)) return "woodwork";
+    return "goal";
+  }
+  if (type === "card") {
+    if (detail.includes("red")) return "red_card";
+    if (detail.includes("yellow")) return "yellow_card";
+    return "card";
+  }
+  if (type === "subst") return "substitution";
+  if (type === "var") return "var";
+  if (hasWoodworkKeyword(detail) || hasWoodworkKeyword(comments)) return "woodwork";
+  if (detail.includes("penalty")) return "penalty_event";
+  return null;
+}
+
+function isRelevantEventType(normalizedType: string): boolean {
+  return [
+    "goal",
+    "penalty_scored",
+    "penalty_missed",
+    "substitution",
+    "yellow_card",
+    "red_card",
+    "card",
+    "woodwork",
+    "penalty_event",
+  ].includes(normalizedType);
+}
+
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
@@ -240,7 +309,8 @@ function clamp(v: number, min: number, max: number): number {
 
 function buildMatchDoc(
   f: ApiFixture,
-  odds: FixtureOdds | null
+  odds: FixtureOdds | null,
+  events: MatchEventDoc[] | null = null
 ): MatchDoc {
   // 1/X/2
   let home: number, draw: number, away: number;
@@ -290,12 +360,16 @@ function buildMatchDoc(
   if (f.awayLogo) doc.awayLogo = f.awayLogo;
   if (f.homeGoals != null) doc.homeGoals = f.homeGoals;
   if (f.awayGoals != null) doc.awayGoals = f.awayGoals;
+  if (events != null) {
+    doc.events = events;
+  }
   return doc;
 }
 
 function mergeLiveFieldsIntoExistingMatches(
   existingMatches: unknown,
-  fixtures: ApiFixture[]
+  fixtures: ApiFixture[],
+  eventsByMatchId: Map<string, MatchEventDoc[]> | null = null
 ): Record<string, unknown>[] | null {
   if (!Array.isArray(existingMatches)) return null;
 
@@ -319,6 +393,12 @@ function mergeLiveFieldsIntoExistingMatches(
         homeGoals: fixture.homeGoals,
         awayGoals: fixture.awayGoals,
       };
+      if (eventsByMatchId != null) {
+        const events = eventsByMatchId.get(id);
+        if (events != null) {
+          next.events = events;
+        }
+      }
 
       return next;
     });
@@ -435,6 +515,66 @@ async function fetchOddsForFixture(fixtureId: number): Promise<FixtureOdds | nul
     return odds;
   } catch (e) {
     console.warn(`Failed to fetch odds for fixture ${fixtureId}:`, e);
+    return null;
+  }
+}
+
+async function fetchEventsForFixture(
+  fixtureId: number
+): Promise<MatchEventDoc[] | null> {
+  try {
+    const json = await apiGet("fixtures/events", { fixture: fixtureId.toString() });
+    const response = json["response"];
+    if (!Array.isArray(response)) return null;
+
+    const events = response
+      .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+      .map((e) => {
+        const time = (e["time"] as Record<string, unknown> | undefined) ?? {};
+        const team = (e["team"] as Record<string, unknown> | undefined) ?? {};
+        const player = (e["player"] as Record<string, unknown> | undefined) ?? {};
+        const assist = (e["assist"] as Record<string, unknown> | undefined) ?? {};
+
+        const typeRaw = String(e["type"] ?? "");
+        const detailRaw = String(e["detail"] ?? "");
+        const commentsRaw = String(e["comments"] ?? "");
+        const normalizedType = normalizeEventType(typeRaw, detailRaw, commentsRaw);
+        if (normalizedType == null || !isRelevantEventType(normalizedType)) {
+          return null;
+        }
+
+        const elapsed = Number(time["elapsed"] ?? 0);
+        const extraRaw = time["extra"];
+        const extra = extraRaw == null ? null : Number(extraRaw);
+
+        const out: MatchEventDoc = {
+          minute: Number.isFinite(elapsed) ? Math.trunc(elapsed) : 0,
+          type: normalizedType,
+        };
+
+        if (extra != null && Number.isFinite(extra)) {
+          out.extraMinute = Math.trunc(extra);
+        }
+        if (detailRaw.trim()) out.detail = detailRaw.trim();
+        const teamName = team["name"] ? String(team["name"]).trim() : "";
+        const playerName = player["name"] ? String(player["name"]).trim() : "";
+        const assistName = assist["name"] ? String(assist["name"]).trim() : "";
+        if (teamName) out.teamName = normalizeSerieATeamName(teamName);
+        if (playerName) out.playerName = playerName;
+        if (assistName) out.assistName = assistName;
+        return out;
+      })
+      .filter((e): e is MatchEventDoc => e !== null)
+      .sort((a, b) => {
+        if (a.minute != b.minute) return a.minute - b.minute;
+        const aExtra = a.extraMinute ?? 0;
+        const bExtra = b.extraMinute ?? 0;
+        return aExtra - bExtra;
+      });
+
+    return events;
+  } catch (e) {
+    console.warn(`Failed to fetch events for fixture ${fixtureId}:`, e);
     return null;
   }
 }
@@ -583,6 +723,55 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       (o) => o !== "pending"
     );
 
+    const existingMatches = existingData?.matches;
+    const existingById = new Map<string, Record<string, unknown>>();
+    if (Array.isArray(existingMatches)) {
+      for (const raw of existingMatches) {
+        if (typeof raw !== "object" || raw == null) continue;
+        const m = raw as Record<string, unknown>;
+        const id = String(m["id"] ?? "");
+        if (!id) continue;
+        existingById.set(id, m);
+      }
+    }
+
+    const eventsByFixture = new Map<string, MatchEventDoc[]>();
+    for (const f of fixtures) {
+      const fixtureId = f.fixtureId.toString();
+      const status = (f.statusShort ?? "").trim().toUpperCase();
+      const existingMatch = existingById.get(fixtureId);
+      const existingEvents = Array.isArray(existingMatch?.events) ? existingMatch?.events : null;
+      const hasExistingEvents = existingEvents != null && existingEvents.length > 0;
+
+      let shouldFetchEvents = false;
+      if (isInProgressStatus(status)) {
+        shouldFetchEvents = true;
+      } else if (isFinalStatus(status) && !hasExistingEvents) {
+        shouldFetchEvents = true;
+      }
+
+      if (!shouldFetchEvents) {
+        if (Array.isArray(existingEvents)) {
+          eventsByFixture.set(
+            fixtureId,
+            existingEvents as MatchEventDoc[]
+          );
+        }
+        continue;
+      }
+
+      const events = await fetchEventsForFixture(f.fixtureId);
+      if (events != null) {
+        eventsByFixture.set(fixtureId, events);
+      } else if (Array.isArray(existingEvents)) {
+        eventsByFixture.set(
+          fixtureId,
+          existingEvents as MatchEventDoc[]
+        );
+      }
+      await sleep(120);
+    }
+
     if (!options.includeOdds) {
       if (!existing.exists) {
         console.log(
@@ -590,10 +779,10 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         );
         continue;
       }
-      const existingMatches = existingData?.matches;
       const mergedMatches = mergeLiveFieldsIntoExistingMatches(
         existingMatches,
-        fixtures
+        fixtures,
+        eventsByFixture
       );
       const livePayload: Record<string, unknown> = {
         outcomesByMatchId,
@@ -617,11 +806,11 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
 
     // Odds freeze: once a matchday has stored matches, we only update live fields.
     // This keeps the first available odds snapshot stable for the whole matchday.
-    const existingMatches = existingData?.matches;
     if (Array.isArray(existingMatches) && existingMatches.length > 0) {
       const mergedMatches = mergeLiveFieldsIntoExistingMatches(
         existingMatches,
-        fixtures
+        fixtures,
+        eventsByFixture
       );
       const frozenPayload: Record<string, unknown> = {
         outcomesByMatchId,
@@ -653,7 +842,13 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
 
     const matches: MatchDoc[] = fixtures
       .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
-      .map((f) => buildMatchDoc(f, oddsByFixture.get(f.fixtureId) ?? null));
+      .map((f) =>
+        buildMatchDoc(
+          f,
+          oddsByFixture.get(f.fixtureId) ?? null,
+          eventsByFixture.get(f.fixtureId.toString()) ?? null
+        )
+      );
 
     await docRef.set(
       {

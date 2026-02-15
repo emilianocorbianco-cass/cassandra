@@ -499,6 +499,48 @@ class AppLocalizationsIt extends AppLocalizations {
   String get serieANoUpcomingMatches => 'Nessuna partita in programma';
 
   @override
+  String get liveStatusFirstHalf => 'Primo tempo';
+
+  @override
+  String get liveStatusHalftime => 'Intervallo';
+
+  @override
+  String get liveStatusSecondHalf => 'Secondo tempo';
+
+  @override
+  String get liveStatusFinal => 'Finale';
+
+  @override
+  String get liveNoEvents => 'Nessun evento fondamentale disponibile';
+
+  @override
+  String get liveEventGoal => 'Gol';
+
+  @override
+  String get liveEventPenaltyScored => 'Rigore segnato';
+
+  @override
+  String get liveEventPenaltyMissed => 'Rigore sbagliato';
+
+  @override
+  String get liveEventPenalty => 'Rigore';
+
+  @override
+  String get liveEventSubstitution => 'Cambio';
+
+  @override
+  String get liveEventYellowCard => 'Ammonizione';
+
+  @override
+  String get liveEventRedCard => 'Espulsione';
+
+  @override
+  String get liveEventWoodwork => 'Palo/Traversa';
+
+  @override
+  String get liveEventGeneric => 'Evento';
+
+  @override
   String get kickoffLabel => 'Kickoff';
 
   @override
