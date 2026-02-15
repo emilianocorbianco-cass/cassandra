@@ -172,6 +172,11 @@
   "settingsOutcomesCacheCleared": "Cache outcomes svuotata",
   "settingsPredictionCacheCleared": "Cache pronostici svuotata",
   "settingsProfile": "Profilo",
+  "settingsProfileImageLabel": "Carica la tua immagine di profilo",
+  "settingsDisplayNameLabel": "Nome utente",
+  "settingsDisplayNameHint": "Es: Emiliano",
+  "settingsHandleLabel": "Handle",
+  "settingsHandleHint": "Es: @emiliano",
   "settingsTeamNameLabel": "Nome squadra (handle)",
   "settingsTeamNameHint": "Es: FC Cassandra",
   "settingsFavoriteTeamLabel": "Squadra del cuore",
@@ -314,6 +319,7 @@
   "groupOddsLabel": "quota",
   "tabGroup": "Gruppo",
   "tabLive": "Live",
+  "tabSettings": "Settings",
   "leaderboardsPlayersCount": "Giocatori: {count}",
   "@leaderboardsPlayersCount": {
     "placeholders": {

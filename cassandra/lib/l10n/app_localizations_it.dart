@@ -339,6 +339,21 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsProfile => 'Profilo';
 
   @override
+  String get settingsProfileImageLabel => 'Carica la tua immagine di profilo';
+
+  @override
+  String get settingsDisplayNameLabel => 'Nome utente';
+
+  @override
+  String get settingsDisplayNameHint => 'Es: Emiliano';
+
+  @override
+  String get settingsHandleLabel => 'Handle';
+
+  @override
+  String get settingsHandleHint => 'Es: @emiliano';
+
+  @override
   String get settingsTeamNameLabel => 'Nome squadra (handle)';
 
   @override
@@ -691,6 +706,9 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get tabLive => 'Live';
+
+  @override
+  String get tabSettings => 'Settings';
 
   @override
   String leaderboardsPlayersCount(Object count) {

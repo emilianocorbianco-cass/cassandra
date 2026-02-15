@@ -228,7 +228,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
             NavigationDestination(
               icon: const Icon(Icons.settings),
-              label: l10n.settingsTitle,
+              label: l10n.tabSettings,
             ),
           ],
         ),

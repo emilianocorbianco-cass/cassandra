@@ -28,6 +28,14 @@ import '../../domain/serie_a/team_name_normalizer.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
 class AppState extends ChangeNotifier {
+  static String _normalizeHandle(String raw, {String fallback = '@cassandra'}) {
+    final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty || compact == '@') return fallback;
+    final body = compact.startsWith('@') ? compact.substring(1) : compact;
+    if (body.isEmpty) return fallback;
+    return '@$body';
+  }
+
   Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = 'profile.teamName';
@@ -87,13 +95,23 @@ class AppState extends ChangeNotifier {
   void mergeFirestoreProfile(Map<String, dynamic> data) {
     bool changed = false;
 
+    final remoteDisplayName = data['displayName'] as String?;
+    if (remoteDisplayName != null &&
+        remoteDisplayName.trim().isNotEmpty &&
+        remoteDisplayName != _profile.displayName) {
+      _profile = _profile.copyWith(displayName: remoteDisplayName.trim());
+      _prefs?.setString(_kProfileDisplayName, remoteDisplayName.trim());
+      changed = true;
+    }
+
     final remoteTeamName = data['teamName'] as String?;
     if (remoteTeamName != null &&
-        remoteTeamName.isNotEmpty &&
+        remoteTeamName.trim().isNotEmpty &&
         _profile.teamName == _defaultProfile.teamName &&
         remoteTeamName != _profile.teamName) {
-      _profile = _profile.copyWith(teamName: remoteTeamName);
-      _prefs?.setString(_kProfileTeamName, remoteTeamName);
+      final normalizedRemote = _normalizeHandle(remoteTeamName);
+      _profile = _profile.copyWith(teamName: normalizedRemote);
+      _prefs?.setString(_kProfileTeamName, normalizedRemote);
       changed = true;
     }
 
@@ -103,6 +121,15 @@ class AppState extends ChangeNotifier {
         _profile.favoriteTeam == null) {
       _profile = _profile.copyWith(favoriteTeam: remoteFavoriteTeam);
       _prefs?.setString(_kProfileFavoriteTeam, remoteFavoriteTeam);
+      changed = true;
+    }
+
+    final remotePhotoUrl = data['photoUrl'] as String?;
+    if (remotePhotoUrl != null &&
+        remotePhotoUrl.trim().isNotEmpty &&
+        _profile.photoUrl != remotePhotoUrl.trim()) {
+      _profile = _profile.copyWith(photoUrl: remotePhotoUrl.trim());
+      _prefs?.setString(_kProfilePhotoUrl, remotePhotoUrl.trim());
       changed = true;
     }
 
@@ -748,6 +775,11 @@ class AppState extends ChangeNotifier {
   /// Caricamento persistente
   static Future<AppState> load() async {
     final prefs = await SharedPreferences.getInstance();
+    final storedId = (prefs.getString(_kProfileId) ?? '').trim();
+    final storedDisplayName = (prefs.getString(_kProfileDisplayName) ?? '')
+        .trim();
+    final storedEmail = (prefs.getString(_kProfileEmail) ?? '').trim();
+    final storedPhotoUrl = (prefs.getString(_kProfilePhotoUrl) ?? '').trim();
 
     // teamName: prova chiave nuova, poi legacy
     final storedTeamName =
@@ -762,13 +794,21 @@ class AppState extends ChangeNotifier {
             ?.trim();
 
     final profile = _defaultProfile.copyWith(
+      id: storedId,
+      displayName: storedDisplayName.isEmpty
+          ? _defaultProfile.displayName
+          : storedDisplayName,
       teamName: (storedTeamName == null || storedTeamName.isEmpty)
           ? _defaultProfile.teamName
-          : storedTeamName,
+          : _normalizeHandle(storedTeamName),
       favoriteTeam: (storedFavorite == null || storedFavorite.isEmpty)
           ? null
           : storedFavorite,
       clearFavoriteTeam: (storedFavorite == null || storedFavorite.isEmpty),
+      email: storedEmail.isEmpty ? null : storedEmail,
+      clearEmail: storedEmail.isEmpty,
+      photoUrl: storedPhotoUrl.isEmpty ? null : storedPhotoUrl,
+      clearPhotoUrl: storedPhotoUrl.isEmpty,
     );
 
     final language = cassandraLanguageFromStorage(prefs.getString(_kLanguage));
@@ -811,17 +851,49 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateTeamName(String value) async {
-    final cleaned = value.trim();
-    if (cleaned.isEmpty) return;
-    if (cleaned == _profile.teamName) return;
+    final normalized = _normalizeHandle(value);
+    if (normalized == _profile.teamName) return;
 
-    _profile = _profile.copyWith(teamName: cleaned);
+    _profile = _profile.copyWith(teamName: normalized);
     notifyListeners();
 
-    await _prefs?.setString(_kProfileTeamName, cleaned);
+    await _prefs?.setString(_kProfileTeamName, normalized);
     // scrivo anche la legacy per compatibilità
-    await _prefs?.setString(_kTeamNameLegacy, cleaned);
-    _syncFieldToFirestore({'teamName': cleaned});
+    await _prefs?.setString(_kTeamNameLegacy, normalized);
+    _syncFieldToFirestore({'teamName': normalized});
+  }
+
+  Future<void> updateDisplayName(String value) async {
+    final cleaned = value.trim();
+    if (cleaned.isEmpty) return;
+    if (cleaned == _profile.displayName) return;
+
+    _profile = _profile.copyWith(displayName: cleaned);
+    notifyListeners();
+
+    await _prefs?.setString(_kProfileDisplayName, cleaned);
+    _syncFieldToFirestore({'displayName': cleaned});
+  }
+
+  Future<void> updateProfilePhotoPath(String? path) async {
+    final cleaned = (path ?? '').trim();
+    final next = cleaned.isEmpty ? null : cleaned;
+    if (next == _profile.photoUrl) return;
+
+    _profile = _profile.copyWith(photoUrl: next, clearPhotoUrl: next == null);
+    notifyListeners();
+
+    if (next == null) {
+      await _prefs?.remove(_kProfilePhotoUrl);
+      _syncFieldToFirestore({'photoUrl': null});
+      return;
+    }
+
+    await _prefs?.setString(_kProfilePhotoUrl, next);
+    // Sync solo URL web; i path locali non sono portabili cross-device.
+    if (next.startsWith('http://') || next.startsWith('https://')) {
+      _syncFieldToFirestore({'photoUrl': next});
+    }
   }
 
   Future<void> updateFavoriteTeam(String value) async {

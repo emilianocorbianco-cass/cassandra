@@ -1,5 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
+String _normalizeHandleValue(String raw, {String fallback = '@cassandra'}) {
+  final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
+  if (compact.isEmpty || compact == '@') return fallback;
+  final body = compact.startsWith('@') ? compact.substring(1) : compact;
+  if (body.isEmpty) return fallback;
+  return '@$body';
+}
+
 class UserProfile {
   final String id;
   final String displayName;
@@ -55,10 +63,15 @@ class UserProfile {
   }) {
     final name =
         user.displayName ?? user.email?.split('@').first ?? 'Giocatore';
+    final defaultHandle =
+        '@${name.trim().replaceAll(RegExp(r"\s+"), "").toLowerCase()}';
     return UserProfile(
       id: user.uid,
       displayName: name,
-      teamName: existingTeamName ?? 'FC $name',
+      teamName: _normalizeHandleValue(
+        existingTeamName ?? defaultHandle,
+        fallback: '@cassandra',
+      ),
       favoriteTeam: existingFavoriteTeam,
       email: user.email,
       photoUrl: user.photoURL,

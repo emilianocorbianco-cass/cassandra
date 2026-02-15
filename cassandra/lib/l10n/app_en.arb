@@ -172,6 +172,11 @@
   "settingsOutcomesCacheCleared": "Outcomes cache cleared",
   "settingsPredictionCacheCleared": "Predictions cache cleared",
   "settingsProfile": "Profile",
+  "settingsProfileImageLabel": "Upload your profile image",
+  "settingsDisplayNameLabel": "User name",
+  "settingsDisplayNameHint": "Ex: Emiliano",
+  "settingsHandleLabel": "Handle",
+  "settingsHandleHint": "Ex: @emiliano",
   "settingsTeamNameLabel": "Team name (handle)",
   "settingsTeamNameHint": "Ex: FC Cassandra",
   "settingsFavoriteTeamLabel": "Favorite team",
@@ -314,6 +319,7 @@
   "groupOddsLabel": "odds",
   "tabGroup": "Group",
   "tabLive": "Live",
+  "tabSettings": "Settings",
   "leaderboardsPlayersCount": "Players: {count}",
   "@leaderboardsPlayersCount": {
     "placeholders": {

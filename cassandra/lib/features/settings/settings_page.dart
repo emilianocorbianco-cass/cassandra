@@ -7,6 +7,7 @@ import 'package:cassandra/l10n/app_localizations.dart';
 import 'api_football_diagnostics_page.dart';
 import 'package:cassandra/features/auth/login_page.dart';
 import 'package:cassandra/features/group/widgets/group_image_picker.dart';
+import 'package:cassandra/features/profile/widgets/profile_image_picker.dart';
 import 'package:cassandra/services/firestore/models/group_document.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -17,6 +18,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final _displayNameCtrl = TextEditingController();
   final _teamNameCtrl = TextEditingController();
 
   bool _initialized = false;
@@ -26,12 +28,12 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _selectedFavoriteTeam;
 
   CassandraLanguage _language = CassandraLanguage.system;
-  PredictionVisibility _defaultVisibility = PredictionVisibility.friends;
   Future<GroupDocument?>? _activeGroupDocFuture;
   String? _activeGroupDocFutureGroupId;
 
   @override
   void dispose() {
+    _displayNameCtrl.dispose();
     _teamNameCtrl.dispose();
     super.dispose();
   }
@@ -43,16 +45,31 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_initialized) return;
 
     final app = CassandraScope.of(context);
-    _teamNameCtrl.text = app.teamName;
+    _displayNameCtrl.text = app.profile.displayName;
+    _teamNameCtrl.text = _normalizeHandleDraft(app.teamName);
     _selectedFavoriteTeam = app.favoriteTeam.trim().isEmpty
         ? null
         : app.favoriteTeam.trim();
 
     _language = app.language;
-    _defaultVisibility = app.defaultVisibility;
 
     _initialized = true;
     _ensureFavoriteTeamsLoaded(app);
+  }
+
+  String _normalizeHandleDraft(String raw) {
+    final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty || compact == '@') return '@';
+    return compact.startsWith('@') ? compact : '@$compact';
+  }
+
+  void _normalizeHandleController() {
+    final normalized = _normalizeHandleDraft(_teamNameCtrl.text);
+    if (_teamNameCtrl.text == normalized) return;
+    _teamNameCtrl.value = TextEditingValue(
+      text: normalized,
+      selection: TextSelection.collapsed(offset: normalized.length),
+    );
   }
 
   void _ensureFavoriteTeamsLoaded(AppState app) {
@@ -180,10 +197,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _save(AppState app) async {
     final l10n = AppLocalizations.of(context)!;
+    await app.updateDisplayName(_displayNameCtrl.text);
     await app.updateTeamName(_teamNameCtrl.text);
     await app.updateFavoriteTeam(_selectedFavoriteTeam ?? '');
     await app.updateLanguage(_language);
-    await app.updateDefaultVisibility(_defaultVisibility);
 
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -196,18 +213,24 @@ class _SettingsPageState extends State<SettingsPage> {
     await app.resetAll();
 
     setState(() {
-      _teamNameCtrl.text = app.teamName;
+      _displayNameCtrl.text = app.profile.displayName;
+      _teamNameCtrl.text = _normalizeHandleDraft(app.teamName);
       _selectedFavoriteTeam = app.favoriteTeam.trim().isEmpty
           ? null
           : app.favoriteTeam.trim();
       _language = app.language;
-      _defaultVisibility = app.defaultVisibility;
     });
 
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(l10n.settingsResetDone)));
+  }
+
+  Future<void> _pickProfileImage(AppState app) async {
+    final path = await ProfileImageHelper.pickAndSaveProfileImage();
+    if (path == null) return;
+    await app.updateProfilePhotoPath(path);
   }
 
   Widget _buildAccountSection(AppState app) {
@@ -432,12 +455,34 @@ class _SettingsPageState extends State<SettingsPage> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: ProfileImageDisplay(
+                imagePathOrUrl: app.profile.photoUrl,
+                radius: 20,
+              ),
+              title: Text(l10n.settingsProfileImageLabel),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _pickProfileImage(app),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _displayNameCtrl,
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(
+              labelText: l10n.settingsDisplayNameLabel,
+              hintText: l10n.settingsDisplayNameHint,
+            ),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _teamNameCtrl,
             textInputAction: TextInputAction.next,
+            onChanged: (_) => _normalizeHandleController(),
             decoration: InputDecoration(
-              labelText: l10n.settingsTeamNameLabel,
-              hintText: l10n.settingsTeamNameHint,
+              labelText: l10n.settingsHandleLabel,
+              hintText: l10n.settingsHandleHint,
             ),
           ),
           const SizedBox(height: 12),
@@ -602,38 +647,6 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 8),
           Text(
             l10n.settingsTranslationNote,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-
-          const SizedBox(height: 24),
-          Text(
-            l10n.settingsPicksPrivacyDefault,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<PredictionVisibility>(
-            segments: <ButtonSegment<PredictionVisibility>>[
-              ButtonSegment(
-                value: PredictionVisibility.public,
-                label: Text(l10n.settingsPrivacyPublic),
-              ),
-              ButtonSegment(
-                value: PredictionVisibility.friends,
-                label: Text(l10n.settingsPrivacyFriends),
-              ),
-              ButtonSegment(
-                value: PredictionVisibility.private,
-                label: Text(l10n.settingsPrivacyPrivate),
-              ),
-            ],
-            selected: <PredictionVisibility>{_defaultVisibility},
-            onSelectionChanged: (value) {
-              setState(() => _defaultVisibility = value.first);
-            },
-          ),
-          const SizedBox(height: 8),
-          Text(
-            l10n.settingsPrivacyNote,
             style: Theme.of(context).textTheme.bodySmall,
           ),
 

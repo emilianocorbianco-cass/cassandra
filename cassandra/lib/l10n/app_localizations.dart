@@ -674,6 +674,36 @@ abstract class AppLocalizations {
   /// **'Profile'**
   String get settingsProfile;
 
+  /// No description provided for @settingsProfileImageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload your profile image'**
+  String get settingsProfileImageLabel;
+
+  /// No description provided for @settingsDisplayNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'User name'**
+  String get settingsDisplayNameLabel;
+
+  /// No description provided for @settingsDisplayNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ex: Emiliano'**
+  String get settingsDisplayNameHint;
+
+  /// No description provided for @settingsHandleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Handle'**
+  String get settingsHandleLabel;
+
+  /// No description provided for @settingsHandleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ex: @emiliano'**
+  String get settingsHandleHint;
+
   /// No description provided for @settingsTeamNameLabel.
   ///
   /// In en, this message translates to:
@@ -1339,6 +1369,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Live'**
   String get tabLive;
+
+  /// No description provided for @tabSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get tabSettings;
 
   /// No description provided for @leaderboardsPlayersCount.
   ///
