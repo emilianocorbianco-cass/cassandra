@@ -957,7 +957,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                               : () => _submit(VisibilityChoice.public),
                           style: FilledButton.styleFrom(
                             backgroundColor: CassandraColors.primary,
-                            foregroundColor: CassandraColors.bg,
+                            foregroundColor: CassandraColors.onPrimary,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(26),

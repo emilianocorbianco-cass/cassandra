@@ -276,7 +276,7 @@ class _GroupPageState extends State<GroupPage> {
                       },
                       style: FilledButton.styleFrom(
                         backgroundColor: CassandraColors.primary,
-                        foregroundColor: CassandraColors.bg,
+                        foregroundColor: CassandraColors.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: Text(l10n.groupEmptyCreateButton),

@@ -9,8 +9,11 @@ class CassandraColors {
   // Background "bianco antico"
   static const Color bg = Color(0xFFF2EEE8);
 
-  // Rosso fegato
-  static const Color primary = Color(0xFF804046);
+  // Rosso principale app (allineato al selettore Pronostici)
+  static const Color primary = Color(0xFF9C1A39);
+
+  // Testo chiaro su elementi rossi selezionati
+  static const Color onPrimary = Color(0xFFF6F4EF);
 
   // Un grigio/blu scuro neutro utile per testi secondari (puoi cambiarlo dopo)
   static const Color slate = Color(0xFF405058);

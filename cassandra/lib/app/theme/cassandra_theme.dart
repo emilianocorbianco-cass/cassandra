@@ -13,13 +13,13 @@ class CassandraTheme {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const Color(0xFF9C1A39);
+              return CassandraColors.primary;
             }
             return null;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const Color(0xFFF6F4EF);
+              return CassandraColors.onPrimary;
             }
             return null;
           }),

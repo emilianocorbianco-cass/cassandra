@@ -20,7 +20,7 @@ class OddsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? CassandraColors.bg : CassandraColors.primary;
+    final fg = selected ? CassandraColors.onPrimary : CassandraColors.primary;
     final bg = selected ? CassandraColors.primary : Colors.transparent;
     final sideColor = selected
         ? CassandraColors.primary
@@ -48,6 +48,7 @@ class OddsButton extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
+                  fontSize: 18,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
                   letterSpacing: selected ? 0.2 : 0,
                 ),
@@ -56,8 +57,8 @@ class OddsButton extends StatelessWidget {
               Text(
                 formatOdds(odds),
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
                 ),
               ),
             ],
