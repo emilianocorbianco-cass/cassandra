@@ -5,6 +5,20 @@
   "loginSignInApple": "Accedi con Apple",
   "loginSignInError": "Errore di accesso. Riprova.",
   "loginPrivacyNotice": "Usiamo solo il minimo necessario per identificarti.",
+  "profileSetupTitle": "Completa il profilo",
+  "profileSetupSubtitle": "Imposta i tuoi dati per riconoscerti subito su Cassandra.",
+  "profileSetupRememberMe": "Ricordami su questo dispositivo",
+  "profileSetupContinue": "Continua",
+  "welcomeBackTitle": "Bentornato {handle}",
+  "@welcomeBackTitle": {
+    "placeholders": {
+      "handle": {}
+    }
+  },
+  "welcomeBackEnter": "Entra",
+  "welcomeBackNotYou": "Non sei tu?",
+  "welcomeBackAuthReason": "Conferma la tua identita per entrare in Cassandra.",
+  "welcomeBackAuthCancelled": "Autenticazione annullata. Riprova.",
   "createGroupTitle": "Crea il tuo gruppo",
   "createGroupSubtitle": "Sfida i tuoi amici sui pronostici di Serie A",
   "createGroupTapAddPhoto": "Tocca per aggiungere foto",
@@ -69,6 +83,7 @@
   },
   "groupStandings": "classifica",
   "groupMatchdays": "giornate",
+  "groupStats": "stats",
   "groupHistoryDemoCard": "Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.",
   "groupMatchdayTitle": "Giornata {dayNumber}",
   "@groupMatchdayTitle": {
@@ -177,6 +192,8 @@
   "settingsDisplayNameHint": "Es: Emiliano",
   "settingsHandleLabel": "Handle",
   "settingsHandleHint": "Es: @emiliano",
+  "settingsSegmentMySettings": "my settings",
+  "settingsSegmentMyStats": "my stats",
   "settingsTeamNameLabel": "Nome squadra (handle)",
   "settingsTeamNameHint": "Es: FC Cassandra",
   "settingsFavoriteTeamLabel": "Squadra del cuore",

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../app/navigation/home_shell.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../auth/profile_setup_page.dart';
+import '../auth/welcome_back_page.dart';
 import '../auth/login_page.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -30,8 +32,14 @@ class _SplashScreenState extends State<SplashScreen> {
         // dev mode: Firebase non configurato → vai diretto a HomeShell
         destination = const HomeShell();
       } else if (app.isAuthenticated) {
-        // sessione persistita → vai a HomeShell
-        destination = const HomeShell();
+        if (app.needsProfileSetup) {
+          destination = const ProfileSetupPage();
+        } else if (app.rememberMeEnabled) {
+          destination = const WelcomeBackPage();
+        } else {
+          // sessione persistita → vai a HomeShell
+          destination = const HomeShell();
+        }
       } else {
         // non autenticato → mostra LoginPage
         destination = const LoginPage();

@@ -42,8 +42,13 @@ class ProfileImageDisplay extends StatelessWidget {
       if (source.startsWith('http://') || source.startsWith('https://')) {
         return CircleAvatar(
           radius: radius,
-          backgroundImage: NetworkImage(source),
-          backgroundColor: CassandraColors.primary.withValues(alpha: 0.12),
+          foregroundImage: NetworkImage(source),
+          backgroundColor: CassandraColors.primary,
+          child: Icon(
+            Icons.person,
+            color: CassandraColors.onPrimary,
+            size: radius,
+          ),
         );
       }
 

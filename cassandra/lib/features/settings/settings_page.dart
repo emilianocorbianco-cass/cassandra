@@ -8,6 +8,7 @@ import 'api_football_diagnostics_page.dart';
 import 'package:cassandra/features/auth/login_page.dart';
 import 'package:cassandra/features/group/widgets/group_image_picker.dart';
 import 'package:cassandra/features/profile/widgets/profile_image_picker.dart';
+import 'package:cassandra/features/stats/stats_page.dart';
 import 'package:cassandra/services/firestore/models/group_document.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -26,6 +27,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _favoriteTeamsLoaded = false;
   List<_FavoriteTeamOption> _favoriteTeamOptions = const [];
   String? _selectedFavoriteTeam;
+  int _settingsSegment = 0; // 0 = my settings, 1 = my stats
 
   CassandraLanguage _language = CassandraLanguage.system;
   Future<GroupDocument?>? _activeGroupDocFuture;
@@ -443,232 +445,284 @@ class _SettingsPageState extends State<SettingsPage> {
           },
         ),
         title: Text(
-          l10n.settingsTitle,
+          l10n.tabSettings,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            l10n.settingsProfile,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: ProfileImageDisplay(
-                imagePathOrUrl: app.profile.photoUrl,
-                radius: 20,
-              ),
-              title: Text(l10n.settingsProfileImageLabel),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _pickProfileImage(app),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _displayNameCtrl,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: l10n.settingsDisplayNameLabel,
-              hintText: l10n.settingsDisplayNameHint,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _teamNameCtrl,
-            textInputAction: TextInputAction.next,
-            onChanged: (_) => _normalizeHandleController(),
-            decoration: InputDecoration(
-              labelText: l10n.settingsHandleLabel,
-              hintText: l10n.settingsHandleHint,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Builder(
-            builder: (_) {
-              final selectedValue =
-                  _favoriteTeamOptions.any(
-                    (o) => o.name == _selectedFavoriteTeam,
-                  )
-                  ? _selectedFavoriteTeam
-                  : null;
-
-              return DropdownButtonFormField<String>(
-                key: ValueKey(
-                  'fav-team-${selectedValue ?? 'none'}-${_favoriteTeamOptions.length}',
-                ),
-                isExpanded: true,
-                initialValue: selectedValue,
-                items: _favoriteTeamOptions
-                    .map(
-                      (o) => DropdownMenuItem<String>(
-                        value: o.name,
-                        child: _favoriteTeamItem(o),
-                      ),
-                    )
-                    .toList(),
-                onChanged: _favoriteTeamOptions.isEmpty
-                    ? null
-                    : (value) => setState(() => _selectedFavoriteTeam = value),
-                decoration: InputDecoration(
-                  labelText: l10n.settingsFavoriteTeamLabel,
-                  hintText: _favoriteTeamsLoading
-                      ? l10n.groupDataRefreshing
-                      : l10n.settingsFavoriteTeamHint,
-                  suffixIcon:
-                      (_selectedFavoriteTeam != null &&
-                          _selectedFavoriteTeam!.isNotEmpty)
-                      ? IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            setState(() => _selectedFavoriteTeam = null);
-                          },
-                        )
-                      : null,
-                ),
-              );
-            },
-          ),
-
-          if (app.hasGroup) ...[
-            const SizedBox(height: 24),
-            Text(
-              l10n.settingsGroup,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Card(
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ListTile(
-                    leading: GroupImageDisplay(
-                      imagePath: app.groupImagePath,
-                      radius: 20,
-                    ),
-                    title: Text(l10n.settingsGroupImageTitle),
-                    subtitle: Text(l10n.settingsGroupImageSubtitle),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      final path =
-                          await GroupImageHelper.pickAndSaveGroupImage();
-                      if (path != null) {
-                        app.updateGroupImagePath(path);
-                      }
+                  SegmentedButton<int>(
+                    showSelectedIcon: false,
+                    segments: [
+                      ButtonSegment(
+                        value: 0,
+                        label: Text(
+                          l10n.settingsSegmentMySettings,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text(
+                          l10n.settingsSegmentMyStats,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                    selected: {_settingsSegment},
+                    onSelectionChanged: (selected) {
+                      setState(() => _settingsSegment = selected.first);
                     },
                   ),
-                  const Divider(height: 1),
-                  SwitchListTile(
-                    title: Text(l10n.settingsAdminApprovalTitle),
-                    subtitle: Text(l10n.settingsAdminApprovalSubtitle),
-                    value: app.groupAdminApproval,
-                    onChanged: (value) {
-                      app.updateGroupAdminApproval(value);
-                    },
-                  ),
-                  if (app.firestoreService == null) ...[
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.delete_forever,
-                        color: Colors.red,
-                      ),
-                      title: Text(
-                        l10n.settingsDeleteGroup,
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                      onTap: () => _confirmDeleteGroup(app),
-                    ),
-                  ] else if (_activeGroupDocFuture != null)
-                    FutureBuilder<GroupDocument?>(
-                      future: _activeGroupDocFuture,
-                      builder: (context, snapshot) {
-                        final doc = snapshot.data;
-                        final isAdmin =
-                            doc != null && doc.adminUid == app.profile.id;
-                        if (!isAdmin) return const SizedBox.shrink();
-                        return Column(
-                          children: [
-                            const Divider(height: 1),
-                            ListTile(
-                              leading: const Icon(
-                                Icons.delete_forever,
-                                color: Colors.red,
-                              ),
-                              title: Text(
-                                l10n.settingsDeleteGroup,
-                                style: const TextStyle(color: Colors.red),
-                              ),
-                              onTap: () => _confirmDeleteGroup(app),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
                 ],
               ),
             ),
+            const Divider(height: 1),
+            Expanded(
+              child: _settingsSegment == 1
+                  ? const StatsPage(embedded: true, lockToPersonal: true)
+                  : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        Text(
+                          l10n.settingsProfile,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Card(
+                          child: ListTile(
+                            leading: ProfileImageDisplay(
+                              imagePathOrUrl: app.profile.photoUrl,
+                              radius: 20,
+                            ),
+                            title: Text(l10n.settingsProfileImageLabel),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _pickProfileImage(app),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _displayNameCtrl,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: l10n.settingsDisplayNameLabel,
+                            hintText: l10n.settingsDisplayNameHint,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _teamNameCtrl,
+                          textInputAction: TextInputAction.next,
+                          onChanged: (_) => _normalizeHandleController(),
+                          decoration: InputDecoration(
+                            labelText: l10n.settingsHandleLabel,
+                            hintText: l10n.settingsHandleHint,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Builder(
+                          builder: (_) {
+                            final selectedValue =
+                                _favoriteTeamOptions.any(
+                                  (o) => o.name == _selectedFavoriteTeam,
+                                )
+                                ? _selectedFavoriteTeam
+                                : null;
+
+                            return DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'fav-team-${selectedValue ?? 'none'}-${_favoriteTeamOptions.length}',
+                              ),
+                              isExpanded: true,
+                              initialValue: selectedValue,
+                              items: _favoriteTeamOptions
+                                  .map(
+                                    (o) => DropdownMenuItem<String>(
+                                      value: o.name,
+                                      child: _favoriteTeamItem(o),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _favoriteTeamOptions.isEmpty
+                                  ? null
+                                  : (value) => setState(
+                                      () => _selectedFavoriteTeam = value,
+                                    ),
+                              decoration: InputDecoration(
+                                labelText: l10n.settingsFavoriteTeamLabel,
+                                hintText: _favoriteTeamsLoading
+                                    ? l10n.groupDataRefreshing
+                                    : l10n.settingsFavoriteTeamHint,
+                                suffixIcon:
+                                    (_selectedFavoriteTeam != null &&
+                                        _selectedFavoriteTeam!.isNotEmpty)
+                                    ? IconButton(
+                                        icon: const Icon(Icons.close),
+                                        onPressed: () {
+                                          setState(
+                                            () => _selectedFavoriteTeam = null,
+                                          );
+                                        },
+                                      )
+                                    : null,
+                              ),
+                            );
+                          },
+                        ),
+
+                        if (app.hasGroup) ...[
+                          const SizedBox(height: 24),
+                          Text(
+                            l10n.settingsGroup,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Card(
+                            child: Column(
+                              children: [
+                                ListTile(
+                                  leading: GroupImageDisplay(
+                                    imagePath: app.groupImagePath,
+                                    radius: 20,
+                                  ),
+                                  title: Text(l10n.settingsGroupImageTitle),
+                                  subtitle: Text(
+                                    l10n.settingsGroupImageSubtitle,
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () async {
+                                    final path =
+                                        await GroupImageHelper.pickAndSaveGroupImage();
+                                    if (path != null) {
+                                      app.updateGroupImagePath(path);
+                                    }
+                                  },
+                                ),
+                                const Divider(height: 1),
+                                SwitchListTile(
+                                  title: Text(l10n.settingsAdminApprovalTitle),
+                                  subtitle: Text(
+                                    l10n.settingsAdminApprovalSubtitle,
+                                  ),
+                                  value: app.groupAdminApproval,
+                                  onChanged: (value) {
+                                    app.updateGroupAdminApproval(value);
+                                  },
+                                ),
+                                if (app.firestoreService == null) ...[
+                                  const Divider(height: 1),
+                                  ListTile(
+                                    leading: const Icon(
+                                      Icons.delete_forever,
+                                      color: Colors.red,
+                                    ),
+                                    title: Text(
+                                      l10n.settingsDeleteGroup,
+                                      style: const TextStyle(color: Colors.red),
+                                    ),
+                                    onTap: () => _confirmDeleteGroup(app),
+                                  ),
+                                ] else if (_activeGroupDocFuture != null)
+                                  FutureBuilder<GroupDocument?>(
+                                    future: _activeGroupDocFuture,
+                                    builder: (context, snapshot) {
+                                      final doc = snapshot.data;
+                                      final isAdmin =
+                                          doc != null &&
+                                          doc.adminUid == app.profile.id;
+                                      if (!isAdmin) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return Column(
+                                        children: [
+                                          const Divider(height: 1),
+                                          ListTile(
+                                            leading: const Icon(
+                                              Icons.delete_forever,
+                                              color: Colors.red,
+                                            ),
+                                            title: Text(
+                                              l10n.settingsDeleteGroup,
+                                              style: const TextStyle(
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                            onTap: () =>
+                                                _confirmDeleteGroup(app),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 24),
+                        Text(
+                          l10n.settingsAccount,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildAccountSection(app),
+                        const SizedBox(height: 24),
+                        Text(
+                          l10n.settingsLanguage,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        SegmentedButton<CassandraLanguage>(
+                          showSelectedIcon: false,
+                          segments: <ButtonSegment<CassandraLanguage>>[
+                            ButtonSegment(
+                              value: CassandraLanguage.system,
+                              label: Text(l10n.settingsLanguageSystem),
+                            ),
+                            ButtonSegment(
+                              value: CassandraLanguage.it,
+                              label: Text(l10n.settingsLanguageIt),
+                            ),
+                            ButtonSegment(
+                              value: CassandraLanguage.en,
+                              label: Text(l10n.settingsLanguageEn),
+                            ),
+                          ],
+                          selected: <CassandraLanguage>{_language},
+                          onSelectionChanged: (value) {
+                            setState(() => _language = value.first);
+                          },
+                        ),
+
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () => _save(app),
+                                child: Text(l10n.settingsSave),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => _reset(app),
+                                child: Text(l10n.settingsReset),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+            ),
           ],
-
-          const SizedBox(height: 24),
-          Text(
-            l10n.settingsAccount,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          _buildAccountSection(app),
-          const SizedBox(height: 24),
-          Text(
-            l10n.settingsLanguage,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<CassandraLanguage>(
-            segments: <ButtonSegment<CassandraLanguage>>[
-              ButtonSegment(
-                value: CassandraLanguage.system,
-                label: Text(l10n.settingsLanguageSystem),
-              ),
-              ButtonSegment(
-                value: CassandraLanguage.it,
-                label: Text(l10n.settingsLanguageIt),
-              ),
-              ButtonSegment(
-                value: CassandraLanguage.en,
-                label: Text(l10n.settingsLanguageEn),
-              ),
-            ],
-            selected: <CassandraLanguage>{_language},
-            onSelectionChanged: (value) {
-              setState(() => _language = value.first);
-            },
-          ),
-          const SizedBox(height: 8),
-          Text(
-            l10n.settingsTranslationNote,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => _save(app),
-                  child: Text(l10n.settingsSave),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _reset(app),
-                  child: Text(l10n.settingsReset),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

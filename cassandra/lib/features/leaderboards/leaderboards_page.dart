@@ -400,6 +400,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SegmentedButton<int>(
+                    showSelectedIcon: false,
                     segments: [
                       ButtonSegment(
                         value: 0,
@@ -417,6 +418,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                   const SizedBox(height: 10),
                   if (_segment == 0)
                     SegmentedButton<_GeneralMode>(
+                      showSelectedIcon: false,
                       segments: [
                         ButtonSegment(
                           value: _GeneralMode.points,

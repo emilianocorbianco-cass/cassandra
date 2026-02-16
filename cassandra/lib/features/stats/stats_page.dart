@@ -14,7 +14,18 @@ import 'models/player_season_stats.dart';
 import 'stats_engine.dart';
 
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key});
+  const StatsPage({
+    super.key,
+    this.embedded = false,
+    this.lockToPersonal = false,
+    this.lockToGroup = false,
+    this.initialSegment = 0,
+  });
+
+  final bool embedded;
+  final bool lockToPersonal;
+  final bool lockToGroup;
+  final int initialSegment;
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -23,7 +34,7 @@ class StatsPage extends StatefulWidget {
 enum GroupMetric { avgPoints, totalPoints, correctRate, perfectWeeks }
 
 class _StatsPageState extends State<StatsPage> {
-  int _segment = 0; // 0 = personali, 1 = gruppo
+  late int _segment; // 0 = personali, 1 = gruppo
   GroupMetric _metric = GroupMetric.avgPoints;
 
   List<SeasonLeaderboardEntry> _entries = const [];
@@ -38,6 +49,18 @@ class _StatsPageState extends State<StatsPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _ensureLoaded();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.lockToPersonal) {
+      _segment = 0;
+    } else if (widget.lockToGroup) {
+      _segment = 1;
+    } else {
+      _segment = widget.initialSegment.clamp(0, 1).toInt();
+    }
   }
 
   bool _canUseFirestoreStats(AppState app) =>
@@ -198,11 +221,6 @@ class _StatsPageState extends State<StatsPage> {
     return CassandraStatsEngine.computeForEntry(entry);
   }
 
-  Color _avatarColorFromSeed(int seed) {
-    final hue = (seed % 360).toDouble();
-    return HSLColor.fromAHSL(1, hue, 0.45, 0.65).toColor();
-  }
-
   String _formatPercent(double v) {
     return '${(v * 100).toStringAsFixed(1).replaceAll('.', ',')}%';
   }
@@ -284,22 +302,19 @@ class _StatsPageState extends State<StatsPage> {
         ? '-'
         : 'G${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          l10n.statsTitle,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+    final content = SafeArea(
+      top: !widget.embedded,
+      bottom: !widget.embedded,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!widget.lockToPersonal && !widget.lockToGroup) ...[
                   SegmentedButton<int>(
+                    showSelectedIcon: false,
                     segments: [
                       ButtonSegment(
                         value: 0,
@@ -315,217 +330,221 @@ class _StatsPageState extends State<StatsPage> {
                         setState(() => _segment = s.first),
                   ),
                   const SizedBox(height: 10),
-                  if (_segment == 0 && _entries.isNotEmpty)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedMemberId,
-                            isExpanded: true,
-                            items: _entries.map((e) {
-                              return DropdownMenuItem(
-                                value: e.member.id,
-                                child: Text(e.member.uiName),
-                              );
-                            }).toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedMemberId = v),
-                          ),
+                ],
+                if ((widget.lockToPersonal || _segment == 0) &&
+                    _entries.isNotEmpty)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedMemberId,
+                          isExpanded: true,
+                          items: _entries.map((e) {
+                            return DropdownMenuItem(
+                              value: e.member.id,
+                              child: Text(e.member.uiName),
+                            );
+                          }).toList(),
+                          onChanged: (v) =>
+                              setState(() => _selectedMemberId = v),
                         ),
                       ),
                     ),
-                  if (_segment == 1) ...[
-                    SegmentedButton<GroupMetric>(
-                      segments: [
-                        ButtonSegment(
-                          value: GroupMetric.avgPoints,
-                          label: Text(l10n.statsMetricAverage),
-                        ),
-                        ButtonSegment(
-                          value: GroupMetric.totalPoints,
-                          label: Text(l10n.statsMetricTotal),
-                        ),
-                        ButtonSegment(
-                          value: GroupMetric.correctRate,
-                          label: Text(l10n.statsMetricPercentCorrect),
-                        ),
-                        ButtonSegment(
-                          value: GroupMetric.perfectWeeks,
-                          label: const Text('10/10'),
-                        ),
-                      ],
-                      selected: {_metric},
-                      onSelectionChanged: (s) =>
-                          setState(() => _metric = s.first),
-                    ),
-                  ],
+                  ),
+                if (!widget.lockToPersonal && _segment == 1) ...[
+                  SegmentedButton<GroupMetric>(
+                    showSelectedIcon: false,
+                    segments: [
+                      ButtonSegment(
+                        value: GroupMetric.avgPoints,
+                        label: Text(l10n.statsMetricAverage),
+                      ),
+                      ButtonSegment(
+                        value: GroupMetric.totalPoints,
+                        label: Text(l10n.statsMetricTotal),
+                      ),
+                      ButtonSegment(
+                        value: GroupMetric.correctRate,
+                        label: Text(l10n.statsMetricPercentCorrect),
+                      ),
+                      ButtonSegment(
+                        value: GroupMetric.perfectWeeks,
+                        label: const Text('10/10'),
+                      ),
+                    ],
+                    selected: {_metric},
+                    onSelectionChanged: (s) =>
+                        setState(() => _metric = s.first),
+                  ),
                 ],
-              ),
+              ],
             ),
-            const Divider(height: 1),
-            Expanded(
-              child: _loading && _entries.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : _entries.isEmpty
-                  ? Center(child: Text(l10n.commonNoDataAvailable))
-                  : _segment == 0
-                  ? ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      children: [
-                        Row(
-                          children: [
-                            _miniStat(
-                              label: l10n.statsTotal,
-                              value: totalLabel,
-                            ),
-                            _miniStat(
-                              label: l10n.statsAvgMatchday,
-                              value: avgLabel,
-                            ),
-                          ],
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _loading && _entries.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : _entries.isEmpty
+                ? Center(child: Text(l10n.commonNoDataAvailable))
+                : (widget.lockToPersonal || _segment == 0)
+                ? ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                    children: [
+                      Row(
+                        children: [
+                          _miniStat(label: l10n.statsTotal, value: totalLabel),
+                          _miniStat(
+                            label: l10n.statsAvgMatchday,
+                            value: avgLabel,
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          _miniStat(
+                            label: l10n.statsMatchdaysPlayed,
+                            value: '${s?.daysPlayed ?? 0}',
+                          ),
+                          _miniStat(label: l10n.statsAvgOdds, value: oddsLabel),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          _miniStat(
+                            label: l10n.statsTotalCorrect,
+                            value:
+                                '${s?.totalCorrect ?? 0}/${s?.totalMatches ?? 0}',
+                          ),
+                          _miniStat(
+                            label: l10n.statsMetricPercentCorrect,
+                            value: _formatPercent(s?.correctRate ?? 0),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          _miniStat(
+                            label: l10n.statsMetricPerfectWeeks,
+                            value: '${s?.perfectWeeks ?? 0}',
+                          ),
+                          _miniStat(
+                            label: l10n.statsAvgBonus,
+                            value: formatOdds(s?.averageBonusPerDay ?? 0),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                l10n.statsHighlights,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(l10n.statsBestMatchday(bestLabel)),
+                              Text(l10n.statsWorstMatchday(worstLabel)),
+                              const SizedBox(height: 8),
+                              Text(
+                                l10n.statsTotalBonus('${s?.totalBonus ?? 0}'),
+                              ),
+                            ],
+                          ),
                         ),
-                        Row(
-                          children: [
-                            _miniStat(
-                              label: l10n.statsMatchdaysPlayed,
-                              value: '${s?.daysPlayed ?? 0}',
-                            ),
-                            _miniStat(
-                              label: l10n.statsAvgOdds,
-                              value: oddsLabel,
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            _miniStat(
-                              label: l10n.statsTotalCorrect,
-                              value:
-                                  '${s?.totalCorrect ?? 0}/${s?.totalMatches ?? 0}',
-                            ),
-                            _miniStat(
-                              label: l10n.statsMetricPercentCorrect,
-                              value: _formatPercent(s?.correctRate ?? 0),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            _miniStat(
-                              label: l10n.statsMetricPerfectWeeks,
-                              value: '${s?.perfectWeeks ?? 0}',
-                            ),
-                            _miniStat(
-                              label: l10n.statsAvgBonus,
-                              value: formatOdds(s?.averageBonusPerDay ?? 0),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                    itemCount: _sortedGroup().length,
+                    itemBuilder: (context, i) {
+                      final p = _sortedGroup()[i];
+
+                      String valueLabel;
+                      switch (_metric) {
+                        case GroupMetric.avgPoints:
+                          valueLabel = formatOdds(p.averagePointsPerDay);
+                          break;
+                        case GroupMetric.totalPoints:
+                          valueLabel = formatOdds(p.totalPoints);
+                          break;
+                        case GroupMetric.correctRate:
+                          valueLabel = _formatPercent(p.correctRate);
+                          break;
+                        case GroupMetric.perfectWeeks:
+                          valueLabel = '${p.perfectWeeks}';
+                          break;
+                      }
+
+                      return Card(
+                        child: ListTile(
+                          leading: SizedBox(
+                            width: 64,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  l10n.statsHighlights,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
+                                SizedBox(
+                                  width: 22,
+                                  child: Text(
+                                    '${i + 1}',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: CassandraColors.primary,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(height: 10),
-                                Text(l10n.statsBestMatchday(bestLabel)),
-                                Text(l10n.statsWorstMatchday(worstLabel)),
-                                const SizedBox(height: 8),
-                                Text(
-                                  l10n.statsTotalBonus('${s?.totalBonus ?? 0}'),
+                                const SizedBox(width: 6),
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: CassandraColors.primary,
+                                  child: Text(
+                                    p.member.avatarInitial,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      itemCount: _sortedGroup().length,
-                      itemBuilder: (context, i) {
-                        final p = _sortedGroup()[i];
-
-                        String valueLabel;
-                        switch (_metric) {
-                          case GroupMetric.avgPoints:
-                            valueLabel = formatOdds(p.averagePointsPerDay);
-                            break;
-                          case GroupMetric.totalPoints:
-                            valueLabel = formatOdds(p.totalPoints);
-                            break;
-                          case GroupMetric.correctRate:
-                            valueLabel = _formatPercent(p.correctRate);
-                            break;
-                          case GroupMetric.perfectWeeks:
-                            valueLabel = '${p.perfectWeeks}';
-                            break;
-                        }
-
-                        return Card(
-                          child: ListTile(
-                            leading: SizedBox(
-                              width: 64,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SizedBox(
-                                    width: 22,
-                                    child: Text(
-                                      '${i + 1}',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: CassandraColors.primary,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: _avatarColorFromSeed(
-                                      p.member.avatarSeed,
-                                    ),
-                                    child: Text(
-                                      p.member.avatarInitial,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            title: Text(p.member.uiName),
-                            subtitle: Text(
-                              '${l10n.statsMatchdays}: ${p.daysPlayed} • '
-                              '${l10n.statsCorrect}: ${p.totalCorrect}/${p.totalMatches}',
-                            ),
-                            trailing: Text(
-                              valueLabel,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                          title: Text(p.member.uiName),
+                          subtitle: Text(
+                            '${l10n.statsMatchdays}: ${p.daysPlayed} • '
+                            '${l10n.statsCorrect}: ${p.totalCorrect}/${p.totalMatches}',
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                          trailing: Text(
+                            valueLabel,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+
+    if (widget.embedded) {
+      return content;
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          l10n.statsTitle,
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
+      body: content,
     );
   }
 }

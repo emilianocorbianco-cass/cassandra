@@ -207,6 +207,7 @@ class _SerieAPageState extends State<SerieAPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SegmentedButton<int>(
+                        showSelectedIcon: false,
                         segments: [
                           ButtonSegment(
                             value: 0,

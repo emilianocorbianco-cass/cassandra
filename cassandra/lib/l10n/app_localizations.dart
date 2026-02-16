@@ -62,8 +62,7 @@ import 'app_localizations_it.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -71,8 +70,7 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations);
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -84,18 +82,17 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('en'),
-    Locale('it'),
+    Locale('it')
   ];
 
   /// No description provided for @loginSeriesAPredictions.
@@ -127,6 +124,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'We only use what\'s strictly necessary to identify you.'**
   String get loginPrivacyNotice;
+
+  /// No description provided for @profileSetupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete your profile'**
+  String get profileSetupTitle;
+
+  /// No description provided for @profileSetupSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set your details so Cassandra can recognize you instantly.'**
+  String get profileSetupSubtitle;
+
+  /// No description provided for @profileSetupRememberMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember me on this device'**
+  String get profileSetupRememberMe;
+
+  /// No description provided for @profileSetupContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get profileSetupContinue;
+
+  /// No description provided for @welcomeBackTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back {handle}'**
+  String welcomeBackTitle(Object handle);
+
+  /// No description provided for @welcomeBackEnter.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter'**
+  String get welcomeBackEnter;
+
+  /// No description provided for @welcomeBackNotYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Not you?'**
+  String get welcomeBackNotYou;
+
+  /// No description provided for @welcomeBackAuthReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm your identity to enter Cassandra.'**
+  String get welcomeBackAuthReason;
+
+  /// No description provided for @welcomeBackAuthCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Authentication was cancelled. Please try again.'**
+  String get welcomeBackAuthCancelled;
 
   /// No description provided for @createGroupTitle.
   ///
@@ -367,6 +418,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'matchdays'**
   String get groupMatchdays;
+
+  /// No description provided for @groupStats.
+  ///
+  /// In en, this message translates to:
+  /// **'stats'**
+  String get groupStats;
 
   /// No description provided for @groupHistoryDemoCard.
   ///
@@ -703,6 +760,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Ex: @emiliano'**
   String get settingsHandleHint;
+
+  /// No description provided for @settingsSegmentMySettings.
+  ///
+  /// In en, this message translates to:
+  /// **'my settings'**
+  String get settingsSegmentMySettings;
+
+  /// No description provided for @settingsSegmentMyStats.
+  ///
+  /// In en, this message translates to:
+  /// **'my stats'**
+  String get settingsSegmentMyStats;
 
   /// No description provided for @settingsTeamNameLabel.
   ///
@@ -1608,14 +1677,7 @@ abstract class AppLocalizations {
   ///
   /// In en, this message translates to:
   /// **'points: {total} (base {base} • bonus {bonus}) • correct {correct}/{count} • avg odds {avgOdds}'**
-  String predictionsScoreSummary(
-    Object total,
-    Object base,
-    Object bonus,
-    Object correct,
-    Object count,
-    Object avgOdds,
-  );
+  String predictionsScoreSummary(Object total, Object base, Object bonus, Object correct, Object count, Object avgOdds);
 
   /// No description provided for @predictionsDataRealBackendCache.
   ///
@@ -1810,8 +1872,7 @@ abstract class AppLocalizations {
   String get predictionsClearPick;
 }
 
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -1820,26 +1881,25 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'it'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['en', 'it'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en':
-      return AppLocalizationsEn();
-    case 'it':
-      return AppLocalizationsIt();
+    case 'en': return AppLocalizationsEn();
+    case 'it': return AppLocalizationsIt();
   }
 
   throw FlutterError(
     'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
     'an issue with the localizations generation tool. Please file an issue '
     'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
+    'that was used.'
   );
 }

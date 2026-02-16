@@ -5,6 +5,7 @@ import '../../app/navigation/home_shell.dart';
 import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import 'profile_setup_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,6 +17,20 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
+
+  Future<void> _goAfterSignIn(String uid) async {
+    final app = CassandraScope.of(context);
+    await app.hydrateProfileFromFirestore(uid);
+    if (!mounted) return;
+
+    final Widget destination = app.needsProfileSetup
+        ? const ProfileSetupPage()
+        : const HomeShell();
+
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
+  }
 
   Future<void> _signInWithGoogle() async {
     setState(() {
@@ -38,11 +53,7 @@ class _LoginPageState extends State<LoginPage> {
       final user = credential.user;
       if (user != null && mounted) {
         app.setProfileFromFirebaseUser(user);
-        await app.hydrateProfileFromFirestore(user.uid);
-        if (!mounted) return;
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+        await _goAfterSignIn(user.uid);
       }
     } catch (e) {
       if (mounted) {
@@ -75,11 +86,7 @@ class _LoginPageState extends State<LoginPage> {
       final user = credential.user;
       if (user != null && mounted) {
         app.setProfileFromFirebaseUser(user);
-        await app.hydrateProfileFromFirestore(user.uid);
-        if (!mounted) return;
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+        await _goAfterSignIn(user.uid);
       }
     } catch (e) {
       if (mounted) {
@@ -107,6 +114,7 @@ class _LoginPageState extends State<LoginPage> {
               top: 8,
               right: 12,
               child: SegmentedButton<CassandraLanguage>(
+                showSelectedIcon: false,
                 segments: [
                   ButtonSegment(
                     value: CassandraLanguage.system,

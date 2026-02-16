@@ -64,6 +64,10 @@ class AppState extends ChangeNotifier {
   static const _kProfileDisplayName = 'profile.displayName.v1';
   static const _kProfileEmail = 'profile.email.v1';
   static const _kProfilePhotoUrl = 'profile.photoUrl.v1';
+  static const _kRememberMeEnabled = 'auth.rememberMe.enabled.v1';
+  static const _kRememberedUid = 'auth.remembered.uid.v1';
+  static const _kRememberedHandle = 'auth.remembered.handle.v1';
+  static const _kRememberedPhotoUrl = 'auth.remembered.photoUrl.v1';
 
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
@@ -423,6 +427,11 @@ class AppState extends ChangeNotifier {
   UserProfile _profile;
   CassandraLanguage _language;
   PredictionVisibility _defaultVisibility;
+  bool _rememberMeEnabled = false;
+  bool _currentUserProfileSetupCompleted = false;
+  String? _rememberedUid;
+  String? _rememberedHandle;
+  String? _rememberedPhotoUrl;
 
   int _demoSeed;
 
@@ -764,6 +773,14 @@ class AppState extends ChangeNotifier {
 
   CassandraLanguage get language => _language;
   PredictionVisibility get defaultVisibility => _defaultVisibility;
+  bool get rememberMeEnabled => _rememberMeEnabled;
+  bool get hasCompletedProfileSetup => _currentUserProfileSetupCompleted;
+  bool get needsProfileSetup =>
+      isAuthenticated && !_currentUserProfileSetupCompleted;
+  String? get rememberedUid => _rememberedUid;
+  String get rememberedHandle =>
+      (_rememberedHandle ?? _profile.teamName).trim();
+  String? get rememberedPhotoUrl => _rememberedPhotoUrl ?? _profile.photoUrl;
 
   int get demoSeed => _demoSeed;
 
@@ -771,6 +788,75 @@ class AppState extends ChangeNotifier {
 
   /// coerente con i mock: Emiliano ha seed 66
   int get currentUserAvatarSeed => 66;
+
+  static String _profileSetupCompletedKeyForUid(String uid) =>
+      'auth.profileSetupCompleted.$uid.v1';
+
+  bool _readProfileSetupCompletedForUid(String uid) {
+    final prefs = _prefs;
+    if (prefs == null || uid.trim().isEmpty) return false;
+    return prefs.getBool(_profileSetupCompletedKeyForUid(uid.trim())) ?? false;
+  }
+
+  Future<void> _writeProfileSetupCompletedForUid(String uid, bool value) async {
+    final prefs = _prefs;
+    if (prefs == null || uid.trim().isEmpty) return;
+    await prefs.setBool(_profileSetupCompletedKeyForUid(uid.trim()), value);
+  }
+
+  Future<void> _syncRememberedIdentityFromProfile() async {
+    if (!_rememberMeEnabled) return;
+    final uid = _profile.id.trim();
+    if (uid.isEmpty) return;
+
+    _rememberedUid = uid;
+    _rememberedHandle = _profile.teamName.trim();
+    _rememberedPhotoUrl = _profile.photoUrl?.trim();
+    await _prefs?.setString(_kRememberedUid, uid);
+    await _prefs?.setString(_kRememberedHandle, _rememberedHandle!);
+    if (_rememberedPhotoUrl != null && _rememberedPhotoUrl!.isNotEmpty) {
+      await _prefs?.setString(_kRememberedPhotoUrl, _rememberedPhotoUrl!);
+    } else {
+      await _prefs?.remove(_kRememberedPhotoUrl);
+    }
+  }
+
+  Future<void> forgetRememberedIdentity() async {
+    _rememberMeEnabled = false;
+    _rememberedUid = null;
+    _rememberedHandle = null;
+    _rememberedPhotoUrl = null;
+    await _prefs?.setBool(_kRememberMeEnabled, false);
+    await _prefs?.remove(_kRememberedUid);
+    await _prefs?.remove(_kRememberedHandle);
+    await _prefs?.remove(_kRememberedPhotoUrl);
+    notifyListeners();
+  }
+
+  Future<void> setRememberMeEnabled(bool enabled) async {
+    if (_rememberMeEnabled == enabled) return;
+    _rememberMeEnabled = enabled;
+    await _prefs?.setBool(_kRememberMeEnabled, enabled);
+    if (enabled) {
+      await _syncRememberedIdentityFromProfile();
+    } else {
+      _rememberedUid = null;
+      _rememberedHandle = null;
+      _rememberedPhotoUrl = null;
+      await _prefs?.remove(_kRememberedUid);
+      await _prefs?.remove(_kRememberedHandle);
+      await _prefs?.remove(_kRememberedPhotoUrl);
+    }
+    notifyListeners();
+  }
+
+  Future<void> completeProfileSetup({required bool rememberMe}) async {
+    if (_profile.id.trim().isEmpty) return;
+    _currentUserProfileSetupCompleted = true;
+    await _writeProfileSetupCompletedForUid(_profile.id, true);
+    await setRememberMeEnabled(rememberMe);
+    notifyListeners();
+  }
 
   /// Caricamento persistente
   static Future<AppState> load() async {
@@ -821,6 +907,14 @@ class AppState extends ChangeNotifier {
     final groupInviteCode = prefs.getString(_kGroupInviteCodeV1);
     final groupImagePath = prefs.getString(_kGroupImagePathV1);
     final groupAdminApproval = prefs.getBool(_kGroupAdminApprovalV1) ?? false;
+    final rememberMeEnabled = prefs.getBool(_kRememberMeEnabled) ?? false;
+    final rememberedUid = (prefs.getString(_kRememberedUid) ?? '').trim();
+    final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
+    final rememberedPhotoUrl = (prefs.getString(_kRememberedPhotoUrl) ?? '')
+        .trim();
+    final profileSetupCompleted = storedId.isNotEmpty
+        ? (prefs.getBool(_profileSetupCompletedKeyForUid(storedId)) ?? false)
+        : false;
 
     return AppState._(
         prefs,
@@ -832,7 +926,14 @@ class AppState extends ChangeNotifier {
       .._groupName = groupName
       .._groupInviteCode = groupInviteCode
       .._groupImagePath = groupImagePath
-      .._groupAdminApproval = groupAdminApproval;
+      .._groupAdminApproval = groupAdminApproval
+      .._rememberMeEnabled = rememberMeEnabled
+      .._rememberedUid = rememberedUid.isEmpty ? null : rememberedUid
+      .._rememberedHandle = rememberedHandle.isEmpty ? null : rememberedHandle
+      .._rememberedPhotoUrl = rememberedPhotoUrl.isEmpty
+          ? null
+          : rememberedPhotoUrl
+      .._currentUserProfileSetupCompleted = profileSetupCompleted;
   }
 
   /// In-memory (per i test)
@@ -860,6 +961,7 @@ class AppState extends ChangeNotifier {
     await _prefs?.setString(_kProfileTeamName, normalized);
     // scrivo anche la legacy per compatibilità
     await _prefs?.setString(_kTeamNameLegacy, normalized);
+    await _syncRememberedIdentityFromProfile();
     _syncFieldToFirestore({'teamName': normalized});
   }
 
@@ -872,6 +974,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     await _prefs?.setString(_kProfileDisplayName, cleaned);
+    await _syncRememberedIdentityFromProfile();
     _syncFieldToFirestore({'displayName': cleaned});
   }
 
@@ -890,6 +993,7 @@ class AppState extends ChangeNotifier {
     }
 
     await _prefs?.setString(_kProfilePhotoUrl, next);
+    await _syncRememberedIdentityFromProfile();
     // Sync solo URL web; i path locali non sono portabili cross-device.
     if (next.startsWith('http://') || next.startsWith('https://')) {
       _syncFieldToFirestore({'photoUrl': next});
@@ -954,6 +1058,9 @@ class AppState extends ChangeNotifier {
       existingTeamName: existingTeamName,
       existingFavoriteTeam: existingFavoriteTeam,
     );
+    _currentUserProfileSetupCompleted = _readProfileSetupCompletedForUid(
+      user.uid,
+    );
 
     _prefs?.setString(_kProfileId, user.uid);
     _prefs?.setString(_kProfileDisplayName, _profile.displayName);
@@ -964,12 +1071,17 @@ class AppState extends ChangeNotifier {
       _prefs?.setString(_kProfilePhotoUrl, _profile.photoUrl!);
     }
 
+    if (_rememberMeEnabled) {
+      unawaited(_syncRememberedIdentityFromProfile());
+    }
+
     _syncProfileToFirestore();
     notifyListeners();
   }
 
   Future<void> signOut() async {
     await _authService?.signOut();
+    await forgetRememberedIdentity();
 
     _prefs?.remove(_kProfileId);
     _prefs?.remove(_kProfileDisplayName);
@@ -983,6 +1095,7 @@ class AppState extends ChangeNotifier {
     _deleteGroupImageFile();
 
     _profile = _defaultProfile;
+    _currentUserProfileSetupCompleted = false;
     _groupName = null;
     _groupInviteCode = null;
     _groupImagePath = null;
@@ -994,6 +1107,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteAccount() async {
     await _authService?.deleteAccount();
+    await forgetRememberedIdentity();
 
     _prefs?.remove(_kProfileId);
     _prefs?.remove(_kProfileDisplayName);
@@ -1028,6 +1142,11 @@ class AppState extends ChangeNotifier {
     _groupAdminApproval = false;
     _firestoreGroupIds = [];
     _activeGroupId = null;
+    _rememberMeEnabled = false;
+    _currentUserProfileSetupCompleted = false;
+    _rememberedUid = null;
+    _rememberedHandle = null;
+    _rememberedPhotoUrl = null;
     notifyListeners();
 
     if (_prefs == null) return;
@@ -1045,6 +1164,10 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kGroupInviteCodeV1);
     await _prefs.remove(_kGroupImagePathV1);
     await _prefs.remove(_kGroupAdminApprovalV1);
+    await _prefs.remove(_kRememberMeEnabled);
+    await _prefs.remove(_kRememberedUid);
+    await _prefs.remove(_kRememberedHandle);
+    await _prefs.remove(_kRememberedPhotoUrl);
   }
 
   // ===== Runtime cache (NON persistita) =====

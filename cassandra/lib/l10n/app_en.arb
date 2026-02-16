@@ -5,6 +5,20 @@
   "loginSignInApple": "Sign in with Apple",
   "loginSignInError": "Sign-in error. Please try again.",
   "loginPrivacyNotice": "We only use what's strictly necessary to identify you.",
+  "profileSetupTitle": "Complete your profile",
+  "profileSetupSubtitle": "Set your details so Cassandra can recognize you instantly.",
+  "profileSetupRememberMe": "Remember me on this device",
+  "profileSetupContinue": "Continue",
+  "welcomeBackTitle": "Welcome back {handle}",
+  "@welcomeBackTitle": {
+    "placeholders": {
+      "handle": {}
+    }
+  },
+  "welcomeBackEnter": "Enter",
+  "welcomeBackNotYou": "Not you?",
+  "welcomeBackAuthReason": "Confirm your identity to enter Cassandra.",
+  "welcomeBackAuthCancelled": "Authentication was cancelled. Please try again.",
   "createGroupTitle": "Create your group",
   "createGroupSubtitle": "Challenge your friends on Serie A predictions",
   "createGroupTapAddPhoto": "Tap to add photo",
@@ -69,6 +83,7 @@
   },
   "groupStandings": "standings",
   "groupMatchdays": "matchdays",
+  "groupStats": "stats",
   "groupHistoryDemoCard": "Matchday history (DEMO)\nShowing 16-19 from mocks. Once we have real history via API, we'll make it live.",
   "groupMatchdayTitle": "Matchday {dayNumber}",
   "@groupMatchdayTitle": {
@@ -177,6 +192,8 @@
   "settingsDisplayNameHint": "Ex: Emiliano",
   "settingsHandleLabel": "Handle",
   "settingsHandleHint": "Ex: @emiliano",
+  "settingsSegmentMySettings": "my settings",
+  "settingsSegmentMyStats": "my stats",
   "settingsTeamNameLabel": "Team name (handle)",
   "settingsTeamNameHint": "Ex: FC Cassandra",
   "settingsFavoriteTeamLabel": "Favorite team",

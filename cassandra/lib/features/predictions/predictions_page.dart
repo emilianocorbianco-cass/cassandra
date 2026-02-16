@@ -742,6 +742,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SegmentedButton<int>(
+                    showSelectedIcon: false,
                     segments: [
                       ButtonSegment(
                         value: 1,

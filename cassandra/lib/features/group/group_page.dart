@@ -16,6 +16,7 @@ import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
+import '../stats/stats_page.dart';
 
 import 'create_group_page.dart';
 import 'join_group_page.dart';
@@ -49,7 +50,7 @@ class _GroupPageState extends State<GroupPage> {
   String _matchesSignature = '';
   String _pendingSignature = '';
 
-  int _segment = 0; // 0 = classifica, 1 = giornate (placeholder)
+  int _segment = 0; // 0 = classifica, 1 = giornate, 2 = stats
 
   // Firestore state
   List<GroupMember>? _firestoreMembers;
@@ -190,11 +191,6 @@ class _GroupPageState extends State<GroupPage> {
       english: english,
     );
     return l10n.groupMatchdayLabel(matchdayNumber, days);
-  }
-
-  Color _avatarColorFromSeed(int seed) {
-    final hue = (seed % 360).toDouble();
-    return HSLColor.fromAHSL(1, hue, 0.45, 0.65).toColor();
   }
 
   Rect? _shareOriginFromContext(BuildContext sourceContext) {
@@ -505,9 +501,11 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   const SizedBox(height: 10),
                   SegmentedButton<int>(
+                    showSelectedIcon: false,
                     segments: [
                       ButtonSegment(value: 0, label: Text(l10n.groupStandings)),
                       ButtonSegment(value: 1, label: Text(l10n.groupMatchdays)),
+                      ButtonSegment(value: 2, label: Text(l10n.groupStats)),
                     ],
                     selected: {_segment},
                     onSelectionChanged: (s) =>
@@ -525,6 +523,8 @@ class _GroupPageState extends State<GroupPage> {
                   ? const Center(child: CircularProgressIndicator())
                   : useFirestoreMembers && members.isEmpty
                   ? Center(child: Text(l10n.commonNoDataAvailable))
+                  : _segment == 2
+                  ? const StatsPage(embedded: true, lockToGroup: true)
                   : _segment == 1
                   ? RefreshIndicator(
                       onRefresh: _refreshFromFirestore,
@@ -637,9 +637,7 @@ class _GroupPageState extends State<GroupPage> {
                                     const SizedBox(width: 6),
                                     AvatarWithBadges(
                                       radius: 18,
-                                      backgroundColor: _avatarColorFromSeed(
-                                        e.member.avatarSeed,
-                                      ),
+                                      backgroundColor: CassandraColors.primary,
                                       text: e.member.avatarInitial,
                                       badges: badges,
                                     ),
