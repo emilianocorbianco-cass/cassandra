@@ -1361,6 +1361,12 @@ abstract class AppLocalizations {
   /// **'Stats'**
   String get tabStats;
 
+  /// No description provided for @tabChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get tabChat;
+
   /// No description provided for @tabTrophies.
   ///
   /// In en, this message translates to:
@@ -1444,6 +1450,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get tabSettings;
+
+  /// No description provided for @chatTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get chatTitle;
+
+  /// No description provided for @chatNoGroupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat is available only inside your group'**
+  String get chatNoGroupTitle;
+
+  /// No description provided for @chatNoGroupSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create or join a group in the Group tab to start chatting.'**
+  String get chatNoGroupSubtitle;
+
+  /// No description provided for @chatEphemeralNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages are automatically deleted after 24 hours.'**
+  String get chatEphemeralNotice;
+
+  /// No description provided for @chatEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No messages in the last 24 hours.'**
+  String get chatEmpty;
+
+  /// No description provided for @chatInputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a message'**
+  String get chatInputHint;
+
+  /// No description provided for @chatStickerPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stickers'**
+  String get chatStickerPickerTitle;
+
+  /// No description provided for @chatPhotoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get chatPhotoButton;
+
+  /// No description provided for @chatPhotoTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo is too large. Pick a lighter one.'**
+  String get chatPhotoTooLarge;
 
   /// No description provided for @leaderboardsPlayersCount.
   ///

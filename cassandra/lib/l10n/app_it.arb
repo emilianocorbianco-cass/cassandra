@@ -323,6 +323,7 @@
   "statsCorrect": "esatti",
   "tabPredictions": "Pronostici",
   "tabStats": "Statistiche",
+  "tabChat": "Chat",
   "tabTrophies": "Trofei",
   "groupYou": "tu",
   "groupOutcomesSavedTag": "OUT: SALVATI",
@@ -337,6 +338,15 @@
   "tabGroup": "Gruppo",
   "tabLive": "Live",
   "tabSettings": "Settings",
+  "chatTitle": "Chat",
+  "chatNoGroupTitle": "La chat è disponibile solo nel tuo gruppo",
+  "chatNoGroupSubtitle": "Crea o unisciti a un gruppo nella tab Gruppo per iniziare.",
+  "chatEphemeralNotice": "I messaggi si cancellano automaticamente dopo 24 ore.",
+  "chatEmpty": "Nessun messaggio nelle ultime 24 ore.",
+  "chatInputHint": "Scrivi un messaggio",
+  "chatStickerPickerTitle": "Sticker",
+  "chatPhotoButton": "Foto",
+  "chatPhotoTooLarge": "Foto troppo pesante. Scegline una più leggera.",
   "leaderboardsPlayersCount": "Giocatori: {count}",
   "@leaderboardsPlayersCount": {
     "placeholders": {

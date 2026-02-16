@@ -684,6 +684,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get tabStats => 'Statistiche';
 
   @override
+  String get tabChat => 'Chat';
+
+  @override
   String get tabTrophies => 'Trofei';
 
   @override
@@ -724,6 +727,33 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get tabSettings => 'Settings';
+
+  @override
+  String get chatTitle => 'Chat';
+
+  @override
+  String get chatNoGroupTitle => 'La chat è disponibile solo nel tuo gruppo';
+
+  @override
+  String get chatNoGroupSubtitle => 'Crea o unisciti a un gruppo nella tab Gruppo per iniziare.';
+
+  @override
+  String get chatEphemeralNotice => 'I messaggi si cancellano automaticamente dopo 24 ore.';
+
+  @override
+  String get chatEmpty => 'Nessun messaggio nelle ultime 24 ore.';
+
+  @override
+  String get chatInputHint => 'Scrivi un messaggio';
+
+  @override
+  String get chatStickerPickerTitle => 'Sticker';
+
+  @override
+  String get chatPhotoButton => 'Foto';
+
+  @override
+  String get chatPhotoTooLarge => 'Foto troppo pesante. Scegline una più leggera.';
 
   @override
   String leaderboardsPlayersCount(Object count) {

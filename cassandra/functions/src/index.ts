@@ -904,3 +904,41 @@ export const refreshLiveMatchdayData = onSchedule(
     });
   }
 );
+
+export const cleanupGroupChatMessages = onSchedule(
+  {
+    region: "europe-west1",
+    schedule: "every 15 minutes",
+    timeoutSeconds: 180,
+    memory: "256MiB",
+  },
+  async () => {
+    const db = getFirestore();
+    const cutoff = Timestamp.fromDate(
+      new Date(Date.now() - 24 * 60 * 60 * 1000)
+    );
+
+    let deleted = 0;
+    while (true) {
+      const snap = await db
+        .collectionGroup("chatMessages")
+        .where("createdAt", "<=", cutoff)
+        .orderBy("createdAt")
+        .limit(400)
+        .get();
+
+      if (snap.empty) break;
+
+      const batch = db.batch();
+      for (const doc of snap.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+      deleted += snap.docs.length;
+
+      if (snap.docs.length < 400) break;
+    }
+
+    console.log(`[chat-cleanup] deleted=${deleted}`);
+  }
+);

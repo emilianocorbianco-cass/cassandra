@@ -4,7 +4,7 @@ import 'dart:async';
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
 
-import '../../features/stats/stats_page.dart';
+import '../../features/chat/chat_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
@@ -172,7 +172,7 @@ class _HomeShellState extends State<HomeShell> {
     PredictionsPage(),
     GroupPage(),
     SerieAPage(),
-    StatsPage(),
+    ChatPage(),
     SettingsPage(),
   ];
 
@@ -223,8 +223,8 @@ class _HomeShellState extends State<HomeShell> {
               label: l10n.tabLive,
             ),
             NavigationDestination(
-              icon: const Icon(Icons.bar_chart),
-              label: l10n.tabStats,
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: l10n.tabChat,
             ),
             NavigationDestination(
               icon: const Icon(Icons.settings),

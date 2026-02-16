@@ -8,6 +8,7 @@ import '../../features/scoring/models/match_outcome.dart';
 import '../../features/scoring/models/score_breakdown.dart';
 import '../api_football/models/api_football_standing.dart';
 import 'firestore_serializers.dart';
+import 'models/chat_message_document.dart';
 import 'models/group_document.dart';
 import 'models/matchday_document.dart';
 import 'models/picks_document.dart';
@@ -233,6 +234,49 @@ class FirestoreService {
       }
     }
     return ids.toList(growable: false);
+  }
+
+  // ===== GROUP CHAT =====
+
+  Stream<List<GroupChatMessageDocument>> streamGroupChatMessages({
+    required String groupId,
+    int limit = 250,
+  }) {
+    return _db
+        .collection('groups')
+        .doc(groupId)
+        .collection('chatMessages')
+        .orderBy('createdAt', descending: false)
+        .limit(limit)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map(GroupChatMessageDocument.fromFirestore)
+              .toList(growable: false),
+        );
+  }
+
+  Future<void> sendGroupChatMessage({
+    required String groupId,
+    required String senderUid,
+    required String senderDisplayName,
+    required String senderTeamName,
+    required GroupChatMessageType type,
+    String? text,
+    String? imageBase64,
+  }) async {
+    final expiresAt = DateTime.now().toUtc().add(const Duration(hours: 24));
+    await _db.collection('groups').doc(groupId).collection('chatMessages').add({
+      'senderUid': senderUid,
+      'senderDisplayName': senderDisplayName,
+      'senderTeamName': senderTeamName,
+      'type': type.name,
+      if (text != null && text.trim().isNotEmpty) 'text': text.trim(),
+      if (imageBase64 != null && imageBase64.trim().isNotEmpty)
+        'imageBase64': imageBase64.trim(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'expiresAt': Timestamp.fromDate(expiresAt),
+    });
   }
 
   // ===== PICKS =====
