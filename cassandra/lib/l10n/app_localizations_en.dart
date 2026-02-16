@@ -921,10 +921,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsOfflineStatus => 'You\'re offline';
 
   @override
-  String get predictionsPastSegment => 'Past predictions';
+  String get predictionsPastSegment => 'past predictions';
 
   @override
-  String get predictionsUpcomingSegment => 'Predictions';
+  String get predictionsUpcomingSegment => 'predictions';
 
   @override
   String predictionsCorrectLine(Object correct, Object total) {

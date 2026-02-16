@@ -1566,19 +1566,32 @@ class AppState extends ChangeNotifier {
       uids: uids,
     );
 
-    final revealPublicToOthers = lockTime == null
-        ? true
-        : !DateTime.now().isBefore(lockTime);
+    final revealAtOrAfterLock =
+        lockTime != null && !DateTime.now().isBefore(lockTime);
     final requesterUid = _profile.id;
 
     return {
       for (final d in docs)
-        d.uid:
-            (d.uid == requesterUid ||
-                (d.visibility.toLowerCase() == 'public' &&
-                    revealPublicToOthers))
-            ? d.picksByMatchId
-            : const <String, PickOption>{},
+        d.uid: () {
+          if (d.uid == requesterUid) return d.picksByMatchId;
+
+          final visibility = d.visibility.toLowerCase().trim();
+          if (visibility == 'public') {
+            // "Invia e mostra": visibile subito.
+            return d.picksByMatchId;
+          }
+
+          // "Invia senza mostrare" (e fallback legacy): visibile solo dopo lock.
+          final hiddenUntilLock =
+              visibility == 'private' ||
+              visibility == 'friends' ||
+              visibility.isEmpty;
+          if (hiddenUntilLock && revealAtOrAfterLock) {
+            return d.picksByMatchId;
+          }
+
+          return const <String, PickOption>{};
+        }(),
     };
   }
 

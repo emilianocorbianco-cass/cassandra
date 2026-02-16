@@ -476,8 +476,8 @@
   "predictionsForceDemoData": "Force demo data",
   "predictionsSampleDataBanner": "Sample data - wait for backend sync",
   "predictionsOfflineStatus": "You're offline",
-  "predictionsPastSegment": "Past predictions",
-  "predictionsUpcomingSegment": "Predictions",
+  "predictionsPastSegment": "past predictions",
+  "predictionsUpcomingSegment": "predictions",
   "predictionsCorrectLine": "Correct predictions {correct}/{total}",
   "@predictionsCorrectLine": {
     "placeholders": {

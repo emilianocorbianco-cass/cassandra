@@ -152,7 +152,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (days.isEmpty) return '';
     final start = _formattedDayMonth(days.first, english: english);
     final end = _formattedDayMonth(days.last, english: english);
-    return start == end ? start : '$start -> $end';
+    return start == end ? start : '$start → $end';
   }
 
   void _setPick(String matchId, PickOption pick) {
@@ -722,6 +722,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       formatOdds(dayScore.baseTotal),
       bonusSigned,
     );
+    final summaryLineStyle = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600);
     final isOffline = !usingRealFixturesNow;
     return Scaffold(
       appBar: AppBar(
@@ -781,14 +784,23 @@ class _PredictionsPageState extends State<PredictionsPage>
                           Text(
                             matchdayTitle,
                             style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: CassandraColors.slate,
+                                  fontSize:
+                                      (Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium?.fontSize ??
+                                          16) +
+                                      2,
+                                ),
                           ),
                           if (matchdayRange.isNotEmpty) ...[
                             const SizedBox(height: 2),
                             Text(
                               matchdayRange,
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w600),
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                           ],
                           const SizedBox(height: 6),
@@ -840,17 +852,9 @@ class _PredictionsPageState extends State<PredictionsPage>
                           ),
                           if (lockLabel.isNotEmpty || isOffline)
                             const SizedBox(height: 8),
-                          Text(
-                            correctLine,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
+                          Text(correctLine, style: summaryLineStyle),
                           const SizedBox(height: 4),
-                          Text(
-                            pointsLine,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: CassandraColors.slate),
-                          ),
+                          Text(pointsLine, style: summaryLineStyle),
                           if (_submittedVisibility != null &&
                               _submittedAt != null) ...[
                             const SizedBox(height: 6),

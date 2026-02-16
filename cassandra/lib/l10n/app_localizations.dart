@@ -1778,13 +1778,13 @@ abstract class AppLocalizations {
   /// No description provided for @predictionsPastSegment.
   ///
   /// In en, this message translates to:
-  /// **'Past predictions'**
+  /// **'past predictions'**
   String get predictionsPastSegment;
 
   /// No description provided for @predictionsUpcomingSegment.
   ///
   /// In en, this message translates to:
-  /// **'Predictions'**
+  /// **'predictions'**
   String get predictionsUpcomingSegment;
 
   /// No description provided for @predictionsCorrectLine.

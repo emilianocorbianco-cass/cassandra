@@ -192,122 +192,130 @@ class _ChatPageState extends State<ChatPage> {
                 title: l10n.chatNoGroupTitle,
                 subtitle: l10n.chatNoGroupSubtitle,
               )
-            : Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Color(0x1A000000)),
+            : GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0x1A000000)),
+                        ),
+                      ),
+                      child: Text(
+                        l10n.chatEphemeralNotice,
+                        style: const TextStyle(
+                          color: CassandraColors.slate,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      l10n.chatEphemeralNotice,
-                      style: const TextStyle(
-                        color: CassandraColors.slate,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: StreamBuilder<List<GroupChatMessageDocument>>(
-                      stream: fs.streamGroupChatMessages(groupId: groupId),
-                      builder: (context, snap) {
-                        final cutoff = DateTime.now().toUtc().subtract(
-                          const Duration(hours: 24),
-                        );
-                        final messages = (snap.data ?? const [])
-                            .where((m) => m.createdAt.toUtc().isAfter(cutoff))
-                            .toList(growable: false);
-
-                        if (snap.connectionState == ConnectionState.waiting &&
-                            messages.isEmpty) {
-                          return const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                    Expanded(
+                      child: StreamBuilder<List<GroupChatMessageDocument>>(
+                        stream: fs.streamGroupChatMessages(groupId: groupId),
+                        builder: (context, snap) {
+                          final cutoff = DateTime.now().toUtc().subtract(
+                            const Duration(hours: 24),
                           );
-                        }
-                        if (messages.isEmpty) {
-                          return Center(
-                            child: Text(
-                              l10n.chatEmpty,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: CassandraColors.slate,
-                              ),
-                            ),
-                          );
-                        }
+                          final messages = (snap.data ?? const [])
+                              .where((m) => m.createdAt.toUtc().isAfter(cutoff))
+                              .toList(growable: false);
 
-                        return ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final m = messages[index];
-                            final mine = m.senderUid == app.profile.id;
-                            return _ChatBubble(
-                              message: m,
-                              mine: mine,
-                              timeLabel: _formatTime(m.createdAt.toLocal()),
+                          if (snap.connectionState == ConnectionState.waiting &&
+                              messages.isEmpty) {
+                            return const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             );
-                          },
-                        );
-                      },
+                          }
+                          if (messages.isEmpty) {
+                            return Center(
+                              child: Text(
+                                l10n.chatEmpty,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: CassandraColors.slate,
+                                ),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final m = messages[index];
+                              final mine = m.senderUid == app.profile.id;
+                              return _ChatBubble(
+                                message: m,
+                                mine: mine,
+                                timeLabel: _formatTime(m.createdAt.toLocal()),
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  const Divider(height: 1),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            tooltip: l10n.chatStickerPickerTitle,
-                            onPressed: _sending ? null : _showStickerPicker,
-                            icon: const Icon(Icons.emoji_emotions_outlined),
-                          ),
-                          IconButton(
-                            tooltip: l10n.chatPhotoButton,
-                            onPressed: _sending ? null : _pickAndSendImage,
-                            icon: const Icon(Icons.photo_outlined),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _inputController,
-                              minLines: 1,
-                              maxLines: 4,
-                              textInputAction: TextInputAction.send,
-                              onSubmitted: (_) => _sendText(),
-                              decoration: InputDecoration(
-                                hintText: l10n.chatInputHint,
-                                border: const OutlineInputBorder(),
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
+                    const Divider(height: 1),
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              tooltip: l10n.chatStickerPickerTitle,
+                              onPressed: _sending ? null : _showStickerPicker,
+                              icon: const Icon(Icons.emoji_emotions_outlined),
+                            ),
+                            IconButton(
+                              tooltip: l10n.chatPhotoButton,
+                              onPressed: _sending ? null : _pickAndSendImage,
+                              icon: const Icon(Icons.photo_outlined),
+                            ),
+                            Expanded(
+                              child: TextField(
+                                controller: _inputController,
+                                minLines: 1,
+                                maxLines: 4,
+                                textInputAction: TextInputAction.send,
+                                onTapOutside: (_) =>
+                                    FocusScope.of(context).unfocus(),
+                                onSubmitted: (_) => _sendText(),
+                                decoration: InputDecoration(
+                                  hintText: l10n.chatInputHint,
+                                  border: const OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton.filled(
-                            onPressed: _sending ? null : _sendText,
-                            icon: _sending
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.send),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            IconButton.filled(
+                              onPressed: _sending ? null : _sendText,
+                              icon: _sending
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.send),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
       ),
     );
