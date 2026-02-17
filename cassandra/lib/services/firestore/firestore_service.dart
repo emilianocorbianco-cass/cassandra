@@ -64,6 +64,30 @@ class FirestoreService {
     await _db.collection('users').doc(uid).set(fields, SetOptions(merge: true));
   }
 
+  Future<void> addUserFcmToken({
+    required String uid,
+    required String token,
+  }) async {
+    final cleaned = token.trim();
+    if (cleaned.isEmpty) return;
+    await _db.collection('users').doc(uid).set({
+      'fcmTokens': FieldValue.arrayUnion([cleaned]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> removeUserFcmToken({
+    required String uid,
+    required String token,
+  }) async {
+    final cleaned = token.trim();
+    if (cleaned.isEmpty) return;
+    await _db.collection('users').doc(uid).set({
+      'fcmTokens': FieldValue.arrayRemove([cleaned]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   // ===== GROUPS =====
 
   Future<String> createGroup({

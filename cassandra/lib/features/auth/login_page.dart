@@ -5,6 +5,7 @@ import '../../app/navigation/home_shell.dart';
 import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../services/notifications/push_notifications_service.dart';
 import 'profile_setup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -21,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _goAfterSignIn(String uid) async {
     final app = CassandraScope.of(context);
     await app.hydrateProfileFromFirestore(uid);
+    await PushNotificationsService.instance.initializeForAppState(app);
     if (!mounted) return;
 
     final Widget destination = app.needsProfileSetup

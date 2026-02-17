@@ -68,6 +68,7 @@ class AppState extends ChangeNotifier {
   static const _kRememberedUid = 'auth.remembered.uid.v1';
   static const _kRememberedHandle = 'auth.remembered.handle.v1';
   static const _kRememberedPhotoUrl = 'auth.remembered.photoUrl.v1';
+  static const _kDevicePushToken = 'push.deviceToken.v1';
 
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
@@ -432,6 +433,7 @@ class AppState extends ChangeNotifier {
   String? _rememberedUid;
   String? _rememberedHandle;
   String? _rememberedPhotoUrl;
+  String? _devicePushToken;
 
   int _demoSeed;
 
@@ -781,6 +783,7 @@ class AppState extends ChangeNotifier {
   String get rememberedHandle =>
       (_rememberedHandle ?? _profile.teamName).trim();
   String? get rememberedPhotoUrl => _rememberedPhotoUrl ?? _profile.photoUrl;
+  String? get devicePushToken => _devicePushToken;
 
   int get demoSeed => _demoSeed;
 
@@ -912,6 +915,7 @@ class AppState extends ChangeNotifier {
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
     final rememberedPhotoUrl = (prefs.getString(_kRememberedPhotoUrl) ?? '')
         .trim();
+    final storedPushToken = (prefs.getString(_kDevicePushToken) ?? '').trim();
     final profileSetupCompleted = storedId.isNotEmpty
         ? (prefs.getBool(_profileSetupCompletedKeyForUid(storedId)) ?? false)
         : false;
@@ -933,6 +937,7 @@ class AppState extends ChangeNotifier {
       .._rememberedPhotoUrl = rememberedPhotoUrl.isEmpty
           ? null
           : rememberedPhotoUrl
+      .._devicePushToken = storedPushToken.isEmpty ? null : storedPushToken
       .._currentUserProfileSetupCompleted = profileSetupCompleted;
   }
 
@@ -1045,6 +1050,28 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  Future<void> setDevicePushToken(String token) async {
+    final cleaned = token.trim();
+    if (cleaned.isEmpty || cleaned == _devicePushToken) return;
+
+    final previous = _devicePushToken;
+    _devicePushToken = cleaned;
+    await _prefs?.setString(_kDevicePushToken, cleaned);
+
+    final fs = _firestoreService;
+    final uid = _profile.id.trim();
+    if (fs == null || !isAuthenticated || uid.isEmpty) return;
+
+    try {
+      if (previous != null && previous.isNotEmpty && previous != cleaned) {
+        await fs.removeUserFcmToken(uid: uid, token: previous);
+      }
+      await fs.addUserFcmToken(uid: uid, token: cleaned);
+    } catch (_) {
+      // ignore: best-effort sync
+    }
+  }
+
   void setProfileFromFirebaseUser(User user) {
     final existingTeamName =
         _prefs?.getString(_kProfileTeamName) ??
@@ -1076,10 +1103,29 @@ class AppState extends ChangeNotifier {
     }
 
     _syncProfileToFirestore();
+    final token = _devicePushToken;
+    if (token != null && token.trim().isNotEmpty) {
+      unawaited(
+        _firestoreService
+            ?.addUserFcmToken(uid: user.uid, token: token)
+            .catchError((_) {}),
+      );
+    }
     notifyListeners();
   }
 
   Future<void> signOut() async {
+    final token = _devicePushToken;
+    final uid = _profile.id.trim();
+    final fs = _firestoreService;
+    if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
+      try {
+        await fs.removeUserFcmToken(uid: uid, token: token);
+      } catch (_) {
+        // ignore: best effort
+      }
+    }
+
     await _authService?.signOut();
     await forgetRememberedIdentity();
 
@@ -1106,6 +1152,17 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteAccount() async {
+    final token = _devicePushToken;
+    final uid = _profile.id.trim();
+    final fs = _firestoreService;
+    if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
+      try {
+        await fs.removeUserFcmToken(uid: uid, token: token);
+      } catch (_) {
+        // ignore: best effort
+      }
+    }
+
     await _authService?.deleteAccount();
     await forgetRememberedIdentity();
 

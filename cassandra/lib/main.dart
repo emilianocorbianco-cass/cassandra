@@ -8,6 +8,7 @@ import 'app/state/app_state.dart';
 import 'app/state/cassandra_scope.dart';
 import 'services/auth/auth_service.dart';
 import 'services/firestore/firestore_service.dart';
+import 'services/notifications/push_notifications_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +43,10 @@ Future<void> main() async {
       appState.hydrateProfileFromFirestore(currentUser.uid).catchError((_) {});
       // One-time migration: upload local data to Firestore
       appState.migrateLocalDataToFirestoreIfNeeded().catchError((_) {});
+      // Push notifications: token sync + permessi.
+      PushNotificationsService.instance
+          .initializeForAppState(appState)
+          .catchError((_) {});
     }
   }
 

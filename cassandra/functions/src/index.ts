@@ -1,7 +1,9 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineString } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import { getMessaging } from "firebase-admin/messaging";
 import * as https from "https";
 
 initializeApp();
@@ -238,6 +240,17 @@ function computeOutcome(f: ApiFixture): Outcome {
   if (f.homeGoals > f.awayGoals) return "home";
   if (f.homeGoals < f.awayGoals) return "away";
   return "draw";
+}
+
+function parseOutcomeValue(value: unknown): Outcome | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "home") return "home";
+  if (normalized === "draw") return "draw";
+  if (normalized === "away") return "away";
+  if (normalized === "pending") return "pending";
+  if (normalized === "voided") return "voided";
+  return null;
 }
 
 function isInProgressStatus(rawStatus: string | null | undefined): boolean {
@@ -583,6 +596,103 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function chunkArray<T>(values: T[], chunkSize: number): T[][] {
+  if (chunkSize <= 0) return [values];
+  const out: T[][] = [];
+  for (let i = 0; i < values.length; i += chunkSize) {
+    out.push(values.slice(i, i + chunkSize));
+  }
+  return out;
+}
+
+function extractFcmTokensFromUserDoc(
+  data: FirebaseFirestore.DocumentData | undefined
+): string[] {
+  if (!data) return [];
+  const raw = data["fcmTokens"];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+async function collectFcmTokensForUids(
+  db: FirebaseFirestore.Firestore,
+  uids: string[]
+): Promise<string[]> {
+  if (uids.length === 0) return [];
+  const cleanUids = Array.from(
+    new Set(
+      uids.map((uid) => uid.trim()).filter((uid) => uid.length > 0)
+    )
+  );
+  if (cleanUids.length === 0) return [];
+
+  const refs = cleanUids.map((uid) => db.collection("users").doc(uid));
+  const tokens = new Set<string>();
+
+  for (const refChunk of chunkArray(refs, 250)) {
+    const snapshots = await db.getAll(...refChunk);
+    for (const snap of snapshots) {
+      if (!snap.exists) continue;
+      for (const token of extractFcmTokensFromUserDoc(snap.data())) {
+        tokens.add(token);
+      }
+    }
+  }
+
+  return [...tokens];
+}
+
+async function collectAllFcmTokens(
+  db: FirebaseFirestore.Firestore
+): Promise<string[]> {
+  const usersSnap = await db.collection("users").get();
+  const tokens = new Set<string>();
+  for (const doc of usersSnap.docs) {
+    for (const token of extractFcmTokensFromUserDoc(doc.data())) {
+      tokens.add(token);
+    }
+  }
+  return [...tokens];
+}
+
+interface PushPayload {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}
+
+async function sendPushToTokens(
+  tokens: string[],
+  payload: PushPayload
+): Promise<void> {
+  if (tokens.length === 0) return;
+
+  const messaging = getMessaging();
+  for (const tokenChunk of chunkArray(tokens, 400)) {
+    await messaging.sendEachForMulticast({
+      tokens: tokenChunk,
+      notification: {
+        title: payload.title,
+        body: payload.body,
+      },
+      data: payload.data,
+      android: {
+        priority: "high",
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+          },
+        },
+      },
+    });
+  }
+}
+
 // ─── Cloud Function ──────────────────────────────────────────────────────────
 
 interface RefreshOptions {
@@ -596,6 +706,7 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
   const db = getFirestore();
   const season = seasonStartYear();
   const seasonKey = season.toString();
+  const pendingGoalNotifications: PushPayload[] = [];
 
   console.log(`[${options.logPrefix}] Starting for season ${seasonKey}`);
 
@@ -707,23 +818,62 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
     const existing = await docRef.get();
     const existingData = existing.data();
 
-    if (existing.exists && existingData?.finalized === true) {
-      console.log(`[${options.logPrefix}] Matchday ${md} finalized, skip`);
-      continue;
-    }
-
     const outcomesByMatchId: Record<string, Outcome> = {};
     for (const f of fixtures) {
       outcomesByMatchId[f.fixtureId.toString()] = computeOutcome(f);
     }
 
+    const existingOutcomesRaw = existingData?.outcomesByMatchId;
+    if (
+      existingOutcomesRaw != null &&
+      typeof existingOutcomesRaw === "object" &&
+      !Array.isArray(existingOutcomesRaw)
+    ) {
+      for (const [matchId, rawOutcome] of Object.entries(existingOutcomesRaw)) {
+        if (matchId in outcomesByMatchId) continue;
+        const parsed = parseOutcomeValue(rawOutcome);
+        if (parsed != null) {
+          outcomesByMatchId[matchId] = parsed;
+        }
+      }
+    }
+
     const kickoffs = fixtures.map((f) => new Date(f.kickoffUtc));
     const lockTime = kickoffs.reduce((min, d) => (d < min ? d : min));
-    const finalized = Object.values(outcomesByMatchId).every(
+    let finalized = Object.values(outcomesByMatchId).every(
       (o) => o !== "pending"
     );
 
     const existingMatches = existingData?.matches;
+    const existingKickoffs = existingData
+      ? parseMatchKickoffsFromDoc(existingData as Record<string, unknown>)
+      : [];
+    const knownKickoffs = [...kickoffs, ...existingKickoffs];
+    const latestKnownKickoff = knownKickoffs.reduce(
+      (max, d) => (d > max ? d : max),
+      new Date(0)
+    );
+    const withinLiveWindowAfterLatestKickoff =
+      now.getTime() < latestKnownKickoff.getTime() + 4 * 60 * 60 * 1000;
+
+    if (Array.isArray(existingMatches) && fixtures.length < existingMatches.length) {
+      finalized = false;
+      console.log(
+        `[${options.logPrefix}] Matchday ${md}: fixture list shrank ` +
+          `(${fixtures.length}/${existingMatches.length}), keep finalized=false`
+      );
+    }
+
+    if (
+      existing.exists &&
+      existingData?.finalized === true &&
+      finalized &&
+      !withinLiveWindowAfterLatestKickoff
+    ) {
+      console.log(`[${options.logPrefix}] Matchday ${md} finalized, skip`);
+      continue;
+    }
+
     const existingById = new Map<string, Record<string, unknown>>();
     if (Array.isArray(existingMatches)) {
       for (const raw of existingMatches) {
@@ -732,6 +882,42 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         const id = String(m["id"] ?? "");
         if (!id) continue;
         existingById.set(id, m);
+      }
+    }
+
+    if (!options.includeOdds && existingById.size > 0) {
+      for (const fixture of fixtures) {
+        const matchId = fixture.fixtureId.toString();
+        const prev = existingById.get(matchId);
+        if (!prev) continue;
+
+        const prevHomeRaw = prev["homeGoals"];
+        const prevAwayRaw = prev["awayGoals"];
+        const prevHome = typeof prevHomeRaw === "number" ? prevHomeRaw : 0;
+        const prevAway = typeof prevAwayRaw === "number" ? prevAwayRaw : 0;
+
+        const nextHome = fixture.homeGoals;
+        const nextAway = fixture.awayGoals;
+        if (nextHome == null || nextAway == null) continue;
+
+        const prevTotal = Math.max(0, prevHome) + Math.max(0, prevAway);
+        const nextTotal = Math.max(0, nextHome) + Math.max(0, nextAway);
+        if (nextTotal <= prevTotal) continue;
+
+        const status = (fixture.statusShort ?? "").trim().toUpperCase();
+        const inPlayOrFinal = isInProgressStatus(status) || isFinalStatus(status);
+        if (!inPlayOrFinal) continue;
+
+        pendingGoalNotifications.push({
+          title: "Nuovo gol live",
+          body: `${fixture.homeName} ${nextHome}-${nextAway} ${fixture.awayName}`,
+          data: {
+            type: "live_goal",
+            seasonKey,
+            dayNumber: md.toString(),
+            matchId,
+          },
+        });
       }
     }
 
@@ -868,6 +1054,18 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
     );
   }
 
+  if (pendingGoalNotifications.length > 0) {
+    const tokens = await collectAllFcmTokens(db);
+    if (tokens.length > 0) {
+      for (const payload of pendingGoalNotifications) {
+        await sendPushToTokens(tokens, payload);
+      }
+    }
+    console.log(
+      `[${options.logPrefix}] goal notifications sent=${pendingGoalNotifications.length}`
+    );
+  }
+
   console.log(`[${options.logPrefix}] Done`);
 }
 
@@ -901,6 +1099,81 @@ export const refreshLiveMatchdayData = onSchedule(
       lastFixtures: 20,
       nextFixtures: 40,
       logPrefix: "refresh-live",
+    });
+  }
+);
+
+function parseMatchKickoffsFromDoc(data: Record<string, unknown>): Date[] {
+  const rawMatches = data["matches"];
+  if (!Array.isArray(rawMatches)) return [];
+
+  return rawMatches
+    .filter(
+      (m): m is Record<string, unknown> => typeof m === "object" && m != null
+    )
+    .map((m) => {
+      const kickoffRaw = m["kickoff"];
+      if (typeof kickoffRaw !== "string") return null;
+      const parsed = new Date(kickoffRaw);
+      if (Number.isNaN(parsed.getTime())) return null;
+      return parsed;
+    })
+    .filter((d): d is Date => d != null)
+    .sort((a, b) => a.getTime() - b.getTime());
+}
+
+export const notifyGroupChatMessage = onDocumentCreated(
+  {
+    region: "europe-west1",
+    document: "groups/{groupId}/chatMessages/{messageId}",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const db = getFirestore();
+
+    const groupId = event.params.groupId as string;
+    const messageId = event.params.messageId as string;
+    const data = snap.data() as Record<string, unknown>;
+    const senderUid = String(data["senderUid"] ?? "").trim();
+    if (!senderUid) return;
+
+    const senderTeamName = String(data["senderTeamName"] ?? "").trim();
+    const senderDisplayName = String(data["senderDisplayName"] ?? "").trim();
+    const senderLabel = senderTeamName || senderDisplayName || "Un membro";
+
+    const type = String(data["type"] ?? "text").trim().toLowerCase();
+    const text = String(data["text"] ?? "").trim();
+    let body = `${senderLabel} ha inviato un messaggio`;
+    if (type === "image") body = `${senderLabel} ha inviato una foto`;
+    if (type === "sticker") body = `${senderLabel} ha inviato uno sticker`;
+    if (type === "text" && text.length > 0) {
+      body = `${senderLabel}: ${text.slice(0, 120)}`;
+    }
+
+    const membersSnap = await db
+      .collection("groups")
+      .doc(groupId)
+      .collection("members")
+      .get();
+    const targetUids = membersSnap.docs
+      .map((doc) => doc.id)
+      .filter((uid) => uid !== senderUid);
+    if (targetUids.length === 0) return;
+
+    const tokens = await collectFcmTokensForUids(db, targetUids);
+    if (tokens.length === 0) return;
+
+    await sendPushToTokens(tokens, {
+      title: "Nuovo messaggio in chat",
+      body,
+      data: {
+        type: "chat_message",
+        groupId,
+        messageId,
+      },
     });
   }
 );
