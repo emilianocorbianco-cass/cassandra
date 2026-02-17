@@ -6,12 +6,10 @@ import '../../app/theme/cassandra_colors.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
-import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/ranking_rules.dart';
 import '../scoring/scoring_engine.dart';
 import '../scoring/models/score_breakdown.dart';
-import 'mock_group_data.dart';
 import 'group_matchday_member_page.dart';
 import 'models/group_member.dart';
 
@@ -21,11 +19,13 @@ class GroupMatchdayPage extends StatelessWidget {
     required this.matchday,
     required this.members,
     required this.groupName,
+    this.picksByMemberId = const <String, Map<String, PickOption>>{},
   });
 
   final MatchdayData matchday;
   final List<GroupMember> members;
   final String groupName;
+  final Map<String, Map<String, PickOption>> picksByMemberId;
 
   Color _avatarColorFromSeed(int seed) {
     final hue = (seed % 360).toDouble();
@@ -45,8 +45,12 @@ class GroupMatchdayPage extends StatelessWidget {
   Map<String, PickOption> _picksForMember(
     dynamic appState,
     GroupMember member,
-    List<PredictionMatch> matches,
   ) {
+    final existing = picksByMemberId[member.id];
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+
     final uid = appState.profile.id;
 
     // Tu: preferisci i picks salvati per quella giornata
@@ -61,8 +65,8 @@ class GroupMatchdayPage extends StatelessWidget {
       if (current != null && current.isNotEmpty) return current;
     }
 
-    // Altri membri: DEMO deterministico per (memberId + dayNumber)
-    return mockPicksForMember('${member.id}_${matchday.dayNumber}', matches);
+    // Nessun fallback mock: utente senza pick reali = mappa vuota.
+    return const <String, PickOption>{};
   }
 
   @override
@@ -103,7 +107,7 @@ class GroupMatchdayPage extends StatelessWidget {
         : l10n.groupOutcomesRuntimeTag;
 
     final rows = members.map((member) {
-      final picks = _picksForMember(appState, member, matches);
+      final picks = _picksForMember(appState, member);
       final day = CassandraScoringEngine.computeDayScore(
         matches: matches,
         picksByMatchId: picks,
@@ -187,6 +191,7 @@ class GroupMatchdayPage extends StatelessWidget {
                             builder: (_) => GroupMatchdayMemberPage(
                               matchday: matchday,
                               member: r.member,
+                              picksByMatchId: r.picks,
                             ),
                           ),
                         );

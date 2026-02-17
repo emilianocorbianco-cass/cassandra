@@ -14,6 +14,37 @@ class PushNotificationsService {
   bool _initialized = false;
   AppState? _boundAppState;
 
+  Future<String?> _resolveFcmTokenWithRetry() async {
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final token = await _messaging.getToken();
+        if (token != null && token.trim().isNotEmpty) {
+          return token.trim();
+        }
+      } catch (_) {
+        // ignore
+      }
+
+      try {
+        final apnsToken = await _messaging.getAPNSToken();
+        if (apnsToken != null && apnsToken.trim().isNotEmpty) {
+          final token = await _messaging.getToken();
+          if (token != null && token.trim().isNotEmpty) {
+            return token.trim();
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+
+      if (attempt < 5) {
+        await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+      }
+    }
+
+    return null;
+  }
+
   Future<void> initializeForAppState(AppState appState) async {
     _boundAppState = appState;
 
@@ -51,7 +82,7 @@ class PushNotificationsService {
     }
 
     try {
-      final token = await _messaging.getToken();
+      final token = await _resolveFcmTokenWithRetry();
       if (token == null || token.trim().isEmpty) return;
       await appState.setDevicePushToken(token);
     } catch (_) {

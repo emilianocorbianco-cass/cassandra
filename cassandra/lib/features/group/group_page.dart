@@ -16,6 +16,9 @@ import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
+import '../scoring/models/score_breakdown.dart';
+import '../scoring/ranking_rules.dart';
+import '../scoring/scoring_engine.dart';
 import '../stats/stats_page.dart';
 
 import 'create_group_page.dart';
@@ -24,6 +27,7 @@ import 'mock_group_data.dart';
 import 'group_matchday_page.dart';
 import 'models/group_member.dart';
 import '../leaderboards/mock_season_data.dart';
+import '../../services/firestore/models/picks_document.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -53,6 +57,7 @@ class _GroupPageState extends State<GroupPage> {
   // Firestore state
   List<GroupMember>? _firestoreMembers;
   Map<String, Map<String, PickOption>>? _firestorePicksByMemberId;
+  Map<String, List<PicksDocument>>? _firestoreSeasonPicksByMemberId;
   String? _firestoreGroupId;
   bool _firestoreLoading = false;
 
@@ -110,6 +115,7 @@ class _GroupPageState extends State<GroupPage> {
     if (!_canUseFirestoreGroup(appState)) {
       if (_firestoreMembers != null ||
           _firestorePicksByMemberId != null ||
+          _firestoreSeasonPicksByMemberId != null ||
           _firestoreGroupId != null ||
           _firestoreLoading) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -117,6 +123,7 @@ class _GroupPageState extends State<GroupPage> {
           setState(() {
             _firestoreMembers = null;
             _firestorePicksByMemberId = null;
+            _firestoreSeasonPicksByMemberId = null;
             _firestoreGroupId = null;
             _firestoreLoading = false;
           });
@@ -137,6 +144,7 @@ class _GroupPageState extends State<GroupPage> {
           _firestoreGroupId = groupId;
           _firestoreMembers = null;
           _firestorePicksByMemberId = null;
+          _firestoreSeasonPicksByMemberId = null;
         });
       }
       _refreshFromFirestore();
@@ -159,12 +167,30 @@ class _GroupPageState extends State<GroupPage> {
               dayNumber: appState.uiMatchdayNumber,
               uids: uids,
             );
+      final seasonPicksByMemberId = <String, List<PicksDocument>>{};
+      if (uids.isNotEmpty) {
+        final loaded = await Future.wait(
+          uids.map((uid) async {
+            try {
+              final docs = await appState.fetchSeasonPicksForUser(uid);
+              docs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+              return MapEntry(uid, docs);
+            } catch (_) {
+              return MapEntry(uid, const <PicksDocument>[]);
+            }
+          }),
+        );
+        for (final e in loaded) {
+          seasonPicksByMemberId[e.key] = e.value;
+        }
+      }
 
       if (!mounted) return;
       setState(() {
         _firestoreGroupId = groupId;
         _firestoreMembers = members;
         _firestorePicksByMemberId = picks;
+        _firestoreSeasonPicksByMemberId = seasonPicksByMemberId;
         _firestoreLoading = false;
       });
     } catch (_) {
@@ -173,6 +199,7 @@ class _GroupPageState extends State<GroupPage> {
         _firestoreGroupId = groupId;
         _firestoreMembers = const <GroupMember>[];
         _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
+        _firestoreSeasonPicksByMemberId = const <String, List<PicksDocument>>{};
         _firestoreLoading = false;
       });
     }
@@ -355,6 +382,7 @@ class _GroupPageState extends State<GroupPage> {
       teamName: appState.profile.teamName,
       avatarSeed: appState.currentUserAvatarSeed,
       favoriteTeam: appState.profile.favoriteTeam,
+      photoUrl: appState.profile.photoUrl,
     );
 
     final useFirestoreMembers = _canUseFirestoreGroup(appState);
@@ -385,12 +413,10 @@ class _GroupPageState extends State<GroupPage> {
       };
     }
 
-    final entries = buildSortedMockGroupLeaderboard(
-      matches: _matches,
-      outcomesByMatchId: outcomesByMatchId,
-      members: members,
-      overridePicksByMemberId: overridePicksByMemberId,
-    );
+    final seasonPicksByMemberId = useFirestoreMembers
+        ? (_firestoreSeasonPicksByMemberId ??
+              const <String, List<PicksDocument>>{})
+        : const <String, List<PicksDocument>>{};
 
     appState.ensureMatchdayMatchesLoaded();
     final seasonDaySet = <int>{
@@ -398,6 +424,9 @@ class _GroupPageState extends State<GroupPage> {
       ...appState.matchesByMatchday.keys,
       ...appState.recentMatchesByMatchday.keys,
       ...appState.outcomesByMatchday.keys,
+      for (final docs in seasonPicksByMemberId.values)
+        for (final pd in docs)
+          if (pd.dayNumber > 0) pd.dayNumber,
     };
     final seasonDays = seasonDaySet.toList()..sort((a, b) => a.compareTo(b));
     final seasonMatchdays = seasonDays.isEmpty
@@ -427,6 +456,89 @@ class _GroupPageState extends State<GroupPage> {
               outcomesByMatchId: outcomesForDay,
             );
           }).toList();
+    final seasonMatchdayByDay = <int, MatchdayData>{
+      for (final md in seasonMatchdays) md.dayNumber: md,
+    };
+    final picksByMemberByDay = <int, Map<String, Map<String, PickOption>>>{};
+    for (final e in seasonPicksByMemberId.entries) {
+      for (final pd in e.value) {
+        picksByMemberByDay.putIfAbsent(pd.dayNumber, () => {});
+        picksByMemberByDay[pd.dayNumber]![e.key] = pd.picksByMatchId;
+      }
+    }
+    if (overridePicksByMemberId.isNotEmpty) {
+      picksByMemberByDay.putIfAbsent(currentMatchdayNumber, () => {});
+      picksByMemberByDay[currentMatchdayNumber]!.addAll(
+        overridePicksByMemberId,
+      );
+    }
+
+    final generalEntries = members.map((member) {
+      final docs = seasonPicksByMemberId[member.id] ?? const <PicksDocument>[];
+      var totalPoints = 0.0;
+      final avgOddsValues = <double>[];
+
+      for (final pd in docs) {
+        if (pd.dayNumber == currentMatchdayNumber) continue;
+        final score = pd.score;
+        if (score != null) {
+          totalPoints += score.total;
+          if (score.averageOddsPlayed != null) {
+            avgOddsValues.add(score.averageOddsPlayed!);
+          }
+          continue;
+        }
+
+        final md = seasonMatchdayByDay[pd.dayNumber];
+        if (md == null || md.matches.isEmpty) continue;
+        final dayScore = CassandraScoringEngine.computeDayScore(
+          matches: md.matches,
+          picksByMatchId: pd.picksByMatchId,
+          outcomesByMatchId: md.outcomesByMatchId,
+        );
+        totalPoints += dayScore.total;
+        if (dayScore.averageOddsPlayed != null) {
+          avgOddsValues.add(dayScore.averageOddsPlayed!);
+        }
+      }
+
+      final currentPicks =
+          overridePicksByMemberId[member.id] ??
+          picksByMemberByDay[currentMatchdayNumber]?[member.id] ??
+          const <String, PickOption>{};
+      final currentDayScore = CassandraScoringEngine.computeDayScore(
+        matches: _matches,
+        picksByMatchId: currentPicks,
+        outcomesByMatchId: outcomesByMatchId,
+      );
+      totalPoints += currentDayScore.total;
+      if (currentDayScore.averageOddsPlayed != null) {
+        avgOddsValues.add(currentDayScore.averageOddsPlayed!);
+      }
+
+      final avgOdds = avgOddsValues.isEmpty
+          ? null
+          : avgOddsValues.reduce((a, b) => a + b) / avgOddsValues.length;
+
+      return _GeneralLeaderboardEntry(
+        member: member,
+        currentDay: currentDayScore,
+        currentDayPicksByMatchId: currentPicks,
+        totalPoints: totalPoints,
+        averageOddsPlayed: avgOdds,
+      );
+    }).toList();
+    generalEntries.sort((a, b) {
+      return compareCassandraRanking(
+        aTotal: a.totalPoints,
+        bTotal: b.totalPoints,
+        aAverageOddsPlayed: a.averageOddsPlayed,
+        bAverageOddsPlayed: b.averageOddsPlayed,
+        aTeamName: a.member.teamName,
+        bTeamName: b.member.teamName,
+      );
+    });
+
     final seasonMatchdaysDesc = seasonMatchdays.toList()
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
@@ -584,6 +696,12 @@ class _GroupPageState extends State<GroupPage> {
                                       matchday: md,
                                       members: members,
                                       groupName: groupName,
+                                      picksByMemberId:
+                                          picksByMemberByDay[md.dayNumber] ??
+                                          const <
+                                            String,
+                                            Map<String, PickOption>
+                                          >{},
                                     ),
                                   ),
                                 );
@@ -597,22 +715,22 @@ class _GroupPageState extends State<GroupPage> {
                       onRefresh: _refreshFromFirestore,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                        itemCount: entries.length,
+                        itemCount: generalEntries.length,
                         itemBuilder: (context, i) {
-                          final e = entries[i];
+                          final e = generalEntries[i];
 
                           final badges =
                               CassandraBadgeEngine.badgesForGroupMatchday(
                                 member: e.member,
                                 rank: i + 1,
-                                totalPlayers: entries.length,
+                                totalPlayers: generalEntries.length,
                                 matches: _matches,
-                                picksByMatchId: e.picksByMatchId,
+                                picksByMatchId: e.currentDayPicksByMatchId,
                                 outcomesByMatchId: outcomesByMatchId,
-                                day: e.day,
+                                day: e.currentDay,
                               );
 
-                          final pts = formatOdds(e.day.total);
+                          final pts = formatOdds(e.totalPoints);
 
                           return Card(
                             child: ListTile(
@@ -628,7 +746,8 @@ class _GroupPageState extends State<GroupPage> {
                                     builder: (_) => UserHubPage(
                                       member: e.member,
                                       matchday: md,
-                                      picksByMatchId: e.picksByMatchId,
+                                      picksByMatchId:
+                                          e.currentDayPicksByMatchId,
                                       initialTabIndex: 0,
                                     ),
                                   ),
@@ -656,6 +775,7 @@ class _GroupPageState extends State<GroupPage> {
                                       backgroundColor: CassandraColors.primary,
                                       text: e.member.avatarInitial,
                                       badges: badges,
+                                      imagePathOrUrl: e.member.photoUrl,
                                     ),
                                   ],
                                 ),
@@ -665,7 +785,7 @@ class _GroupPageState extends State<GroupPage> {
                                 pts,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  color: e.day.total >= 0
+                                  color: e.totalPoints >= 0
                                       ? CassandraColors.primary
                                       : CassandraColors.slate,
                                 ),
@@ -681,4 +801,20 @@ class _GroupPageState extends State<GroupPage> {
       ),
     );
   }
+}
+
+class _GeneralLeaderboardEntry {
+  _GeneralLeaderboardEntry({
+    required this.member,
+    required this.currentDay,
+    required this.currentDayPicksByMatchId,
+    required this.totalPoints,
+    required this.averageOddsPlayed,
+  });
+
+  final GroupMember member;
+  final DayScoreBreakdown currentDay;
+  final Map<String, PickOption> currentDayPicksByMatchId;
+  final double totalPoints;
+  final double? averageOddsPlayed;
 }

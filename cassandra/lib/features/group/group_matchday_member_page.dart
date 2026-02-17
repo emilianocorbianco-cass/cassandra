@@ -7,11 +7,9 @@ import '../../app/widgets/team_name.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
-import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/scoring_engine.dart';
-import 'mock_group_data.dart';
 import 'models/group_member.dart';
 
 class GroupMatchdayMemberPage extends StatelessWidget {
@@ -19,10 +17,12 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     super.key,
     required this.matchday,
     required this.member,
+    this.picksByMatchId = const <String, PickOption>{},
   });
 
   final MatchdayData matchday;
   final GroupMember member;
+  final Map<String, PickOption> picksByMatchId;
 
   Map<String, MatchOutcome> _effectiveOutcomes(dynamic appState) {
     final saved = appState.hasSavedOutcomesForMatchday(matchday.dayNumber)
@@ -34,10 +34,9 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     return <String, MatchOutcome>{...matchday.outcomesByMatchId, ...saved};
   }
 
-  Map<String, PickOption> _picksForMember(
-    dynamic appState,
-    List<PredictionMatch> matches,
-  ) {
+  Map<String, PickOption> _picksForMember(dynamic appState) {
+    if (picksByMatchId.isNotEmpty) return picksByMatchId;
+
     final uid = appState.profile.id;
 
     if (member.id == uid) {
@@ -50,7 +49,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
       if (current != null && current.isNotEmpty) return current;
     }
 
-    return mockPicksForMember('${member.id}_${matchday.dayNumber}', matches);
+    return const <String, PickOption>{};
   }
 
   String _pickLabel(PickOption p) {
@@ -102,7 +101,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
 
     final matches = matchday.matches;
     final outcomes = _effectiveOutcomes(appState);
-    final picks = _picksForMember(appState, matches);
+    final picks = _picksForMember(appState);
 
     final DayScoreBreakdown day = CassandraScoringEngine.computeDayScore(
       matches: matches,

@@ -39,6 +39,7 @@ class GroupMemberDocument {
   final String uid;
   final String displayName;
   final String teamName;
+  final String? photoUrl;
   final int avatarSeed;
   final String? favoriteTeam;
   final DateTime joinedAt;
@@ -48,6 +49,7 @@ class GroupMemberDocument {
     required this.uid,
     required this.displayName,
     required this.teamName,
+    this.photoUrl,
     required this.avatarSeed,
     this.favoriteTeam,
     required this.joinedAt,
@@ -62,6 +64,7 @@ class GroupMemberDocument {
       uid: doc.id,
       displayName: d['displayName'] as String? ?? '',
       teamName: d['teamName'] as String? ?? '',
+      photoUrl: d['photoUrl'] as String?,
       avatarSeed: d['avatarSeed'] as int? ?? 0,
       favoriteTeam: d['favoriteTeam'] as String?,
       joinedAt: (d['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),

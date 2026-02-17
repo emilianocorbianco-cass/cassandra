@@ -2,6 +2,7 @@ class GroupMember {
   final String id;
   final String displayName;
   final String teamName;
+  final String? photoUrl;
 
   /// Seed per generare colore avatar in modo deterministico
   final int avatarSeed;
@@ -14,6 +15,7 @@ class GroupMember {
     required this.displayName,
     required this.teamName,
     required this.avatarSeed,
+    this.photoUrl,
     this.favoriteTeam,
   });
 

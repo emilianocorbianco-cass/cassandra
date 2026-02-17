@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/firestore/models/chat_message_document.dart';
+import '../../services/firestore/firestore_service.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -16,7 +18,8 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage>
+    with AutomaticKeepAliveClientMixin<ChatPage> {
   static const _maxImageBytes = 380000;
 
   final _inputController = TextEditingController();
@@ -24,9 +27,16 @@ class _ChatPageState extends State<ChatPage> {
   String? _lastTailMessageId;
   bool _pendingScrollToBottom = false;
   bool _sending = false;
+  FirestoreService? _boundStreamFirestore;
+  String? _boundStreamGroupId;
+  StreamSubscription<List<GroupChatMessageDocument>>? _messagesSub;
+  List<GroupChatMessageDocument> _messages = const [];
+  bool _messagesLoading = false;
 
   @override
   void dispose() {
+    _messagesSub?.cancel();
+    _messagesSub = null;
     _inputController.dispose();
     _messagesController.dispose();
     super.dispose();
@@ -132,6 +142,56 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
+  void _bindMessagesStream(FirestoreService fs, String groupId) {
+    if (_boundStreamFirestore == fs &&
+        _boundStreamGroupId == groupId &&
+        _messagesSub != null) {
+      return;
+    }
+    _messagesSub?.cancel();
+    _boundStreamFirestore = fs;
+    _boundStreamGroupId = groupId;
+    _messages = const [];
+    _messagesLoading = true;
+    _lastTailMessageId = null;
+    _pendingScrollToBottom = true;
+    _messagesSub = fs
+        .streamGroupChatMessages(groupId: groupId)
+        .listen(
+          (incoming) {
+            final cutoff = DateTime.now().toUtc().subtract(
+              const Duration(hours: 24),
+            );
+            final messages = incoming
+                .where((m) => m.createdAt.toUtc().isAfter(cutoff))
+                .toList(growable: false);
+            _handleMessagesChanged(messages);
+            if (!mounted) return;
+            setState(() {
+              _messages = messages;
+              _messagesLoading = false;
+            });
+          },
+          onError: (_) {
+            if (!mounted) return;
+            setState(() {
+              _messagesLoading = false;
+            });
+          },
+        );
+  }
+
+  void _unbindMessagesStream() {
+    _messagesSub?.cancel();
+    _messagesSub = null;
+    _boundStreamFirestore = null;
+    _boundStreamGroupId = null;
+    _messages = const [];
+    _messagesLoading = false;
+    _lastTailMessageId = null;
+    _pendingScrollToBottom = false;
+  }
+
   String _formatTime(DateTime dateTime) {
     final h = dateTime.hour.toString().padLeft(2, '0');
     final m = dateTime.minute.toString().padLeft(2, '0');
@@ -140,10 +200,16 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
     final fs = app.firestoreService;
     final groupId = app.activeGroupId;
+    if (fs != null && groupId != null) {
+      _bindMessagesStream(fs, groupId);
+    } else {
+      _unbindMessagesStream();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -180,25 +246,12 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                     Expanded(
-                      child: StreamBuilder<List<GroupChatMessageDocument>>(
-                        stream: fs.streamGroupChatMessages(groupId: groupId),
-                        builder: (context, snap) {
-                          final cutoff = DateTime.now().toUtc().subtract(
-                            const Duration(hours: 24),
-                          );
-                          final messages = (snap.data ?? const [])
-                              .where((m) => m.createdAt.toUtc().isAfter(cutoff))
-                              .toList(growable: false);
-                          _handleMessagesChanged(messages);
-
-                          if (snap.connectionState == ConnectionState.waiting &&
-                              messages.isEmpty) {
-                            return const Center(
+                      child: _messagesLoading && _messages.isEmpty
+                          ? const Center(
                               child: CircularProgressIndicator(strokeWidth: 2),
-                            );
-                          }
-                          if (messages.isEmpty) {
-                            return Center(
+                            )
+                          : _messages.isEmpty
+                          ? Center(
                               child: Text(
                                 l10n.chatEmpty,
                                 textAlign: TextAlign.center,
@@ -206,30 +259,31 @@ class _ChatPageState extends State<ChatPage> {
                                   color: CassandraColors.slate,
                                 ),
                               ),
-                            );
-                          }
-
-                          return ListView.builder(
-                            key: const PageStorageKey<String>(
-                              'group_chat_messages',
+                            )
+                          : ListView.builder(
+                              key: const PageStorageKey<String>(
+                                'group_chat_messages',
+                              ),
+                              controller: _messagesController,
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.fromLTRB(
+                                12,
+                                12,
+                                12,
+                                18,
+                              ),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                final m = _messages[index];
+                                final mine = m.senderUid == app.profile.id;
+                                return _ChatBubble(
+                                  message: m,
+                                  mine: mine,
+                                  timeLabel: _formatTime(m.createdAt.toLocal()),
+                                );
+                              },
                             ),
-                            controller: _messagesController,
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
-                            itemCount: messages.length,
-                            itemBuilder: (context, index) {
-                              final m = messages[index];
-                              final mine = m.senderUid == app.profile.id;
-                              return _ChatBubble(
-                                message: m,
-                                mine: mine,
-                                timeLabel: _formatTime(m.createdAt.toLocal()),
-                              );
-                            },
-                          );
-                        },
-                      ),
                     ),
                     const Divider(height: 1),
                     SafeArea(
@@ -301,6 +355,9 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }
 
 class _ChatLockedState extends StatelessWidget {

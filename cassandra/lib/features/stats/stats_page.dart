@@ -4,12 +4,14 @@ import 'package:cassandra/l10n/app_localizations.dart';
 import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../services/firestore/models/picks_document.dart';
 import '../group/models/group_member.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../leaderboards/models/member_matchday_score.dart';
 import '../leaderboards/models/season_leaderboard_entry.dart';
 import '../predictions/models/formatters.dart';
 import '../scoring/models/score_breakdown.dart';
+import '../scoring/scoring_engine.dart';
 import 'models/player_season_stats.dart';
 import 'stats_engine.dart';
 
@@ -106,22 +108,76 @@ class _StatsPageState extends State<StatsPage> {
     final members = await app.fetchFirestoreGroupMembers();
     if (members.isEmpty) return const [];
 
-    final entries = <SeasonLeaderboardEntry>[];
+    final picksByMember = <String, List<PicksDocument>>{};
+    final daysNeedingFallbackScore = <int>{};
     for (final member in members) {
       final picksDocs = await app.fetchSeasonPicksForUser(member.id);
       picksDocs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+      picksByMember[member.id] = picksDocs;
+      for (final pd in picksDocs) {
+        if (pd.score == null && pd.dayNumber > 0) {
+          daysNeedingFallbackScore.add(pd.dayNumber);
+        }
+      }
+    }
+
+    final matchdayByDay = <int, MatchdayData>{};
+    final fs = app.firestoreService;
+    if (fs != null && daysNeedingFallbackScore.isNotEmpty) {
+      for (final day in daysNeedingFallbackScore) {
+        try {
+          final md = await fs.getMatchdayData(
+            seasonKey: app.currentSeasonKey,
+            dayNumber: day,
+          );
+          if (md == null || md.matches.isEmpty) continue;
+          matchdayByDay[day] = MatchdayData(
+            dayNumber: day,
+            matches: md.matches,
+            outcomesByMatchId: md.outcomesByMatchId,
+          );
+        } catch (_) {
+          // ignore: fallback remains zero for missing/malformed day
+        }
+      }
+    }
+
+    final entries = <SeasonLeaderboardEntry>[];
+    for (final member in members) {
+      final picksDocs = picksByMember[member.id] ?? const [];
 
       final perDay = <MemberMatchdayScore>[];
       for (final pd in picksDocs) {
         final score = pd.score;
-        final day = DayScoreBreakdown(
-          matchBreakdowns: const [],
-          baseTotal: score?.baseTotal ?? 0,
-          bonusPoints: score?.bonusPoints ?? 0,
-          total: score?.total ?? 0,
-          correctCount: score?.correctCount ?? 0,
-          averageOddsPlayed: score?.averageOddsPlayed,
-        );
+        late final DayScoreBreakdown day;
+        if (score != null) {
+          day = DayScoreBreakdown(
+            matchBreakdowns: const [],
+            baseTotal: score.baseTotal,
+            bonusPoints: score.bonusPoints,
+            total: score.total,
+            correctCount: score.correctCount,
+            averageOddsPlayed: score.averageOddsPlayed,
+          );
+        } else {
+          final md = matchdayByDay[pd.dayNumber];
+          if (md == null || md.matches.isEmpty) {
+            day = const DayScoreBreakdown(
+              matchBreakdowns: [],
+              baseTotal: 0,
+              bonusPoints: 0,
+              total: 0,
+              correctCount: 0,
+              averageOddsPlayed: null,
+            );
+          } else {
+            day = CassandraScoringEngine.computeDayScore(
+              matches: md.matches,
+              picksByMatchId: pd.picksByMatchId,
+              outcomesByMatchId: md.outcomesByMatchId,
+            );
+          }
+        }
 
         perDay.add(
           MemberMatchdayScore(

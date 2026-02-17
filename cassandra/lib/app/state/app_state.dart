@@ -202,6 +202,21 @@ class AppState extends ChangeNotifier {
           )
           .catchError((_) {}),
     );
+    if (_firestoreGroupIds.isNotEmpty) {
+      unawaited(
+        fs
+            .updateGroupMemberProfileInGroups(
+              uid: uid,
+              groupIds: _firestoreGroupIds,
+              displayName: _profile.displayName,
+              teamName: _profile.teamName,
+              avatarSeed: currentUserAvatarSeed,
+              favoriteTeam: _profile.favoriteTeam,
+              photoUrl: _profile.photoUrl,
+            )
+            .catchError((_) {}),
+      );
+    }
   }
 
   Future<void> hydrateProfileFromFirestore([String? uid]) async {
@@ -538,6 +553,7 @@ class AppState extends ChangeNotifier {
         teamName: _profile.teamName,
         avatarSeed: currentUserAvatarSeed,
         favoriteTeam: _profile.favoriteTeam,
+        photoUrl: _profile.photoUrl,
       );
 
       _groupName = cleaned;
@@ -589,6 +605,7 @@ class AppState extends ChangeNotifier {
       teamName: _profile.teamName,
       avatarSeed: currentUserAvatarSeed,
       favoriteTeam: _profile.favoriteTeam,
+      photoUrl: _profile.photoUrl,
     );
 
     _firestoreGroupIds = [..._firestoreGroupIds, group.id];
@@ -1611,6 +1628,9 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
+    final photosByUid = await fs.getUserPhotoUrls(
+      docs.map((d) => d.uid).toList(growable: false),
+    );
     return docs
         .map(
           (d) => GroupMember(
@@ -1619,6 +1639,9 @@ class AppState extends ChangeNotifier {
             teamName: d.teamName,
             avatarSeed: d.avatarSeed,
             favoriteTeam: d.favoriteTeam,
+            photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
+                ? d.photoUrl!.trim()
+                : photosByUid[d.uid],
           ),
         )
         .toList();

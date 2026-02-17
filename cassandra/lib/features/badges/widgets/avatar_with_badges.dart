@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../l10n/app_localizations.dart';
@@ -8,14 +10,29 @@ class AvatarWithBadges extends StatelessWidget {
   final Color backgroundColor;
   final double radius;
   final List<BadgeType> badges;
+  final String? imagePathOrUrl;
 
   const AvatarWithBadges({
     super.key,
     required this.text,
     required this.backgroundColor,
     required this.badges,
+    this.imagePathOrUrl,
     this.radius = 18,
   });
+
+  ImageProvider<Object>? _resolveImageProvider() {
+    final source = (imagePathOrUrl ?? '').trim();
+    if (source.isEmpty) return null;
+    if (source.startsWith('http://') || source.startsWith('https://')) {
+      return NetworkImage(source);
+    }
+    final file = File(source);
+    if (file.existsSync()) {
+      return FileImage(file);
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +42,7 @@ class AvatarWithBadges extends StatelessWidget {
     final visible = sorted.take(2).toList(); // per ora max 2 badge visibili
 
     final bubbleSize = (radius * 0.75).clamp(12.0, 16.0);
+    final imageProvider = _resolveImageProvider();
 
     return SizedBox(
       width: radius * 2,
@@ -34,7 +52,10 @@ class AvatarWithBadges extends StatelessWidget {
           CircleAvatar(
             radius: radius,
             backgroundColor: backgroundColor,
-            child: Text(text, style: const TextStyle(color: Colors.white)),
+            foregroundImage: imageProvider,
+            child: imageProvider == null
+                ? Text(text, style: const TextStyle(color: Colors.white))
+                : null,
           ),
           if (visible.isNotEmpty)
             Positioned(

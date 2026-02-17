@@ -1061,7 +1061,7 @@ async function sendPushToTokens(
 
   const messaging = getMessaging();
   for (const tokenChunk of chunkArray(tokens, 400)) {
-    await messaging.sendEachForMulticast({
+    const response = await messaging.sendEachForMulticast({
       tokens: tokenChunk,
       notification: {
         title: payload.title,
@@ -1079,6 +1079,19 @@ async function sendPushToTokens(
         },
       },
     });
+    console.log(
+      `[push] title="${payload.title}" tokens=${tokenChunk.length} success=${response.successCount} failure=${response.failureCount}`
+    );
+    if (response.failureCount > 0) {
+      const sampleErrors = response.responses
+        .map((r, idx) => ({ r, idx }))
+        .filter(({ r }) => !r.success && r.error)
+        .slice(0, 6)
+        .map(({ r, idx }) => `${tokenChunk[idx]}:${r.error?.code ?? "unknown"}`);
+      if (sampleErrors.length > 0) {
+        console.warn(`[push] sample failures ${sampleErrors.join(" | ")}`);
+      }
+    }
   }
 }
 
@@ -1575,9 +1588,15 @@ export const notifyGroupChatMessage = onDocumentCreated(
       .map((doc) => doc.id)
       .filter((uid) => uid !== senderUid);
     if (targetUids.length === 0) return;
+    console.log(
+      `[notify-chat] group=${groupId} message=${messageId} recipients=${targetUids.length}`
+    );
 
     const tokens = await collectFcmTokensForUids(db, targetUids);
     if (tokens.length === 0) return;
+    console.log(
+      `[notify-chat] group=${groupId} message=${messageId} tokens=${tokens.length}`
+    );
 
     await sendPushToTokens(tokens, {
       title: "Nuovo messaggio in chat",

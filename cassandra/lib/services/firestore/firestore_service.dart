@@ -129,6 +129,7 @@ class FirestoreService {
     required String teamName,
     required int avatarSeed,
     String? favoriteTeam,
+    String? photoUrl,
   }) async {
     final batch = _db.batch();
 
@@ -138,6 +139,7 @@ class FirestoreService {
       {
         'displayName': displayName,
         'teamName': teamName,
+        'photoUrl': photoUrl,
         'avatarSeed': avatarSeed,
         'favoriteTeam': favoriteTeam,
         'joinedAt': FieldValue.serverTimestamp(),
@@ -158,6 +160,53 @@ class FirestoreService {
     }, SetOptions(merge: true));
 
     await batch.commit();
+  }
+
+  Future<void> updateGroupMemberProfileInGroups({
+    required String uid,
+    required List<String> groupIds,
+    required String displayName,
+    required String teamName,
+    required int avatarSeed,
+    String? favoriteTeam,
+    String? photoUrl,
+  }) async {
+    if (uid.trim().isEmpty || groupIds.isEmpty) return;
+    final uniqueGroupIds = groupIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (uniqueGroupIds.isEmpty) return;
+
+    var batch = _db.batch();
+    var pendingWrites = 0;
+    for (final groupId in uniqueGroupIds) {
+      final memberRef = _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .doc(uid);
+      batch.set(memberRef, {
+        'displayName': displayName,
+        'teamName': teamName,
+        'photoUrl': photoUrl,
+        'avatarSeed': avatarSeed,
+        'favoriteTeam': favoriteTeam,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      pendingWrites += 1;
+
+      if (pendingWrites >= 350) {
+        await batch.commit();
+        batch = _db.batch();
+        pendingWrites = 0;
+      }
+    }
+
+    if (pendingWrites > 0) {
+      await batch.commit();
+    }
   }
 
   Future<void> leaveGroup({
@@ -233,6 +282,28 @@ class FirestoreService {
         .collection('members')
         .get();
     return snap.docs.map(GroupMemberDocument.fromFirestore).toList();
+  }
+
+  Future<Map<String, String>> getUserPhotoUrls(List<String> uids) async {
+    final clean = uids
+        .map((uid) => uid.trim())
+        .where((uid) => uid.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (clean.isEmpty) return const {};
+
+    final docs = await Future.wait(
+      clean.map((uid) => _db.collection('users').doc(uid).get()),
+    );
+    final out = <String, String>{};
+    for (final doc in docs) {
+      if (!doc.exists) continue;
+      final data = doc.data();
+      final photo = (data?['photoUrl'] as String?)?.trim() ?? '';
+      if (photo.isEmpty) continue;
+      out[doc.id] = photo;
+    }
+    return out;
   }
 
   Future<bool> isInviteCodeTaken(String code) async {
