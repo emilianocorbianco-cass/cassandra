@@ -60,6 +60,7 @@ class UserProfile {
     User user, {
     String? existingTeamName,
     String? existingFavoriteTeam,
+    String? existingPhotoUrl,
   }) {
     final name =
         user.displayName ?? user.email?.split('@').first ?? 'Giocatore';
@@ -74,7 +75,7 @@ class UserProfile {
       ),
       favoriteTeam: existingFavoriteTeam,
       email: user.email,
-      photoUrl: user.photoURL,
+      photoUrl: user.photoURL ?? existingPhotoUrl,
     );
   }
 }

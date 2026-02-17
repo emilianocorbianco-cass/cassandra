@@ -35,8 +35,6 @@ class GroupPage extends StatefulWidget {
 class _GroupPageState extends State<GroupPage> {
   bool _didApplyMatches = false;
 
-  static const int _matchdayNumber = 20;
-
   // Fallback demo: stabile, creato una volta.
   late final List<PredictionMatch> _fallbackMatches;
 
@@ -315,6 +313,7 @@ class _GroupPageState extends State<GroupPage> {
       context,
     ).languageCode.toLowerCase().startsWith('en');
     final groupName = appState.groupName ?? l10n.groupDefaultName;
+    final currentMatchdayNumber = appState.uiMatchdayNumber;
 
     // Storico reale: picks/outcomes salvati per giornata
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -330,10 +329,10 @@ class _GroupPageState extends State<GroupPage> {
 
     // Se abbiamo outcomes salvati per questa giornata, usali (sovrascrivono live/demo).
     final outcomesByMatchId =
-        appState.hasSavedOutcomesForMatchday(_matchdayNumber)
+        appState.hasSavedOutcomesForMatchday(currentMatchdayNumber)
         ? <String, MatchOutcome>{
             ...baseOutcomesByMatchId,
-            ...appState.outcomesForMatchday(_matchdayNumber),
+            ...appState.outcomesForMatchday(currentMatchdayNumber),
           }
         : baseOutcomesByMatchId;
 
@@ -367,8 +366,8 @@ class _GroupPageState extends State<GroupPage> {
     appState.ensureMemberPicksLoaded();
 
     final currentUserPicksForDay =
-        appState.hasSavedPicksForMatchday(_matchdayNumber)
-        ? appState.currentUserPicksForMatchday(_matchdayNumber)
+        appState.hasSavedPicksForMatchday(currentMatchdayNumber)
+        ? appState.currentUserPicksForMatchday(currentMatchdayNumber)
         : appState.currentUserPicksByMatchId;
 
     // Use Firestore picks if available, fallback to mock
@@ -393,24 +392,41 @@ class _GroupPageState extends State<GroupPage> {
       overridePicksByMemberId: overridePicksByMemberId,
     );
 
-    // Storico (DEMO) per ora: giornate 16–19 (evitiamo mismatch con la giornata corrente reale).
-    final seasonMatchdays =
-        mockSeasonMatchdays(
-          startDay: 16,
-          count: 4,
-          demoSeed: appState.demoSeed,
-        ).map((md) {
-          if (!appState.hasSavedOutcomesForMatchday(md.dayNumber)) return md;
+    appState.ensureMatchdayMatchesLoaded();
+    final seasonDaySet = <int>{
+      ...appState.currentUserPicksByMatchday.keys,
+      ...appState.matchesByMatchday.keys,
+      ...appState.recentMatchesByMatchday.keys,
+      ...appState.outcomesByMatchday.keys,
+    };
+    final seasonDays = seasonDaySet.toList()..sort((a, b) => a.compareTo(b));
+    final seasonMatchdays = seasonDays.isEmpty
+        ? mockSeasonMatchdays(
+            startDay: 16,
+            count: 4,
+            demoSeed: appState.demoSeed,
+          )
+        : seasonDays.map((day) {
+            final savedMatches = appState.matchesByMatchday[day];
+            final recentMatches = appState.recentMatchesByMatchday[day];
+            final matchesForDay =
+                (savedMatches != null && savedMatches.isNotEmpty)
+                ? savedMatches
+                : (recentMatches ?? const <PredictionMatch>[]);
 
-          return MatchdayData(
-            dayNumber: md.dayNumber,
-            matches: md.matches,
-            outcomesByMatchId: <String, MatchOutcome>{
-              ...md.outcomesByMatchId,
-              ...appState.outcomesForMatchday(md.dayNumber),
-            },
-          );
-        }).toList();
+            final savedOutcomes = appState.outcomesByMatchday[day];
+            final recentOutcomes = appState.recentOutcomesByMatchday[day];
+            final outcomesForDay = <String, MatchOutcome>{
+              if (recentOutcomes != null) ...recentOutcomes,
+              if (savedOutcomes != null) ...savedOutcomes,
+            };
+
+            return MatchdayData(
+              dayNumber: day,
+              matches: matchesForDay,
+              outcomesByMatchId: outcomesForDay,
+            );
+          }).toList();
     final seasonMatchdaysDesc = seasonMatchdays.toList()
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
@@ -602,7 +618,7 @@ class _GroupPageState extends State<GroupPage> {
                             child: ListTile(
                               onTap: () {
                                 final md = MatchdayData(
-                                  dayNumber: _matchdayNumber,
+                                  dayNumber: currentMatchdayNumber,
                                   matches: _matches,
                                   outcomesByMatchId: outcomesByMatchId,
                                 );

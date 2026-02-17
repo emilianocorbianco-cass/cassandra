@@ -1079,11 +1079,15 @@ class AppState extends ChangeNotifier {
     final existingFavoriteTeam =
         _prefs?.getString(_kProfileFavoriteTeam) ??
         _prefs?.getString(_kFavoriteTeamLegacy);
+    final existingPhotoUrlRaw =
+        _prefs?.getString(_kProfilePhotoUrl) ?? _profile.photoUrl;
+    final existingPhotoUrl = (existingPhotoUrlRaw ?? '').trim();
 
     _profile = UserProfile.fromFirebaseUser(
       user,
       existingTeamName: existingTeamName,
       existingFavoriteTeam: existingFavoriteTeam,
+      existingPhotoUrl: existingPhotoUrl.isEmpty ? null : existingPhotoUrl,
     );
     _currentUserProfileSetupCompleted = _readProfileSetupCompletedForUid(
       user.uid,
@@ -1103,6 +1107,7 @@ class AppState extends ChangeNotifier {
     }
 
     _syncProfileToFirestore();
+    unawaited(hydrateCurrentUserHistoryFromFirestore().catchError((_) {}));
     final token = _devicePushToken;
     if (token != null && token.trim().isNotEmpty) {
       unawaited(
@@ -1399,23 +1404,40 @@ class AppState extends ChangeNotifier {
   Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
       _recentOutcomesByMatchday;
 
+  void _pruneRecentMatchdayData({int maxEntries = 10}) {
+    final allDays = <int>{
+      ..._recentMatchesByMatchday.keys,
+      ..._recentOutcomesByMatchday.keys,
+    }.toList()..sort((a, b) => b.compareTo(a));
+    if (allDays.length <= maxEntries) return;
+
+    for (final day in allDays.skip(maxEntries)) {
+      _recentMatchesByMatchday.remove(day);
+      _recentOutcomesByMatchday.remove(day);
+    }
+  }
+
   void setRecentMatchdayDataBulk({
     required Map<int, List<PredictionMatch>> matchesByMatchday,
     required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
+    bool replace = false,
   }) {
-    _recentMatchesByMatchday
-      ..clear()
-      ..addAll({
-        for (final e in matchesByMatchday.entries)
-          e.key: List<PredictionMatch>.unmodifiable(e.value),
-      });
+    if (replace) {
+      _recentMatchesByMatchday.clear();
+      _recentOutcomesByMatchday.clear();
+    }
 
-    _recentOutcomesByMatchday
-      ..clear()
-      ..addAll({
-        for (final e in outcomesByMatchday.entries)
-          e.key: Map<String, MatchOutcome>.unmodifiable(e.value),
-      });
+    for (final e in matchesByMatchday.entries) {
+      _recentMatchesByMatchday[e.key] = List<PredictionMatch>.unmodifiable(
+        e.value,
+      );
+    }
+    for (final e in outcomesByMatchday.entries) {
+      _recentOutcomesByMatchday[e.key] = Map<String, MatchOutcome>.unmodifiable(
+        e.value,
+      );
+    }
+    _pruneRecentMatchdayData();
 
     notifyListeners();
   }
@@ -1462,6 +1484,8 @@ class AppState extends ChangeNotifier {
 
   // ===== PICKS STORICO (per matchday) =====
   bool _currentUserPicksHistoryLoaded = false;
+  bool _hydratingCurrentUserHistoryFromFirestore = false;
+  String? _hydratedCurrentUserHistoryKey;
   final Map<int, Map<String, PickOption>> _currentUserPicksByMatchday = {};
 
   Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
@@ -1523,7 +1547,12 @@ class AppState extends ChangeNotifier {
       picksByMatchId,
     );
 
-    // persist (string->string)
+    _persistCurrentUserPicksHistoryToPrefs();
+
+    notifyListeners();
+  }
+
+  void _persistCurrentUserPicksHistoryToPrefs() {
     final out = <String, Object?>{};
     for (final e in _currentUserPicksByMatchday.entries) {
       out[e.key.toString()] = {
@@ -1536,8 +1565,6 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // ignore
     }
-
-    notifyListeners();
   }
 
   void clearCurrentUserPicksHistory() {
@@ -1666,6 +1693,111 @@ class AppState extends ChangeNotifier {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) return [];
     return fs.getPicksForUser(uid: uid, seasonKey: currentSeasonKey);
+  }
+
+  /// Hydrate picks history + matchday snapshots from Firestore for current user.
+  /// This avoids losing "past predictions" and day scores on new install/device.
+  Future<void> hydrateCurrentUserHistoryFromFirestore({
+    bool force = false,
+  }) async {
+    final fs = _firestoreService;
+    final uid = _profile.id.trim();
+    if (fs == null || !isAuthenticated || uid.isEmpty) return;
+    if (_hydratingCurrentUserHistoryFromFirestore) return;
+
+    final hydrationKey = '$uid:$currentSeasonKey';
+    if (!force && _hydratedCurrentUserHistoryKey == hydrationKey) return;
+
+    _hydratingCurrentUserHistoryFromFirestore = true;
+    try {
+      final picksDocs = await fs.getPicksForUser(
+        uid: uid,
+        seasonKey: currentSeasonKey,
+      );
+
+      ensureCurrentUserPicksHistoryLoaded();
+      ensureOutcomesHistoryLoaded();
+      await ensureMatchdayMatchesLoaded();
+
+      var picksChanged = false;
+      final dayNumbers = <int>{};
+      for (final doc in picksDocs) {
+        if (doc.dayNumber <= 0 || doc.picksByMatchId.isEmpty) continue;
+        dayNumbers.add(doc.dayNumber);
+        final existing = _currentUserPicksByMatchday[doc.dayNumber];
+        if (existing == null ||
+            existing.length != doc.picksByMatchId.length ||
+            existing.entries.any((e) => doc.picksByMatchId[e.key] != e.value)) {
+          _currentUserPicksByMatchday[doc.dayNumber] =
+              Map<String, PickOption>.from(doc.picksByMatchId);
+          picksChanged = true;
+        }
+      }
+
+      if (picksChanged) {
+        _persistCurrentUserPicksHistoryToPrefs();
+      }
+
+      final recentMatches = <int, List<PredictionMatch>>{};
+      final recentOutcomes = <int, Map<String, MatchOutcome>>{};
+      final sortedDays = dayNumbers.toList()..sort((a, b) => b.compareTo(a));
+      for (final day in sortedDays) {
+        final md = await fs.getMatchdayData(
+          seasonKey: currentSeasonKey,
+          dayNumber: day,
+        );
+        if (md == null || md.matches.isEmpty) continue;
+
+        _matchesByMatchday[day] = List<PredictionMatch>.unmodifiable(
+          md.matches,
+        );
+        _matchdayMatchesByDay[day] = List<PredictionMatch>.of(md.matches);
+        recentMatches[day] = md.matches;
+
+        if (md.outcomesByMatchId.isNotEmpty) {
+          _outcomesByMatchday[day] = Map<String, MatchOutcome>.from(
+            md.outcomesByMatchId,
+          );
+          recentOutcomes[day] = md.outcomesByMatchId;
+        }
+      }
+
+      if (recentMatches.isNotEmpty || recentOutcomes.isNotEmpty) {
+        final prefs = _prefs;
+        if (prefs != null) {
+          final encoded = <String, dynamic>{
+            for (final e in _matchdayMatchesByDay.entries)
+              e.key.toString(): e.value
+                  .map(_predictionMatchToSnapshot)
+                  .toList(),
+          };
+          await prefs.setString(_kMatchdayMatchesByDayV1, jsonEncode(encoded));
+          final out = <String, Object?>{};
+          for (final e in _outcomesByMatchday.entries) {
+            out[e.key.toString()] = {
+              for (final o in e.value.entries) o.key: o.value.name,
+            };
+          }
+          await prefs.setString(
+            _kPredictionOutcomesByMatchday,
+            jsonEncode(out),
+          );
+        }
+
+        setRecentMatchdayDataBulk(
+          matchesByMatchday: recentMatches,
+          outcomesByMatchday: recentOutcomes,
+        );
+      } else if (picksChanged) {
+        notifyListeners();
+      }
+
+      _hydratedCurrentUserHistoryKey = hydrationKey;
+    } catch (_) {
+      // ignore: best-effort hydration
+    } finally {
+      _hydratingCurrentUserHistoryFromFirestore = false;
+    }
   }
 
   // ===== LOCAL → FIRESTORE MIGRATION =====

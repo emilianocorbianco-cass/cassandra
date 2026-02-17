@@ -41,6 +41,8 @@ Future<void> main() async {
       appState.setProfileFromFirebaseUser(currentUser);
       // Merge profilo/gruppo Firestore (fire-and-forget, non blocca avvio)
       appState.hydrateProfileFromFirestore(currentUser.uid).catchError((_) {});
+      // Hydrate picks/matchday history for "past predictions" and stats.
+      appState.hydrateCurrentUserHistoryFromFirestore().catchError((_) {});
       // One-time migration: upload local data to Firestore
       appState.migrateLocalDataToFirestoreIfNeeded().catchError((_) {});
       // Push notifications: token sync + permessi.

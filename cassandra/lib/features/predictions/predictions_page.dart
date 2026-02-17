@@ -6,7 +6,6 @@ import 'models/pick_option.dart';
 import 'models/prediction_match.dart';
 import 'models/formatters.dart';
 import 'widgets/prediction_match_card.dart';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/scoring_engine.dart';
@@ -446,39 +445,11 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
   }
 
-  Map<String, PickOption> _demoPicksForMatchday(
-    String seed,
-    List<PredictionMatch> matches,
-  ) {
-    final rnd = Random(seed.hashCode);
-    PickOption randomPick() {
-      final x = rnd.nextDouble();
-      if (x < 0.10) return PickOption.none;
-      if (x < 0.75) {
-        const singles = [PickOption.home, PickOption.draw, PickOption.away];
-        return singles[rnd.nextInt(singles.length)];
-      }
-      const doubles = [
-        PickOption.homeDraw,
-        PickOption.drawAway,
-        PickOption.homeAway,
-      ];
-      return doubles[rnd.nextInt(doubles.length)];
-    }
-
-    final picks = <String, PickOption>{};
-    for (final m in matches) {
-      picks[m.id] = randomPick();
-    }
-    return picks;
-  }
-
   Widget _buildHistory(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final isEnglish = l10n.localeName.startsWith('en');
     final appState = CassandraScope.of(context);
     appState.ensureCurrentUserPicksLoaded();
-    final uid = appState.profile.id;
     final liveMatches = appState.cachedPredictionMatches ?? _matches;
     final liveOutcomes =
         appState.hasSavedOutcomesForMatchday(_effectiveMatchdayNumber)
@@ -488,26 +459,27 @@ class _PredictionsPageState extends State<PredictionsPage>
               if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
                 m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
           };
-    final livePicks = appState.currentUserPicksByMatchId.isNotEmpty
-        ? appState.currentUserPicksByMatchId
-        : _picks;
     final liveMatchday = MatchdayData(
       dayNumber: _effectiveMatchdayNumber,
       matches: liveMatches,
       outcomesByMatchId: liveOutcomes,
     );
-    final historyDays = appState.recentMatchesByMatchday.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final historyDaySet = <int>{
+      ...appState.recentMatchesByMatchday.keys,
+      ...appState.currentUserPicksByMatchday.keys,
+      ...appState.matchesByMatchday.keys,
+      ...appState.outcomesByMatchday.keys,
+    };
+    final historyDays = historyDaySet.toList()..sort((a, b) => b.compareTo(a));
+    final nonCurrentHistoryDays = historyDays
+        .where((day) => day != _effectiveMatchdayNumber)
+        .toList(growable: false);
     final demoHistory = mockSeasonMatchdays(
       startDay: 16,
       count: 4,
       demoSeed: appState.demoSeed,
     )..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
-    Widget tileFor(
-      MatchdayData md,
-      Map<String, PickOption> picks, {
-      String? tag,
-    }) {
+    Widget tileFor(MatchdayData md, {String? tag}) {
       final daysLabel = formatMatchdayDays(
         md.matches.map((m) => m.kickoff),
         english: isEnglish,
@@ -565,9 +537,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     final hasSavedLive = appState.hasSavedPicksForMatchday(
       _effectiveMatchdayNumber,
     );
-    final livePicksEffective = hasSavedLive
-        ? appState.currentUserPicksForMatchday(_effectiveMatchdayNumber)
-        : livePicks;
     final liveTagEffective = hasSavedLive ? l10n.predictionsTagSaved : liveTag;
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -582,48 +551,40 @@ class _PredictionsPageState extends State<PredictionsPage>
           ),
         ),
         const SizedBox(height: 8),
-        tileFor(liveMatchday, livePicksEffective, tag: liveTagEffective),
+        tileFor(liveMatchday, tag: liveTagEffective),
         const SizedBox(height: 12),
-        if (historyDays.isNotEmpty)
-          for (final day in historyDays)
-            if (day != _matchdayNumber)
-              Builder(
-                builder: (context) {
-                  final savedMatches = appState.matchesByMatchday[day];
-                  final recentMatches = appState.recentMatchesByMatchday[day];
-                  final matchesEffective =
-                      (savedMatches != null && savedMatches.isNotEmpty)
-                      ? savedMatches
-                      : (recentMatches ?? const <PredictionMatch>[]);
-                  if (matchesEffective.isEmpty) return const SizedBox.shrink();
-                  final savedOutcomes = appState.outcomesByMatchday[day];
-                  final recentOutcomes = appState.recentOutcomesByMatchday[day];
-                  final outcomesEffective =
-                      (savedOutcomes != null && savedOutcomes.isNotEmpty)
-                      ? savedOutcomes
-                      : (recentOutcomes ?? const <String, MatchOutcome>{});
-                  final picksEffective = appState.hasSavedPicksForMatchday(day)
-                      ? appState.currentUserPicksForMatchday(day)
-                      : _demoPicksForMatchday(
-                          '${uid}_${day}_${appState.demoSeed}',
-                          matchesEffective,
-                        );
-                  final prog = appState.matchdayProgressFor(day);
-                  final tag =
-                      (prog != null && prog.primaryDone && !prog.finalDone)
-                      ? l10n.predictionsTagRecoveries
-                      : (appState.hasSavedPicksForMatchday(day)
-                            ? l10n.predictionsTagSaved
-                            : l10n.predictionsTagLive);
-                  final md = MatchdayData(
-                    dayNumber: day,
-                    matches: matchesEffective,
-                    outcomesByMatchId: outcomesEffective,
-                  );
-                  return tileFor(md, picksEffective, tag: tag);
-                },
-              ),
-        if (historyDays.isEmpty)
+        if (nonCurrentHistoryDays.isNotEmpty)
+          for (final day in nonCurrentHistoryDays)
+            Builder(
+              builder: (context) {
+                final savedMatches = appState.matchesByMatchday[day];
+                final recentMatches = appState.recentMatchesByMatchday[day];
+                final matchesEffective =
+                    (savedMatches != null && savedMatches.isNotEmpty)
+                    ? savedMatches
+                    : (recentMatches ?? const <PredictionMatch>[]);
+                final savedOutcomes = appState.outcomesByMatchday[day];
+                final recentOutcomes = appState.recentOutcomesByMatchday[day];
+                final outcomesEffective =
+                    (savedOutcomes != null && savedOutcomes.isNotEmpty)
+                    ? savedOutcomes
+                    : (recentOutcomes ?? const <String, MatchOutcome>{});
+                final prog = appState.matchdayProgressFor(day);
+                final tag =
+                    (prog != null && prog.primaryDone && !prog.finalDone)
+                    ? l10n.predictionsTagRecoveries
+                    : (appState.hasSavedPicksForMatchday(day)
+                          ? l10n.predictionsTagSaved
+                          : l10n.predictionsTagLive);
+                final md = MatchdayData(
+                  dayNumber: day,
+                  matches: matchesEffective,
+                  outcomesByMatchId: outcomesEffective,
+                );
+                return tileFor(md, tag: tag);
+              },
+            ),
+        if (nonCurrentHistoryDays.isEmpty)
           for (final md in demoHistory)
             tileFor(
               appState.hasSavedOutcomesForMatchday(md.dayNumber)
@@ -635,12 +596,6 @@ class _PredictionsPageState extends State<PredictionsPage>
                       ),
                     )
                   : md,
-              appState.hasSavedPicksForMatchday(md.dayNumber)
-                  ? appState.currentUserPicksForMatchday(md.dayNumber)
-                  : _demoPicksForMatchday(
-                      '${uid}_${md.dayNumber}_${appState.demoSeed}',
-                      md.matches,
-                    ),
               tag: appState.hasSavedPicksForMatchday(md.dayNumber)
                   ? l10n.predictionsTagSaved
                   : l10n.predictionsTagDemo,

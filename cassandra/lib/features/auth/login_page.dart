@@ -22,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _goAfterSignIn(String uid) async {
     final app = CassandraScope.of(context);
     await app.hydrateProfileFromFirestore(uid);
+    await app.hydrateCurrentUserHistoryFromFirestore();
     await PushNotificationsService.instance.initializeForAppState(app);
     if (!mounted) return;
 

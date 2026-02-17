@@ -69,6 +69,34 @@ interface MatchEventDoc {
 }
 
 type Outcome = "home" | "draw" | "away" | "pending" | "voided";
+type PickOptionValue =
+  | "none"
+  | "home"
+  | "draw"
+  | "away"
+  | "homeDraw"
+  | "drawAway"
+  | "homeAway";
+
+interface PicksScoreDoc {
+  baseTotal: number;
+  bonusPoints: number;
+  total: number;
+  correctCount: number;
+  averageOddsPlayed?: number;
+}
+
+interface ScoringMatchDoc {
+  id: string;
+  odds: {
+    home: number;
+    draw: number;
+    away: number;
+    homeDraw: number;
+    drawAway: number;
+    homeAway: number;
+  };
+}
 
 interface StandingDoc {
   rank: number;
@@ -251,6 +279,367 @@ function parseOutcomeValue(value: unknown): Outcome | null {
   if (normalized === "pending") return "pending";
   if (normalized === "voided") return "voided";
   return null;
+}
+
+function parsePickOptionValue(value: unknown): PickOptionValue {
+  if (typeof value !== "string") return "none";
+  const normalized = value.trim();
+  if (normalized === "home") return "home";
+  if (normalized === "draw") return "draw";
+  if (normalized === "away") return "away";
+  if (normalized === "homeDraw") return "homeDraw";
+  if (normalized === "drawAway") return "drawAway";
+  if (normalized === "homeAway") return "homeAway";
+  return "none";
+}
+
+const BONUS_BY_CORRECT_COUNT: Record<number, number> = {
+  0: -20,
+  1: -10,
+  2: -5,
+  3: -2,
+  4: -1,
+  5: 0,
+  6: 1,
+  7: 2,
+  8: 5,
+  9: 10,
+  10: 20,
+};
+
+function bonusForCorrectCount(correctCount: number): number {
+  const normalized = Math.max(0, Math.min(10, Math.trunc(correctCount)));
+  return BONUS_BY_CORRECT_COUNT[normalized] ?? 0;
+}
+
+function max1X2(odds: ScoringMatchDoc["odds"]): number {
+  return Math.max(odds.home, odds.draw, odds.away);
+}
+
+function oddsPlayedForPick(
+  match: ScoringMatchDoc,
+  pick: PickOptionValue
+): number | null {
+  switch (pick) {
+  case "home":
+    return match.odds.home;
+  case "draw":
+    return match.odds.draw;
+  case "away":
+    return match.odds.away;
+  case "homeDraw":
+    return match.odds.homeDraw;
+  case "drawAway":
+    return match.odds.drawAway;
+  case "homeAway":
+    return match.odds.homeAway;
+  case "none":
+    return null;
+  }
+}
+
+function isCorrectSingle(pick: PickOptionValue, outcome: Outcome): boolean {
+  return (
+    (pick === "home" && outcome === "home") ||
+    (pick === "draw" && outcome === "draw") ||
+    (pick === "away" && outcome === "away")
+  );
+}
+
+function isCorrectDouble(pick: PickOptionValue, outcome: Outcome): boolean {
+  if (pick === "homeDraw") return outcome === "home" || outcome === "draw";
+  if (pick === "drawAway") return outcome === "draw" || outcome === "away";
+  if (pick === "homeAway") return outcome === "home" || outcome === "away";
+  return false;
+}
+
+function wrongDoublePenaltySumSingles(
+  match: ScoringMatchDoc,
+  pick: PickOptionValue
+): number {
+  if (pick === "homeDraw") return match.odds.home + match.odds.draw;
+  if (pick === "drawAway") return match.odds.draw + match.odds.away;
+  if (pick === "homeAway") return match.odds.home + match.odds.away;
+  return 0;
+}
+
+function parseScoringMatchesFromMatchdayData(
+  data: Record<string, unknown>
+): ScoringMatchDoc[] {
+  const rawMatches = data["matches"];
+  if (!Array.isArray(rawMatches)) return [];
+
+  const matches: ScoringMatchDoc[] = [];
+  for (const raw of rawMatches) {
+    if (typeof raw !== "object" || raw == null) continue;
+    const m = raw as Record<string, unknown>;
+    const id = String(m["id"] ?? "").trim();
+    if (!id) continue;
+    const rawOdds = m["odds"];
+    if (typeof rawOdds !== "object" || rawOdds == null) continue;
+    const odds = rawOdds as Record<string, unknown>;
+    const home = Number(odds["home"]);
+    const draw = Number(odds["draw"]);
+    const away = Number(odds["away"]);
+    const homeDraw = Number(odds["homeDraw"]);
+    const drawAway = Number(odds["drawAway"]);
+    const homeAway = Number(odds["homeAway"]);
+
+    if (
+      !Number.isFinite(home) ||
+      !Number.isFinite(draw) ||
+      !Number.isFinite(away) ||
+      !Number.isFinite(homeDraw) ||
+      !Number.isFinite(drawAway) ||
+      !Number.isFinite(homeAway)
+    ) {
+      continue;
+    }
+
+    matches.push({
+      id,
+      odds: {
+        home,
+        draw,
+        away,
+        homeDraw,
+        drawAway,
+        homeAway,
+      },
+    });
+  }
+
+  return matches;
+}
+
+function parseOutcomesByMatchIdFromMatchdayData(
+  data: Record<string, unknown>
+): Record<string, Outcome> {
+  const rawOutcomes = data["outcomesByMatchId"];
+  if (
+    rawOutcomes == null ||
+    typeof rawOutcomes !== "object" ||
+    Array.isArray(rawOutcomes)
+  ) {
+    return {};
+  }
+  const out: Record<string, Outcome> = {};
+  for (const [matchId, rawOutcome] of Object.entries(rawOutcomes)) {
+    const parsed = parseOutcomeValue(rawOutcome);
+    if (parsed != null) out[matchId] = parsed;
+  }
+  return out;
+}
+
+function parsePicksByMatchId(
+  value: unknown
+): Record<string, PickOptionValue> {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const out: Record<string, PickOptionValue> = {};
+  for (const [matchId, rawPick] of Object.entries(value)) {
+    out[matchId] = parsePickOptionValue(rawPick);
+  }
+  return out;
+}
+
+function parseStoredScore(value: unknown): PicksScoreDoc | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const baseTotal = Number(raw["baseTotal"]);
+  const bonusPoints = Number(raw["bonusPoints"]);
+  const total = Number(raw["total"]);
+  const correctCount = Number(raw["correctCount"]);
+  const averageRaw = raw["averageOddsPlayed"];
+  const averageOddsPlayed =
+    averageRaw == null ? undefined : Number(averageRaw);
+
+  if (
+    !Number.isFinite(baseTotal) ||
+    !Number.isFinite(bonusPoints) ||
+    !Number.isFinite(total) ||
+    !Number.isFinite(correctCount)
+  ) {
+    return null;
+  }
+
+  const parsed: PicksScoreDoc = {
+    baseTotal,
+    bonusPoints: Math.trunc(bonusPoints),
+    total,
+    correctCount: Math.trunc(correctCount),
+  };
+  if (averageOddsPlayed != null && Number.isFinite(averageOddsPlayed)) {
+    parsed.averageOddsPlayed = averageOddsPlayed;
+  }
+  return parsed;
+}
+
+function almostEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 1e-6;
+}
+
+function isSameScore(a: PicksScoreDoc | null, b: PicksScoreDoc): boolean {
+  if (a == null) return false;
+  const aAvg = a.averageOddsPlayed;
+  const bAvg = b.averageOddsPlayed;
+  const sameAvg =
+    (aAvg == null && bAvg == null) ||
+    (aAvg != null && bAvg != null && almostEqual(aAvg, bAvg));
+  return (
+    almostEqual(a.baseTotal, b.baseTotal) &&
+    a.bonusPoints === b.bonusPoints &&
+    almostEqual(a.total, b.total) &&
+    a.correctCount === b.correctCount &&
+    sameAvg
+  );
+}
+
+function computeScoreForPicks(
+  matches: ScoringMatchDoc[],
+  picksByMatchId: Record<string, PickOptionValue>,
+  outcomesByMatchId: Record<string, Outcome>
+): PicksScoreDoc {
+  let baseTotal = 0;
+  let correctCount = 0;
+  const playedOdds: number[] = [];
+
+  for (const match of matches) {
+    const pick = picksByMatchId[match.id] ?? "none";
+    const outcome = outcomesByMatchId[match.id] ?? "pending";
+    const played = oddsPlayedForPick(match, pick);
+
+    if (outcome === "pending") {
+      if (played != null) playedOdds.push(played);
+      continue;
+    }
+
+    if (outcome === "voided") {
+      continue;
+    }
+
+    if (pick === "none") {
+      baseTotal -= max1X2(match.odds);
+      continue;
+    }
+
+    if (pick === "home" || pick === "draw" || pick === "away") {
+      const singlePlayed = played ?? 0;
+      const correct = isCorrectSingle(pick, outcome);
+      baseTotal += correct ? singlePlayed : -singlePlayed;
+      if (correct) correctCount += 1;
+      playedOdds.push(singlePlayed);
+      continue;
+    }
+
+    const doublePlayed = played ?? 0;
+    const correct = isCorrectDouble(pick, outcome);
+    if (correct) {
+      baseTotal += doublePlayed;
+      correctCount += 1;
+    } else {
+      baseTotal -= wrongDoublePenaltySumSingles(match, pick);
+    }
+    playedOdds.push(doublePlayed);
+  }
+
+  const allGraded = matches.every((m) => {
+    const outcome = outcomesByMatchId[m.id];
+    return outcome != null && outcome !== "pending";
+  });
+  const bonusPoints = allGraded ? bonusForCorrectCount(correctCount) : 0;
+  const total = baseTotal + bonusPoints;
+  const averageOddsPlayed =
+    playedOdds.length === 0
+      ? undefined
+      : playedOdds.reduce((sum, v) => sum + v, 0) / playedOdds.length;
+
+  const score: PicksScoreDoc = {
+    baseTotal,
+    bonusPoints,
+    total,
+    correctCount,
+  };
+  if (averageOddsPlayed != null) {
+    score.averageOddsPlayed = averageOddsPlayed;
+  }
+  return score;
+}
+
+async function recomputePicksScoresForMatchday(
+  db: FirebaseFirestore.Firestore,
+  seasonKey: string,
+  dayNumber: number,
+  logPrefix: string
+): Promise<void> {
+  const matchdayRef = db
+    .collection("seasons")
+    .doc(seasonKey)
+    .collection("matchdays")
+    .doc(dayNumber.toString());
+  const matchdaySnap = await matchdayRef.get();
+  if (!matchdaySnap.exists) return;
+  const matchdayData = matchdaySnap.data();
+  if (!matchdayData) return;
+
+  const matches = parseScoringMatchesFromMatchdayData(
+    matchdayData as Record<string, unknown>
+  );
+  if (matches.length === 0) return;
+  const outcomesByMatchId = parseOutcomesByMatchIdFromMatchdayData(
+    matchdayData as Record<string, unknown>
+  );
+  const allGraded = matches.every((m) => {
+    const outcome = outcomesByMatchId[m.id];
+    return outcome != null && outcome !== "pending";
+  });
+  if (!allGraded) return;
+
+  const picksSnap = await db
+    .collection("picks")
+    .where("seasonKey", "==", seasonKey)
+    .where("dayNumber", "==", dayNumber)
+    .get();
+  if (picksSnap.empty) return;
+
+  let batch = db.batch();
+  let pendingWrites = 0;
+  let updatedDocs = 0;
+
+  for (const doc of picksSnap.docs) {
+    const data = doc.data();
+    const picksByMatchId = parsePicksByMatchId(data["picksByMatchId"]);
+    const score = computeScoreForPicks(matches, picksByMatchId, outcomesByMatchId);
+    const existingScore = parseStoredScore(data["score"]);
+    if (isSameScore(existingScore, score)) continue;
+
+    batch.set(
+      doc.ref,
+      { score, scoredAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    pendingWrites += 1;
+    updatedDocs += 1;
+
+    if (pendingWrites >= 400) {
+      await batch.commit();
+      batch = db.batch();
+      pendingWrites = 0;
+    }
+  }
+
+  if (pendingWrites > 0) {
+    await batch.commit();
+  }
+
+  if (updatedDocs > 0) {
+    console.log(
+      `[${logPrefix}] Recomputed picks scores for matchday ${dayNumber}: updated=${updatedDocs}`
+    );
+  }
 }
 
 function isInProgressStatus(rawStatus: string | null | undefined): boolean {
@@ -870,6 +1259,12 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       finalized &&
       !withinLiveWindowAfterLatestKickoff
     ) {
+      await recomputePicksScoresForMatchday(
+        db,
+        seasonKey,
+        md,
+        options.logPrefix
+      );
       console.log(`[${options.logPrefix}] Matchday ${md} finalized, skip`);
       continue;
     }
@@ -984,6 +1379,12 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         livePayload,
         { merge: true }
       );
+      await recomputePicksScoresForMatchday(
+        db,
+        seasonKey,
+        md,
+        options.logPrefix
+      );
       console.log(
         `[${options.logPrefix}] Wrote live outcomes ${md}: finalized=${finalized}`
       );
@@ -1013,6 +1414,12 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       }
 
       await docRef.set(frozenPayload, { merge: true });
+      await recomputePicksScoresForMatchday(
+        db,
+        seasonKey,
+        md,
+        options.logPrefix
+      );
       console.log(
         `[${options.logPrefix}] Kept frozen odds for matchday ${md}: finalized=${finalized}`
       );
@@ -1047,6 +1454,12 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         oddsFrozenAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
+    );
+    await recomputePicksScoresForMatchday(
+      db,
+      seasonKey,
+      md,
+      options.logPrefix
     );
 
     console.log(
