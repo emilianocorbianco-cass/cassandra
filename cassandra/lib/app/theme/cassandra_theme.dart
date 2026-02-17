@@ -38,6 +38,9 @@ class CassandraTheme {
         backgroundColor: CassandraColors.bg,
         foregroundColor: CassandraColors.primary,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
       ),
 
       textTheme:

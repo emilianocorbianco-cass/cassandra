@@ -801,7 +801,18 @@ class _PredictionsPageState extends State<PredictionsPage>
                           Text(matchdayTitle, style: matchdayHeaderStyle),
                           if (matchdayRange.isNotEmpty) ...[
                             const SizedBox(height: 2),
-                            Text(matchdayRange, style: matchdayHeaderStyle),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  matchdayRange,
+                                  maxLines: 1,
+                                  style: matchdayHeaderStyle,
+                                ),
+                              ),
+                            ),
                           ],
                           const SizedBox(height: 6),
                           Row(
