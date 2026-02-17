@@ -17,24 +17,18 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  static const _stickers = <String>[
-    '⚽',
-    '🔥',
-    '👏',
-    '😱',
-    '😂',
-    '❤️',
-    '🏆',
-    '💪',
-  ];
   static const _maxImageBytes = 380000;
 
   final _inputController = TextEditingController();
+  final _messagesController = ScrollController();
+  String? _lastTailMessageId;
+  bool _pendingScrollToBottom = false;
   bool _sending = false;
 
   @override
   void dispose() {
     _inputController.dispose();
+    _messagesController.dispose();
     super.dispose();
   }
 
@@ -45,6 +39,7 @@ class _ChatPageState extends State<ChatPage> {
     final text = _inputController.text.trim();
     if (fs == null || groupId == null || text.isEmpty || _sending) return;
 
+    _pendingScrollToBottom = true;
     setState(() => _sending = true);
     try {
       await fs.sendGroupChatMessage(
@@ -56,27 +51,6 @@ class _ChatPageState extends State<ChatPage> {
         text: text,
       );
       _inputController.clear();
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _sendSticker(String sticker) async {
-    final app = CassandraScope.of(context);
-    final fs = app.firestoreService;
-    final groupId = app.activeGroupId;
-    if (fs == null || groupId == null || _sending) return;
-
-    setState(() => _sending = true);
-    try {
-      await fs.sendGroupChatMessage(
-        groupId: groupId,
-        senderUid: app.profile.id,
-        senderDisplayName: app.profile.displayName,
-        senderTeamName: app.profile.teamName,
-        type: GroupChatMessageType.sticker,
-        text: sticker,
-      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -107,6 +81,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     final imageBase64 = base64Encode(bytes);
+    _pendingScrollToBottom = true;
     setState(() => _sending = true);
     try {
       await fs.sendGroupChatMessage(
@@ -122,48 +97,39 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  Future<void> _showStickerPicker() async {
-    final l10n = AppLocalizations.of(context)!;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.chatStickerPickerTitle,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _stickers
-                      .map((sticker) {
-                        return FilledButton.tonal(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            _sendSticker(sticker);
-                          },
-                          child: Text(
-                            sticker,
-                            style: const TextStyle(fontSize: 28),
-                          ),
-                        );
-                      })
-                      .toList(growable: false),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  bool _isNearBottom() {
+    if (!_messagesController.hasClients) return true;
+    final position = _messagesController.position;
+    return (position.maxScrollExtent - position.pixels) < 88;
+  }
+
+  void _scrollToBottom({bool animate = true}) {
+    if (!_messagesController.hasClients) return;
+    final target = _messagesController.position.maxScrollExtent;
+    if (animate) {
+      _messagesController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    _messagesController.jumpTo(target);
+  }
+
+  void _handleMessagesChanged(List<GroupChatMessageDocument> messages) {
+    final tailId = messages.isNotEmpty ? messages.last.id : null;
+    if (tailId == _lastTailMessageId && !_pendingScrollToBottom) return;
+
+    final keepBottom = _pendingScrollToBottom || _isNearBottom();
+    _pendingScrollToBottom = false;
+    _lastTailMessageId = tailId;
+
+    if (!keepBottom) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollToBottom(animate: true);
+    });
   }
 
   String _formatTime(DateTime dateTime) {
@@ -223,6 +189,7 @@ class _ChatPageState extends State<ChatPage> {
                           final messages = (snap.data ?? const [])
                               .where((m) => m.createdAt.toUtc().isAfter(cutoff))
                               .toList(growable: false);
+                          _handleMessagesChanged(messages);
 
                           if (snap.connectionState == ConnectionState.waiting &&
                               messages.isEmpty) {
@@ -243,6 +210,10 @@ class _ChatPageState extends State<ChatPage> {
                           }
 
                           return ListView.builder(
+                            key: const PageStorageKey<String>(
+                              'group_chat_messages',
+                            ),
+                            controller: _messagesController,
                             keyboardDismissBehavior:
                                 ScrollViewKeyboardDismissBehavior.onDrag,
                             padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
@@ -268,14 +239,9 @@ class _ChatPageState extends State<ChatPage> {
                         child: Row(
                           children: [
                             IconButton(
-                              tooltip: l10n.chatStickerPickerTitle,
-                              onPressed: _sending ? null : _showStickerPicker,
-                              icon: const Icon(Icons.emoji_emotions_outlined),
-                            ),
-                            IconButton(
                               tooltip: l10n.chatPhotoButton,
                               onPressed: _sending ? null : _pickAndSendImage,
-                              icon: const Icon(Icons.photo_outlined),
+                              icon: const Icon(Icons.attach_file),
                             ),
                             Expanded(
                               child: TextField(
@@ -288,11 +254,26 @@ class _ChatPageState extends State<ChatPage> {
                                 onSubmitted: (_) => _sendText(),
                                 decoration: InputDecoration(
                                   hintText: l10n.chatInputHint,
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
+                                  isDense: false,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(28),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(28),
+                                    borderSide: const BorderSide(
+                                      color: Color(0x4D804046),
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(28),
+                                    borderSide: const BorderSide(
+                                      color: CassandraColors.primary,
+                                      width: 1.2,
+                                    ),
+                                  ),
                                   contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
+                                    horizontal: 16,
+                                    vertical: 12,
                                   ),
                                 ),
                               ),
@@ -381,6 +362,12 @@ class _ChatBubble extends StatelessWidget {
     final align = mine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final avatarBg = mine ? CassandraColors.primary : const Color(0xFFF1E6D1);
     final bubbleBg = mine ? CassandraColors.primary : const Color(0xFFF5F5F5);
+    final imageBubbleBg = mine
+        ? const Color(0xFFFDFDFD)
+        : const Color(0xFFFDFDFD);
+    final imageBorderColor = mine
+        ? CassandraColors.primary.withValues(alpha: 0.6)
+        : CassandraColors.primary.withValues(alpha: 0.26);
     final bubbleFg = mine ? CassandraColors.onPrimary : Colors.black87;
     final imageBytes = _decodeImageBytes(message.imageBase64);
 
@@ -467,10 +454,15 @@ class _ChatBubble extends StatelessWidget {
               Flexible(
                 child: Container(
                   padding: message.type == GroupChatMessageType.image
-                      ? const EdgeInsets.all(6)
+                      ? const EdgeInsets.all(2)
                       : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: bubbleBg,
+                    color: message.type == GroupChatMessageType.image
+                        ? imageBubbleBg
+                        : bubbleBg,
+                    border: message.type == GroupChatMessageType.image
+                        ? Border.all(color: imageBorderColor, width: 1)
+                        : null,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: content,
