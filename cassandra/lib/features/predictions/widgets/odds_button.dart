@@ -23,9 +23,7 @@ class OddsButton extends StatelessWidget {
     final inactiveFg = CassandraColors.slate;
     final fg = selected ? CassandraColors.onPrimary : inactiveFg;
     final bg = selected ? CassandraColors.primary : Colors.transparent;
-    final sideColor = selected
-        ? CassandraColors.primary
-        : CassandraColors.primary.withValues(alpha: locked ? 0.45 : 0.8);
+    final sideColor = CassandraColors.primary;
 
     return Expanded(
       child: Padding(
@@ -38,11 +36,11 @@ class OddsButton extends StatelessWidget {
             disabledForegroundColor: fg,
             disabledBackgroundColor: bg,
             side: BorderSide(color: sideColor, width: selected ? 2 : 1.2),
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             elevation: selected ? 1 : 0,
             shadowColor: CassandraColors.primary.withValues(alpha: 0.25),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(24),
             ),
           ),
           child: Column(

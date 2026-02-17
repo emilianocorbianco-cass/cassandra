@@ -44,8 +44,8 @@ class CassandraTheme {
           const TextTheme(
             headlineLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w600),
           ).apply(
-            bodyColor: CassandraColors.primary,
-            displayColor: CassandraColors.primary,
+            bodyColor: CassandraColors.slate,
+            displayColor: CassandraColors.slate,
           ),
     );
   }

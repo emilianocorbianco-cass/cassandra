@@ -704,6 +704,12 @@ class _PredictionsPageState extends State<PredictionsPage>
       picksByMatchId: {for (final m in scoringMatches) m.id: _pickFor(m.id)},
       outcomesByMatchId: scoreOutcomesByMatchId,
     );
+    final isMatchdayFinalized =
+        scoringMatches.isNotEmpty &&
+        scoringMatches.every((m) {
+          final outcome = scoreOutcomesByMatchId[m.id];
+          return outcome != null && outcome.isGraded;
+        });
     final bonusSigned = dayScore.bonusPoints == 0
         ? '0'
         : (dayScore.bonusPoints > 0
@@ -717,14 +723,25 @@ class _PredictionsPageState extends State<PredictionsPage>
       dayScore.correctCount,
       matches.length,
     );
-    final pointsLine = l10n.predictionsPointsLine(
-      formatOdds(dayScore.total),
-      formatOdds(dayScore.baseTotal),
-      bonusSigned,
+    final basePoints = formatOdds(dayScore.baseTotal);
+    final pointsLine = isMatchdayFinalized
+        ? (l10n.localeName.startsWith('it')
+              ? 'Punti: $basePoints (Bonus $bonusSigned)'
+              : 'Points: $basePoints (Bonus $bonusSigned)')
+        : (l10n.localeName.startsWith('it')
+              ? 'Punti: $basePoints'
+              : 'Points: $basePoints');
+    final matchdayHeaderStyle = Theme.of(context).textTheme.titleMedium
+        ?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: CassandraColors.slate,
+          fontSize:
+              (Theme.of(context).textTheme.titleMedium?.fontSize ?? 16) + 2,
+        );
+    final summaryLineStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w600,
+      color: CassandraColors.slate,
     );
-    final summaryLineStyle = Theme.of(
-      context,
-    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600);
     final isOffline = !usingRealFixturesNow;
     return Scaffold(
       appBar: AppBar(
@@ -781,27 +798,10 @@ class _PredictionsPageState extends State<PredictionsPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            matchdayTitle,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: CassandraColors.slate,
-                                  fontSize:
-                                      (Theme.of(
-                                            context,
-                                          ).textTheme.titleMedium?.fontSize ??
-                                          16) +
-                                      2,
-                                ),
-                          ),
+                          Text(matchdayTitle, style: matchdayHeaderStyle),
                           if (matchdayRange.isNotEmpty) ...[
                             const SizedBox(height: 2),
-                            Text(
-                              matchdayRange,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
+                            Text(matchdayRange, style: matchdayHeaderStyle),
                           ],
                           const SizedBox(height: 6),
                           Row(
@@ -928,7 +928,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                   child: Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton(
+                        child: OutlinedButton.icon(
                           onPressed: _locked
                               ? null
                               : () => _submit(VisibilityChoice.private),
@@ -945,7 +945,11 @@ class _PredictionsPageState extends State<PredictionsPage>
                               borderRadius: BorderRadius.circular(26),
                             ),
                           ),
-                          child: Text(
+                          icon: const Icon(
+                            Icons.visibility_off_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
                             l10n.predictionsSubmitWithoutShowing,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

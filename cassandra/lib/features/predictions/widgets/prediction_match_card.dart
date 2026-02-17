@@ -22,9 +22,12 @@ class PredictionMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTeamSize =
+        Theme.of(context).textTheme.titleMedium?.fontSize ?? 18;
     final teamTextStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
       fontWeight: FontWeight.w700,
       color: CassandraColors.primary,
+      fontSize: baseTeamSize + 1,
     );
 
     return Card(
@@ -55,7 +58,7 @@ class PredictionMatchCard extends StatelessWidget {
                     formatKickoff(match.kickoff),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: CassandraColors.slate,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
