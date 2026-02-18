@@ -32,6 +32,7 @@ class _ChatPageState extends State<ChatPage>
   StreamSubscription<List<GroupChatMessageDocument>>? _messagesSub;
   List<GroupChatMessageDocument> _messages = const [];
   bool _messagesLoading = false;
+  String _messagesSignature = '';
 
   @override
   void dispose() {
@@ -148,11 +149,18 @@ class _ChatPageState extends State<ChatPage>
         _messagesSub != null) {
       return;
     }
+
+    final switchingGroup =
+        _boundStreamGroupId != null && _boundStreamGroupId != groupId;
+
     _messagesSub?.cancel();
     _boundStreamFirestore = fs;
     _boundStreamGroupId = groupId;
-    _messages = const [];
-    _messagesLoading = true;
+    if (switchingGroup) {
+      _messages = const [];
+      _messagesSignature = '';
+    }
+    _messagesLoading = _messages.isEmpty;
     _lastTailMessageId = null;
     _pendingScrollToBottom = true;
     _messagesSub = fs
@@ -165,9 +173,14 @@ class _ChatPageState extends State<ChatPage>
             final messages = incoming
                 .where((m) => m.createdAt.toUtc().isAfter(cutoff))
                 .toList(growable: false);
+
+            final signature = _signatureFor(messages);
+            final changed = signature != _messagesSignature;
             _handleMessagesChanged(messages);
             if (!mounted) return;
+            if (!changed && !_messagesLoading) return;
             setState(() {
+              _messagesSignature = signature;
               _messages = messages;
               _messagesLoading = false;
             });
@@ -186,10 +199,16 @@ class _ChatPageState extends State<ChatPage>
     _messagesSub = null;
     _boundStreamFirestore = null;
     _boundStreamGroupId = null;
-    _messages = const [];
-    _messagesLoading = false;
-    _lastTailMessageId = null;
     _pendingScrollToBottom = false;
+  }
+
+  String _signatureFor(List<GroupChatMessageDocument> messages) {
+    if (messages.isEmpty) return 'empty';
+    final first = messages.first;
+    final last = messages.last;
+    return '${messages.length}|${first.id}|${last.id}|'
+        '${first.createdAt.millisecondsSinceEpoch}|'
+        '${last.createdAt.millisecondsSinceEpoch}';
   }
 
   String _formatTime(DateTime dateTime) {

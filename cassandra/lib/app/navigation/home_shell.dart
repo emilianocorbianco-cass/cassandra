@@ -185,14 +185,10 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final appState = CassandraScope.of(context);
 
     return Scaffold(
       // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
-      body: AnimatedBuilder(
-        animation: appState,
-        builder: (context, _) => IndexedStack(index: _index, children: _pages),
-      ),
+      body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: AppColors.navBarBg,
