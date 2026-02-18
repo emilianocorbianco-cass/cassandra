@@ -68,6 +68,7 @@ class AppState extends ChangeNotifier {
   static const _kRememberedUid = 'auth.remembered.uid.v1';
   static const _kRememberedHandle = 'auth.remembered.handle.v1';
   static const _kRememberedPhotoUrl = 'auth.remembered.photoUrl.v1';
+  static const _kRememberedProvider = 'auth.remembered.provider.v1';
   static const _kDevicePushToken = 'push.deviceToken.v1';
 
   static const _kLanguage = 'language';
@@ -448,6 +449,7 @@ class AppState extends ChangeNotifier {
   String? _rememberedUid;
   String? _rememberedHandle;
   String? _rememberedPhotoUrl;
+  String? _rememberedProvider;
   String? _devicePushToken;
 
   int _demoSeed;
@@ -797,6 +799,9 @@ class AppState extends ChangeNotifier {
   bool get needsProfileSetup =>
       isAuthenticated && !_currentUserProfileSetupCompleted;
   String? get rememberedUid => _rememberedUid;
+  String? get rememberedAuthProvider => _rememberedProvider;
+  bool get hasRememberedIdentity =>
+      _rememberMeEnabled && (_rememberedUid?.trim().isNotEmpty ?? false);
   String get rememberedHandle =>
       (_rememberedHandle ?? _profile.teamName).trim();
   String? get rememberedPhotoUrl => _rememberedPhotoUrl ?? _profile.photoUrl;
@@ -834,6 +839,11 @@ class AppState extends ChangeNotifier {
     _rememberedPhotoUrl = _profile.photoUrl?.trim();
     await _prefs?.setString(_kRememberedUid, uid);
     await _prefs?.setString(_kRememberedHandle, _rememberedHandle!);
+    if (_rememberedProvider != null && _rememberedProvider!.isNotEmpty) {
+      await _prefs?.setString(_kRememberedProvider, _rememberedProvider!);
+    } else {
+      await _prefs?.remove(_kRememberedProvider);
+    }
     if (_rememberedPhotoUrl != null && _rememberedPhotoUrl!.isNotEmpty) {
       await _prefs?.setString(_kRememberedPhotoUrl, _rememberedPhotoUrl!);
     } else {
@@ -841,15 +851,39 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  String? _normalizeRememberedProvider(String? raw) {
+    final value = (raw ?? '').trim().toLowerCase();
+    if (value == 'google') return 'google';
+    if (value == 'apple') return 'apple';
+    return null;
+  }
+
+  Future<void> setRememberedAuthProvider(String? provider) async {
+    final normalized = _normalizeRememberedProvider(provider);
+    if (normalized == _rememberedProvider) return;
+    _rememberedProvider = normalized;
+
+    if (_rememberMeEnabled) {
+      if (normalized == null) {
+        await _prefs?.remove(_kRememberedProvider);
+      } else {
+        await _prefs?.setString(_kRememberedProvider, normalized);
+      }
+    }
+    notifyListeners();
+  }
+
   Future<void> forgetRememberedIdentity() async {
     _rememberMeEnabled = false;
     _rememberedUid = null;
     _rememberedHandle = null;
     _rememberedPhotoUrl = null;
+    _rememberedProvider = null;
     await _prefs?.setBool(_kRememberMeEnabled, false);
     await _prefs?.remove(_kRememberedUid);
     await _prefs?.remove(_kRememberedHandle);
     await _prefs?.remove(_kRememberedPhotoUrl);
+    await _prefs?.remove(_kRememberedProvider);
     notifyListeners();
   }
 
@@ -863,9 +897,11 @@ class AppState extends ChangeNotifier {
       _rememberedUid = null;
       _rememberedHandle = null;
       _rememberedPhotoUrl = null;
+      _rememberedProvider = null;
       await _prefs?.remove(_kRememberedUid);
       await _prefs?.remove(_kRememberedHandle);
       await _prefs?.remove(_kRememberedPhotoUrl);
+      await _prefs?.remove(_kRememberedProvider);
     }
     notifyListeners();
   }
@@ -932,6 +968,9 @@ class AppState extends ChangeNotifier {
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
     final rememberedPhotoUrl = (prefs.getString(_kRememberedPhotoUrl) ?? '')
         .trim();
+    final rememberedProvider = (prefs.getString(_kRememberedProvider) ?? '')
+        .trim()
+        .toLowerCase();
     final storedPushToken = (prefs.getString(_kDevicePushToken) ?? '').trim();
     final profileSetupCompleted = storedId.isNotEmpty
         ? (prefs.getBool(_profileSetupCompletedKeyForUid(storedId)) ?? false)
@@ -954,6 +993,10 @@ class AppState extends ChangeNotifier {
       .._rememberedPhotoUrl = rememberedPhotoUrl.isEmpty
           ? null
           : rememberedPhotoUrl
+      .._rememberedProvider =
+          (rememberedProvider == 'google' || rememberedProvider == 'apple')
+          ? rememberedProvider
+          : null
       .._devicePushToken = storedPushToken.isEmpty ? null : storedPushToken
       .._currentUserProfileSetupCompleted = profileSetupCompleted;
   }
@@ -1226,6 +1269,7 @@ class AppState extends ChangeNotifier {
     _rememberedUid = null;
     _rememberedHandle = null;
     _rememberedPhotoUrl = null;
+    _rememberedProvider = null;
     notifyListeners();
 
     if (_prefs == null) return;
@@ -1247,6 +1291,7 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kRememberedUid);
     await _prefs.remove(_kRememberedHandle);
     await _prefs.remove(_kRememberedPhotoUrl);
+    await _prefs.remove(_kRememberedProvider);
   }
 
   // ===== Runtime cache (NON persistita) =====

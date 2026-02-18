@@ -5,6 +5,8 @@ import '../../app/navigation/home_shell.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/notifications/push_notifications_service.dart';
+import 'profile_setup_page.dart';
 import '../profile/widgets/profile_image_picker.dart';
 import 'login_page.dart';
 
@@ -16,9 +18,72 @@ class WelcomeBackPage extends StatefulWidget {
 }
 
 class _WelcomeBackPageState extends State<WelcomeBackPage> {
+  static const _resultSuccess = 'success';
+  static const _resultUnavailable = 'unavailable';
+  static const _resultCancelled = 'cancelled';
+  static const _resultMismatch = 'mismatch';
+
   final _auth = LocalAuthentication();
   bool _loading = false;
   String? _error;
+
+  Future<void> _completeSignInFlow(String uid) async {
+    final app = CassandraScope.of(context);
+    await app.hydrateProfileFromFirestore(uid);
+    await app.hydrateCurrentUserHistoryFromFirestore();
+    await PushNotificationsService.instance.initializeForAppState(app);
+    if (!mounted) return;
+
+    final destination = app.needsProfileSetup
+        ? const ProfileSetupPage()
+        : const HomeShell();
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
+  }
+
+  bool _isExpectedUid(String uid) {
+    final expected = CassandraScope.of(context).rememberedUid?.trim() ?? '';
+    if (expected.isEmpty) return true;
+    return uid.trim() == expected;
+  }
+
+  Future<String> _signInWithRememberedProvider() async {
+    final app = CassandraScope.of(context);
+    final auth = app.authService;
+    final provider = app.rememberedAuthProvider;
+    if (auth == null || provider == null) return _resultUnavailable;
+
+    if (provider == 'google') {
+      final credential = await auth.signInWithGoogle();
+      final user = credential?.user;
+      if (user == null) return _resultCancelled;
+      if (!_isExpectedUid(user.uid)) {
+        await auth.signOut();
+        return _resultMismatch;
+      }
+      await app.setRememberedAuthProvider('google');
+      app.setProfileFromFirebaseUser(user);
+      await _completeSignInFlow(user.uid);
+      return _resultSuccess;
+    }
+
+    if (provider == 'apple') {
+      final credential = await auth.signInWithApple();
+      final user = credential?.user;
+      if (user == null) return _resultCancelled;
+      if (!_isExpectedUid(user.uid)) {
+        await auth.signOut();
+        return _resultMismatch;
+      }
+      await app.setRememberedAuthProvider('apple');
+      app.setProfileFromFirebaseUser(user);
+      await _completeSignInFlow(user.uid);
+      return _resultSuccess;
+    }
+
+    return _resultUnavailable;
+  }
 
   Future<bool> _verifyDeviceOwner(String reason) async {
     try {
@@ -59,16 +124,45 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
     }
 
     if (app.isAuthenticated) {
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+      final uid = app.profile.id.trim();
+      if (!_isExpectedUid(uid)) {
+        setState(() {
+          _loading = false;
+          _error = l10n.welcomeBackUidMismatch;
+        });
+        return;
+      }
+      await _completeSignInFlow(uid);
       return;
     }
 
-    setState(() => _loading = false);
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginPage()));
+    try {
+      final resumed = await _signInWithRememberedProvider();
+      if (!mounted) return;
+      if (resumed == _resultSuccess) return;
+
+      String errorMessage;
+      if (resumed == _resultMismatch) {
+        errorMessage = l10n.welcomeBackUidMismatch;
+      } else if (resumed == _resultCancelled) {
+        errorMessage = l10n.welcomeBackAuthCancelled;
+      } else if (resumed == _resultUnavailable) {
+        errorMessage = l10n.welcomeBackQuickSignInUnavailable;
+      } else {
+        errorMessage = l10n.loginSignInError;
+      }
+
+      setState(() {
+        _loading = false;
+        _error = errorMessage;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = l10n.loginSignInError;
+      });
+    }
   }
 
   Future<void> _notYou() async {

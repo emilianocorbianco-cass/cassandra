@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -18,6 +19,18 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
+
+  Future<bool> _acceptSignedInUser({
+    required String provider,
+    required User? user,
+  }) async {
+    if (user == null || !mounted) return false;
+    final app = CassandraScope.of(context);
+    await app.setRememberedAuthProvider(provider);
+    app.setProfileFromFirebaseUser(user);
+    await _goAfterSignIn(user.uid);
+    return true;
+  }
 
   Future<void> _goAfterSignIn(String uid) async {
     final app = CassandraScope.of(context);
@@ -54,9 +67,12 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final user = credential.user;
-      if (user != null && mounted) {
-        app.setProfileFromFirebaseUser(user);
-        await _goAfterSignIn(user.uid);
+      final accepted = await _acceptSignedInUser(
+        provider: 'google',
+        user: user,
+      );
+      if (!accepted && mounted) {
+        setState(() => _loading = false);
       }
     } catch (e) {
       if (mounted) {
@@ -87,9 +103,9 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final user = credential.user;
-      if (user != null && mounted) {
-        app.setProfileFromFirebaseUser(user);
-        await _goAfterSignIn(user.uid);
+      final accepted = await _acceptSignedInUser(provider: 'apple', user: user);
+      if (!accepted && mounted) {
+        setState(() => _loading = false);
       }
     } catch (e) {
       if (mounted) {

@@ -34,12 +34,16 @@ class _SplashScreenState extends State<SplashScreen> {
       } else if (app.isAuthenticated) {
         if (app.needsProfileSetup) {
           destination = const ProfileSetupPage();
-        } else if (app.rememberMeEnabled) {
+        } else if (app.hasRememberedIdentity) {
           destination = const WelcomeBackPage();
         } else {
           // sessione persistita → vai a HomeShell
           destination = const HomeShell();
         }
+      } else if (app.hasRememberedIdentity) {
+        // Sessione Firebase scaduta ma device "trusted":
+        // mostra comunque Bentornato e guida al provider corretto.
+        destination = const WelcomeBackPage();
       } else {
         // non autenticato → mostra LoginPage
         destination = const LoginPage();

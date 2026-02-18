@@ -19,6 +19,8 @@
   "welcomeBackNotYou": "Not you?",
   "welcomeBackAuthReason": "Confirm your identity to enter Cassandra.",
   "welcomeBackAuthCancelled": "Authentication was cancelled. Please try again.",
+  "welcomeBackQuickSignInUnavailable": "Quick sign-in is unavailable. Tap \"Not you?\" to use another account.",
+  "welcomeBackUidMismatch": "This account does not match the profile saved on this device. Tap \"Not you?\" to switch account.",
   "createGroupTitle": "Create your group",
   "createGroupSubtitle": "Challenge your friends on Serie A predictions",
   "createGroupTapAddPhoto": "Tap to add photo",

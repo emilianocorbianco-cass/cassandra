@@ -19,6 +19,8 @@
   "welcomeBackNotYou": "Non sei tu?",
   "welcomeBackAuthReason": "Conferma la tua identita per entrare in Cassandra.",
   "welcomeBackAuthCancelled": "Autenticazione annullata. Riprova.",
+  "welcomeBackQuickSignInUnavailable": "Accesso rapido non disponibile. Tocca \"Non sei tu?\" per accedere con un altro account.",
+  "welcomeBackUidMismatch": "Questo account non corrisponde al profilo salvato su questo dispositivo. Tocca \"Non sei tu?\" per cambiare account.",
   "createGroupTitle": "Crea il tuo gruppo",
   "createGroupSubtitle": "Sfida i tuoi amici sui pronostici di Serie A",
   "createGroupTapAddPhoto": "Tocca per aggiungere foto",
