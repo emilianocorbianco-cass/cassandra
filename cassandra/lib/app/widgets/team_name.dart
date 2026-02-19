@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class TeamName extends StatelessWidget {
   const TeamName({
@@ -20,6 +21,24 @@ class TeamName extends StatelessWidget {
   /// Se true, mostra testo-logo (allineamento destra) anziché logo-testo.
   final bool reversed;
 
+  bool _isSvgUrl(String value) {
+    final lower = value.toLowerCase().trim();
+    if (lower.endsWith('.svg')) return true;
+    final queryIndex = lower.indexOf('?');
+    if (queryIndex > 0) {
+      return lower.substring(0, queryIndex).endsWith('.svg');
+    }
+    return false;
+  }
+
+  String _normalizeLogoUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.startsWith('http://')) {
+      return 'https://${trimmed.substring('http://'.length)}';
+    }
+    return trimmed;
+  }
+
   @override
   Widget build(BuildContext context) {
     final effectiveStyle = style ?? DefaultTextStyle.of(context).style;
@@ -27,10 +46,38 @@ class TeamName extends StatelessWidget {
     // Altezza logo ≈ altezza lettera maiuscola (circa 70-75% del fontSize)
     final logoSize = fontSize * logoScale;
 
-    final url = _resolveLogoUrl(name, logoUrl);
-    if (url == null || url.isEmpty) {
+    final normalized = name.trim().toLowerCase();
+    final isJuventus = normalized == 'juventus';
+    final rawUrl = logoUrl;
+    if (!isJuventus && (rawUrl == null || rawUrl.isEmpty)) {
       return Text(name, style: effectiveStyle, textAlign: textAlign);
     }
+    final url = rawUrl == null ? null : _normalizeLogoUrl(rawUrl);
+
+    final logoWidget = isJuventus
+        ? SvgPicture.asset(
+            'assets/logos/juventus_mark.svg',
+            width: logoSize,
+            height: logoSize,
+            fit: BoxFit.contain,
+          )
+        : _isSvgUrl(url!)
+        ? SvgPicture.network(
+            url,
+            width: logoSize,
+            height: logoSize,
+            fit: BoxFit.contain,
+            placeholderBuilder: (_) =>
+                SizedBox(width: logoSize, height: logoSize),
+          )
+        : Image.network(
+            url,
+            width: logoSize,
+            height: logoSize,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) =>
+                SizedBox(width: logoSize, height: logoSize),
+          );
 
     final logo = DecoratedBox(
       decoration: BoxDecoration(
@@ -43,14 +90,7 @@ class TeamName extends StatelessWidget {
           ),
         ],
       ),
-      child: Image.network(
-        url,
-        width: logoSize,
-        height: logoSize,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) =>
-            SizedBox(width: logoSize, height: logoSize),
-      ),
+      child: logoWidget,
     );
 
     final text = Flexible(
@@ -71,16 +111,5 @@ class TeamName extends StatelessWidget {
           : MainAxisAlignment.start,
       children: reversed ? [text, gap, logo] : [logo, gap, text],
     );
-  }
-
-  String? _resolveLogoUrl(String teamName, String? sourceUrl) {
-    final normalized = teamName.trim().toLowerCase();
-    if (normalized == 'juventus') {
-      // API logo attuale risulta poco leggibile su sfondo chiaro: forziamo
-      // il logo ufficiale in variante nera piena.
-      return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/'
-          'Juventus_FC_2017_logo.svg/120px-Juventus_FC_2017_logo.svg.png';
-    }
-    return sourceUrl;
   }
 }
