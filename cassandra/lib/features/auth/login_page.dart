@@ -20,12 +20,64 @@ class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
 
+  Future<bool> _confirmSwitchRememberedIdentity({
+    required String rememberedHandle,
+  }) async {
+    final l10n = AppLocalizations.of(context)!;
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(l10n.loginDifferentAccountTitle),
+          content: Text(l10n.loginDifferentAccountBody(rememberedHandle)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.settingsCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.loginDifferentAccountContinue),
+            ),
+          ],
+        );
+      },
+    );
+    return decision ?? false;
+  }
+
   Future<bool> _acceptSignedInUser({
     required String provider,
     required User? user,
   }) async {
     if (user == null || !mounted) return false;
     final app = CassandraScope.of(context);
+
+    final rememberedUid = app.rememberedUid?.trim() ?? '';
+    final signedUid = user.uid.trim();
+    if (app.hasRememberedIdentity &&
+        rememberedUid.isNotEmpty &&
+        rememberedUid != signedUid) {
+      final rememberedHandleRaw = app.rememberedHandle.trim();
+      final rememberedHandle = rememberedHandleRaw.isEmpty
+          ? '@cassandra'
+          : rememberedHandleRaw;
+      final confirmed = await _confirmSwitchRememberedIdentity(
+        rememberedHandle: rememberedHandle,
+      );
+      if (!confirmed) {
+        await app.authService?.signOut();
+        if (mounted) {
+          final l10n = AppLocalizations.of(context)!;
+          setState(() {
+            _error = l10n.loginDifferentAccountCancelled;
+          });
+        }
+        return false;
+      }
+      await app.forgetRememberedIdentity();
+    }
+
     await app.setRememberedAuthProvider(provider);
     app.setProfileFromFirebaseUser(user);
     await _goAfterSignIn(user.uid);

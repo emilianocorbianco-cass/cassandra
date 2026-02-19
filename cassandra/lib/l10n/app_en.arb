@@ -4,6 +4,15 @@
   "loginSignInGoogle": "Sign in with Google",
   "loginSignInApple": "Sign in with Apple",
   "loginSignInError": "Sign-in error. Please try again.",
+  "loginDifferentAccountTitle": "Different account detected",
+  "loginDifferentAccountBody": "This device remembers account {handle}. Do you want to continue with this new account?",
+  "@loginDifferentAccountBody": {
+    "placeholders": {
+      "handle": {}
+    }
+  },
+  "loginDifferentAccountContinue": "Continue with this account",
+  "loginDifferentAccountCancelled": "Sign-in cancelled. Press Sign in again if you want to retry.",
   "loginPrivacyNotice": "We only use what's strictly necessary to identify you.",
   "profileSetupTitle": "Complete your profile",
   "profileSetupSubtitle": "Set your details so Cassandra can recognize you instantly.",

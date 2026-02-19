@@ -4,6 +4,15 @@
   "loginSignInGoogle": "Accedi con Google",
   "loginSignInApple": "Accedi con Apple",
   "loginSignInError": "Errore di accesso. Riprova.",
+  "loginDifferentAccountTitle": "Account diverso rilevato",
+  "loginDifferentAccountBody": "Questo dispositivo ricorda l'account {handle}. Vuoi continuare con questo nuovo account?",
+  "@loginDifferentAccountBody": {
+    "placeholders": {
+      "handle": {}
+    }
+  },
+  "loginDifferentAccountContinue": "Continua con questo account",
+  "loginDifferentAccountCancelled": "Accesso annullato. Premi di nuovo Accedi se vuoi riprovare.",
   "loginPrivacyNotice": "Usiamo solo il minimo necessario per identificarti.",
   "profileSetupTitle": "Completa il profilo",
   "profileSetupSubtitle": "Imposta i tuoi dati per riconoscerti subito su Cassandra.",
