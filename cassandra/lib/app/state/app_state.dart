@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
+import 'group_state.dart';
 import 'user_profile.dart';
 import '../../features/group/models/group_member.dart';
 import '../../features/scoring/models/match_outcome.dart';
@@ -18,7 +18,6 @@ import '../../services/firestore/firestore_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../../features/predictions/models/pick_option.dart';
-import 'dart:math';
 
 import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
@@ -50,11 +49,6 @@ class AppState extends ChangeNotifier {
       'cassandra.matchday.lastAutoBumpFrom.v1';
   static const _kOriginKickoffsByMatchIdV1 =
       'fixtures.originKickoffsByMatchId.v1';
-
-  static const _kGroupNameV1 = 'group.name.v1';
-  static const _kGroupInviteCodeV1 = 'group.inviteCode.v1';
-  static const _kGroupImagePathV1 = 'group.imagePath.v1';
-  static const _kGroupAdminApprovalV1 = 'group.adminApproval.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -164,27 +158,23 @@ class AppState extends ChangeNotifier {
         ?.cast<String>()
         .toList();
     if (remoteGroupIds != null) {
-      _firestoreGroupIds = remoteGroupIds;
-      if (_activeGroupId == null ||
-          !_firestoreGroupIds.contains(_activeGroupId)) {
-        _activeGroupId = _firestoreGroupIds.isNotEmpty
-            ? _firestoreGroupIds.first
-            : null;
-      }
+      groupState.setFirestoreGroupIds(remoteGroupIds);
       changed = true;
     }
 
     if (changed) notifyListeners();
 
     if ((remoteGroupIds?.isNotEmpty ?? false) &&
-        (_groupName == null || _groupInviteCode == null)) {
+        (groupState.groupName == null || groupState.groupInviteCode == null)) {
       unawaited(refreshActiveGroupMetadataFromFirestore().catchError((_) {}));
     }
   }
 
-  // Firestore group IDs (multi-group)
-  List<String> _firestoreGroupIds = [];
-  List<String> get firestoreGroupIds => _firestoreGroupIds;
+  // ===== GROUP STATE (delegated) =====
+  late final GroupState groupState;
+
+  // Forwarding getters per compatibilità con codice esistente.
+  List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
 
   /// Fire-and-forget: sync full user profile to Firestore.
   void _syncProfileToFirestore() {
@@ -203,12 +193,12 @@ class AppState extends ChangeNotifier {
           )
           .catchError((_) {}),
     );
-    if (_firestoreGroupIds.isNotEmpty) {
+    if (groupState.firestoreGroupIds.isNotEmpty) {
       unawaited(
         fs
             .updateGroupMemberProfileInGroups(
               uid: uid,
-              groupIds: _firestoreGroupIds,
+              groupIds: groupState.firestoreGroupIds,
               displayName: _profile.displayName,
               teamName: _profile.teamName,
               avatarSeed: currentUserAvatarSeed,
@@ -230,11 +220,10 @@ class AppState extends ChangeNotifier {
       if (data != null) {
         mergeFirestoreProfile(data);
       }
-      if (_firestoreGroupIds.isEmpty) {
+      if (groupState.firestoreGroupIds.isEmpty) {
         final recoveredGroupIds = await fs.findGroupIdsForMember(targetUid);
         if (recoveredGroupIds.isNotEmpty) {
-          _firestoreGroupIds = recoveredGroupIds;
-          _activeGroupId = recoveredGroupIds.first;
+          groupState.setFirestoreGroupIds(recoveredGroupIds);
           await fs.mergeUserField(targetUid, {'groupIds': recoveredGroupIds});
           notifyListeners();
         }
@@ -246,26 +235,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshActiveGroupMetadataFromFirestore() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return;
-
-    final group = await fs.getGroup(groupId);
-    if (group == null) return;
-
-    var changed = false;
-    if (_groupName != group.name) {
-      _groupName = group.name;
-      await _prefs?.setString(_kGroupNameV1, group.name);
-      changed = true;
-    }
-    if (_groupInviteCode != group.inviteCode) {
-      _groupInviteCode = group.inviteCode;
-      await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
-      changed = true;
-    }
-
-    if (changed) notifyListeners();
+    await groupState.refreshActiveGroupMetadataFromFirestore(
+      isAuthenticated: isAuthenticated,
+      firestoreService: _firestoreService,
+    );
   }
 
   /// Fire-and-forget: sync a single field to Firestore.
@@ -454,318 +427,58 @@ class AppState extends ChangeNotifier {
 
   int _demoSeed;
 
-  // ===== GRUPPO =====
-  String? _groupName;
-  String? _groupInviteCode;
-  String? _groupImagePath;
-  bool _groupAdminApproval = false;
+  // ===== GRUPPO (delegated to GroupState) =====
 
-  String? get groupName => _groupName;
-  String? get groupInviteCode => _groupInviteCode;
-  String? get groupImagePath => _groupImagePath;
-  bool get groupAdminApproval => _groupAdminApproval;
-  bool get hasGroup => activeGroupId != null || _groupName != null;
+  String? get groupName => groupState.groupName;
+  String? get groupInviteCode => groupState.groupInviteCode;
+  String? get groupImagePath => groupState.groupImagePath;
+  bool get groupAdminApproval => groupState.groupAdminApproval;
+  bool get hasGroup => groupState.hasGroup;
+  String? get activeGroupId => groupState.activeGroupId;
 
-  Future<void> updateGroupImagePath(String? path) async {
-    _groupImagePath = path;
-    if (path != null) {
-      await _prefs?.setString(_kGroupImagePathV1, path);
-    } else {
-      await _prefs?.remove(_kGroupImagePathV1);
-    }
-    notifyListeners();
-  }
+  void setActiveGroupId(String? id) => groupState.setActiveGroupId(id);
 
-  Future<void> updateGroupAdminApproval(bool value) async {
-    _groupAdminApproval = value;
-    await _prefs?.setBool(_kGroupAdminApprovalV1, value);
-    notifyListeners();
-  }
+  Future<void> updateGroupImagePath(String? path) =>
+      groupState.updateGroupImagePath(path);
 
-  void _deleteGroupImageFile() {
-    final path = _groupImagePath;
-    if (path == null) return;
-    try {
-      final file = File(path);
-      if (file.existsSync()) file.deleteSync();
-    } catch (_) {
-      // ignore: best-effort cleanup
-    }
-  }
+  Future<void> updateGroupAdminApproval(bool value) =>
+      groupState.updateGroupAdminApproval(value);
 
-  Future<String?> createGroup(String name) async {
-    final cleaned = name.trim();
-    if (cleaned.isEmpty) return 'Invalid name';
+  Future<String?> createGroup(String name) => groupState.createGroup(
+    name: name,
+    uid: _profile.id,
+    isAuthenticated: isAuthenticated,
+    profile: _profile,
+    avatarSeed: currentUserAvatarSeed,
+    firestoreService: _firestoreService,
+  );
 
-    // Genera codice invito CASS-XXXX (con check unicità su Firestore)
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final rng = Random.secure();
-    final fs = _firestoreService;
-    final uid = _profile.id;
-
-    // Dev mode: backend non configurato → crea solo locale.
-    if (fs == null) {
-      final suffix = List.generate(
-        4,
-        (_) => chars[rng.nextInt(chars.length)],
-      ).join();
-      final code = 'CASS-$suffix';
-      _groupName = cleaned;
-      _groupInviteCode = code;
-      await _prefs?.setString(_kGroupNameV1, cleaned);
-      await _prefs?.setString(_kGroupInviteCodeV1, code);
-      notifyListeners();
-      return null;
-    }
-
-    if (!isAuthenticated || uid.isEmpty) {
-      return 'Not authenticated';
-    }
-
-    String? code;
-    for (var i = 0; i < 30; i++) {
-      final suffix = List.generate(
-        4,
-        (_) => chars[rng.nextInt(chars.length)],
-      ).join();
-      final candidate = 'CASS-$suffix';
-      try {
-        final taken = await fs.isInviteCodeTaken(candidate);
-        if (!taken) {
-          code = candidate;
-          break;
-        }
-      } catch (_) {
-        return 'Permission denied';
-      }
-    }
-    if (code == null) return 'Invite code generation failed';
-
-    try {
-      final groupId = await fs.createGroup(
-        name: cleaned,
-        adminUid: uid,
-        inviteCode: code,
-      );
-      // Aggiungi admin come primo membro
-      await fs.joinGroup(
-        groupId: groupId,
-        uid: uid,
-        displayName: _profile.displayName,
-        teamName: _profile.teamName,
+  Future<String?> joinGroupByInviteCode(String code) =>
+      groupState.joinGroupByInviteCode(
+        code: code,
+        uid: _profile.id,
+        isAuthenticated: isAuthenticated,
+        profile: _profile,
         avatarSeed: currentUserAvatarSeed,
-        favoriteTeam: _profile.favoriteTeam,
-        photoUrl: _profile.photoUrl,
+        firestoreService: _firestoreService,
       );
 
-      _groupName = cleaned;
-      _groupInviteCode = code;
-      await _prefs?.setString(_kGroupNameV1, cleaned);
-      await _prefs?.setString(_kGroupInviteCodeV1, code);
+  Future<void> leaveFirestoreGroup(String groupId) =>
+      groupState.leaveFirestoreGroup(
+        groupId: groupId,
+        uid: _profile.id,
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
-      if (!_firestoreGroupIds.contains(groupId)) {
-        _firestoreGroupIds = [..._firestoreGroupIds, groupId];
-      }
-      _activeGroupId = groupId;
+  Future<String?> deleteActiveGroupIfAdmin() =>
+      groupState.deleteActiveGroupIfAdmin(
+        uid: _profile.id,
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
-      notifyListeners();
-      return null;
-    } catch (_) {
-      return 'Create group failed';
-    }
-  }
-
-  /// Gruppo Firestore attivo (primo per default)
-  String? _activeGroupId;
-  String? get activeGroupId =>
-      _activeGroupId ??
-      (_firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null);
-
-  void setActiveGroupId(String? id) {
-    _activeGroupId = id;
-    notifyListeners();
-  }
-
-  /// Join a Firestore group by invite code. Returns error string or null on success.
-  Future<String?> joinGroupByInviteCode(String code) async {
-    final fs = _firestoreService;
-    if (fs == null) return 'Backend unavailable';
-    if (!isAuthenticated) return 'Not authenticated';
-
-    final group = await fs.getGroupByInviteCode(code.trim().toUpperCase());
-    if (group == null) return 'Invalid code';
-
-    final uid = _profile.id;
-
-    // Check se già membro
-    if (_firestoreGroupIds.contains(group.id)) return 'Already a member';
-
-    await fs.joinGroup(
-      groupId: group.id,
-      uid: uid,
-      displayName: _profile.displayName,
-      teamName: _profile.teamName,
-      avatarSeed: currentUserAvatarSeed,
-      favoriteTeam: _profile.favoriteTeam,
-      photoUrl: _profile.photoUrl,
-    );
-
-    _firestoreGroupIds = [..._firestoreGroupIds, group.id];
-    _activeGroupId = group.id;
-
-    // Salva anche localmente per compatibilità
-    _groupName = group.name;
-    _groupInviteCode = group.inviteCode;
-    await _prefs?.setString(_kGroupNameV1, group.name);
-    await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
-
-    notifyListeners();
-    return null;
-  }
-
-  /// Leave a Firestore group.
-  Future<void> leaveFirestoreGroup(String groupId) async {
-    final fs = _firestoreService;
-    if (fs == null || !isAuthenticated) return;
-
-    final uid = _profile.id;
-    await fs.leaveGroup(groupId: groupId, uid: uid);
-
-    _firestoreGroupIds = _firestoreGroupIds
-        .where((id) => id != groupId)
-        .toList();
-    if (_activeGroupId == groupId) {
-      _activeGroupId = _firestoreGroupIds.isNotEmpty
-          ? _firestoreGroupIds.first
-          : null;
-    }
-
-    // Se non ha più gruppi, pulisci anche locale
-    if (_firestoreGroupIds.isEmpty) {
-      _groupName = null;
-      _groupInviteCode = null;
-      _deleteGroupImageFile();
-      _groupImagePath = null;
-      await _prefs?.remove(_kGroupNameV1);
-      await _prefs?.remove(_kGroupInviteCodeV1);
-      await _prefs?.remove(_kGroupImagePathV1);
-    }
-
-    notifyListeners();
-  }
-
-  Future<String?> deleteActiveGroupIfAdmin() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (groupId == null) return 'No group';
-
-    if (fs == null) {
-      _groupName = null;
-      _groupInviteCode = null;
-      _deleteGroupImageFile();
-      _groupImagePath = null;
-      _groupAdminApproval = false;
-      _activeGroupId = null;
-      _firestoreGroupIds = [];
-      await _prefs?.remove(_kGroupNameV1);
-      await _prefs?.remove(_kGroupInviteCodeV1);
-      await _prefs?.remove(_kGroupImagePathV1);
-      await _prefs?.remove(_kGroupAdminApprovalV1);
-      notifyListeners();
-      return null;
-    }
-
-    if (!isAuthenticated || _profile.id.isEmpty) return 'Not authenticated';
-
-    GroupDocument? group;
-    try {
-      group = await fs.getGroup(groupId);
-    } catch (_) {
-      return 'Delete group failed';
-    }
-
-    if (group == null) {
-      _firestoreGroupIds = _firestoreGroupIds
-          .where((id) => id != groupId)
-          .toList();
-      _activeGroupId = _firestoreGroupIds.isNotEmpty
-          ? _firestoreGroupIds.first
-          : null;
-      if (_activeGroupId == null) {
-        _groupName = null;
-        _groupInviteCode = null;
-        _deleteGroupImageFile();
-        _groupImagePath = null;
-        _groupAdminApproval = false;
-        await _prefs?.remove(_kGroupNameV1);
-        await _prefs?.remove(_kGroupInviteCodeV1);
-        await _prefs?.remove(_kGroupImagePathV1);
-        await _prefs?.remove(_kGroupAdminApprovalV1);
-      }
-      notifyListeners();
-      return null;
-    }
-
-    if (group.adminUid != _profile.id) return 'Not admin';
-
-    try {
-      await fs.deleteGroupAsAdmin(groupId: groupId, adminUid: _profile.id);
-    } catch (_) {
-      return 'Delete group failed';
-    }
-
-    _firestoreGroupIds = _firestoreGroupIds
-        .where((id) => id != groupId)
-        .toList();
-    _activeGroupId = _firestoreGroupIds.isNotEmpty
-        ? _firestoreGroupIds.first
-        : null;
-
-    _deleteGroupImageFile();
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-
-    if (_activeGroupId == null) {
-      _groupName = null;
-      _groupInviteCode = null;
-      await _prefs?.remove(_kGroupNameV1);
-      await _prefs?.remove(_kGroupInviteCodeV1);
-      await _prefs?.remove(_kGroupImagePathV1);
-      await _prefs?.remove(_kGroupAdminApprovalV1);
-    } else {
-      final next = await fs.getGroup(_activeGroupId!);
-      if (next != null) {
-        _groupName = next.name;
-        _groupInviteCode = next.inviteCode;
-        await _prefs?.setString(_kGroupNameV1, next.name);
-        await _prefs?.setString(_kGroupInviteCodeV1, next.inviteCode);
-        await _prefs?.remove(_kGroupImagePathV1);
-        await _prefs?.setBool(_kGroupAdminApprovalV1, false);
-      } else {
-        _groupName = null;
-        _groupInviteCode = null;
-        _activeGroupId = null;
-        _firestoreGroupIds = [];
-        await _prefs?.remove(_kGroupNameV1);
-        await _prefs?.remove(_kGroupInviteCodeV1);
-        await _prefs?.remove(_kGroupImagePathV1);
-        await _prefs?.remove(_kGroupAdminApprovalV1);
-      }
-    }
-
-    notifyListeners();
-    return null;
-  }
-
-  Future<void> updateGroupName(String name) async {
-    final cleaned = name.trim();
-    if (cleaned.isEmpty) return;
-    if (cleaned == _groupName) return;
-
-    _groupName = cleaned;
-    await _prefs?.setString(_kGroupNameV1, cleaned);
-    notifyListeners();
-  }
+  Future<void> updateGroupName(String name) => groupState.updateGroupName(name);
 
   // ===== MATCHDAY FINALIZATION (finalDone) =====
   bool _finalizedMatchdaysLoaded = false;
@@ -779,11 +492,16 @@ class AppState extends ChangeNotifier {
     required UserProfile profile,
     required CassandraLanguage language,
     required PredictionVisibility defaultVisibility,
+    required GroupState groupStateInstance,
     int demoSeed = 0,
   }) : _profile = profile,
        _language = language,
        _defaultVisibility = defaultVisibility,
-       _demoSeed = demoSeed;
+       _demoSeed = demoSeed {
+    groupState = groupStateInstance;
+    // Propaga notifiche da GroupState -> AppState listeners.
+    groupState.addListener(notifyListeners);
+  }
 
   /// --- getters usati dal resto dell'app ---
   UserProfile get profile => _profile;
@@ -959,10 +677,7 @@ class AppState extends ChangeNotifier {
     );
     final demoSeed = prefs.getInt(_kDemoSeedV1) ?? 0;
 
-    final groupName = prefs.getString(_kGroupNameV1);
-    final groupInviteCode = prefs.getString(_kGroupInviteCodeV1);
-    final groupImagePath = prefs.getString(_kGroupImagePathV1);
-    final groupAdminApproval = prefs.getBool(_kGroupAdminApprovalV1) ?? false;
+    final groupStateInstance = GroupState.fromPrefs(prefs);
     final rememberMeEnabled = prefs.getBool(_kRememberMeEnabled) ?? false;
     final rememberedUid = (prefs.getString(_kRememberedUid) ?? '').trim();
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
@@ -981,12 +696,9 @@ class AppState extends ChangeNotifier {
         profile: profile,
         language: language,
         defaultVisibility: visibility,
+        groupStateInstance: groupStateInstance,
         demoSeed: demoSeed,
       )
-      .._groupName = groupName
-      .._groupInviteCode = groupInviteCode
-      .._groupImagePath = groupImagePath
-      .._groupAdminApproval = groupAdminApproval
       .._rememberMeEnabled = rememberMeEnabled
       .._rememberedUid = rememberedUid.isEmpty ? null : rememberedUid
       .._rememberedHandle = rememberedHandle.isEmpty ? null : rememberedHandle
@@ -1012,6 +724,7 @@ class AppState extends ChangeNotifier {
       profile: profile ?? _defaultProfile,
       language: language,
       defaultVisibility: defaultVisibility,
+      groupStateInstance: GroupState.inMemory(),
       demoSeed: 0,
     );
   }
@@ -1198,21 +911,10 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
-    _prefs?.remove(_kGroupNameV1);
-    _prefs?.remove(_kGroupInviteCodeV1);
-    _prefs?.remove(_kGroupImagePathV1);
-    _prefs?.remove(_kGroupAdminApprovalV1);
-
-    _deleteGroupImageFile();
 
     _profile = _defaultProfile;
     _currentUserProfileSetupCompleted = false;
-    _groupName = null;
-    _groupInviteCode = null;
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-    _firestoreGroupIds = [];
-    _activeGroupId = null;
+    await groupState.clearAll();
     notifyListeners();
   }
 
@@ -1235,19 +937,8 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
-    _prefs?.remove(_kGroupNameV1);
-    _prefs?.remove(_kGroupInviteCodeV1);
-    _prefs?.remove(_kGroupImagePathV1);
-    _prefs?.remove(_kGroupAdminApprovalV1);
 
-    _deleteGroupImageFile();
-
-    _groupName = null;
-    _groupInviteCode = null;
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-    _firestoreGroupIds = [];
-    _activeGroupId = null;
+    await groupState.clearAll();
 
     await resetAll();
     notifyListeners();
@@ -1257,13 +948,7 @@ class AppState extends ChangeNotifier {
     _profile = _defaultProfile;
     _language = CassandraLanguage.system;
     _defaultVisibility = PredictionVisibility.friends;
-    _groupName = null;
-    _groupInviteCode = null;
-    _deleteGroupImageFile();
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-    _firestoreGroupIds = [];
-    _activeGroupId = null;
+    await groupState.clearAll();
     _rememberMeEnabled = false;
     _currentUserProfileSetupCompleted = false;
     _rememberedUid = null;
@@ -1283,10 +968,6 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kLanguage);
     await _prefs.remove(_kDefaultVisibility);
 
-    await _prefs.remove(_kGroupNameV1);
-    await _prefs.remove(_kGroupInviteCodeV1);
-    await _prefs.remove(_kGroupImagePathV1);
-    await _prefs.remove(_kGroupAdminApprovalV1);
     await _prefs.remove(_kRememberMeEnabled);
     await _prefs.remove(_kRememberedUid);
     await _prefs.remove(_kRememberedHandle);
@@ -1666,31 +1347,11 @@ class AppState extends ChangeNotifier {
   // ===== FIRESTORE GROUP LEADERBOARD =====
 
   /// Fetch group members from Firestore for active group.
-  /// Returns list of GroupMember (domain model).
-  Future<List<GroupMember>> fetchFirestoreGroupMembers() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return [];
-
-    final docs = await fs.getGroupMembers(groupId);
-    final photosByUid = await fs.getUserPhotoUrls(
-      docs.map((d) => d.uid).toList(growable: false),
-    );
-    return docs
-        .map(
-          (d) => GroupMember(
-            id: d.uid,
-            displayName: d.displayName,
-            teamName: d.teamName,
-            avatarSeed: d.avatarSeed,
-            favoriteTeam: d.favoriteTeam,
-            photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
-                ? d.photoUrl!.trim()
-                : photosByUid[d.uid],
-          ),
-        )
-        .toList();
-  }
+  Future<List<GroupMember>> fetchFirestoreGroupMembers() =>
+      groupState.fetchFirestoreGroupMembers(
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
   /// Fetch picks from Firestore for a list of UIDs + matchday.
   /// Returns map: uid -> picksByMatchId.
@@ -1748,12 +1409,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Fetch active group metadata from Firestore.
-  Future<GroupDocument?> fetchActiveGroupDocument() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return null;
-    return fs.getGroup(groupId);
-  }
+  Future<GroupDocument?> fetchActiveGroupDocument() =>
+      groupState.fetchActiveGroupDocument(
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
   /// Fetch all season picks for a user from Firestore.
   /// Returns list of PicksDocument for the current season.
