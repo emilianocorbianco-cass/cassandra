@@ -23,6 +23,7 @@ class _ChatPageState extends State<ChatPage>
   static const _maxImageBytes = 380000;
 
   final _inputController = TextEditingController();
+  final _inputFocusNode = FocusNode();
   final _messagesController = ScrollController();
   String? _lastTailMessageId;
   bool _pendingScrollToBottom = false;
@@ -33,11 +34,25 @@ class _ChatPageState extends State<ChatPage>
   List<GroupChatMessageDocument> _messages = const [];
   bool _messagesLoading = false;
   String _messagesSignature = '';
+  bool _keyboardVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _inputFocusNode.addListener(() {
+      if (!_inputFocusNode.hasFocus) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToBottom(animate: true);
+      });
+    });
+  }
 
   @override
   void dispose() {
     _messagesSub?.cancel();
     _messagesSub = null;
+    _inputFocusNode.dispose();
     _inputController.dispose();
     _messagesController.dispose();
     super.dispose();
@@ -230,6 +245,15 @@ class _ChatPageState extends State<ChatPage>
       _unbindMessagesStream();
     }
 
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (keyboardVisible && !_keyboardVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToBottom(animate: true);
+      });
+    }
+    _keyboardVisible = keyboardVisible;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -319,6 +343,7 @@ class _ChatPageState extends State<ChatPage>
                             Expanded(
                               child: TextField(
                                 controller: _inputController,
+                                focusNode: _inputFocusNode,
                                 minLines: 1,
                                 maxLines: 4,
                                 textInputAction: TextInputAction.send,

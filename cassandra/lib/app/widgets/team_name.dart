@@ -8,12 +8,14 @@ class TeamName extends StatelessWidget {
     this.style,
     this.textAlign,
     this.reversed = false,
+    this.logoScale = 1.0,
   });
 
   final String name;
   final String? logoUrl;
   final TextStyle? style;
   final TextAlign? textAlign;
+  final double logoScale;
 
   /// Se true, mostra testo-logo (allineamento destra) anziché logo-testo.
   final bool reversed;
@@ -23,7 +25,7 @@ class TeamName extends StatelessWidget {
     final effectiveStyle = style ?? DefaultTextStyle.of(context).style;
     final fontSize = effectiveStyle.fontSize ?? 14.0;
     // Altezza logo ≈ altezza lettera maiuscola (circa 70-75% del fontSize)
-    final logoSize = fontSize;
+    final logoSize = fontSize * logoScale;
 
     final url = logoUrl;
     if (url == null || url.isEmpty) {

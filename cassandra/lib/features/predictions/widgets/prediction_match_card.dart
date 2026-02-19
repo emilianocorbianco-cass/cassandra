@@ -26,8 +26,8 @@ class PredictionMatchCard extends StatelessWidget {
         Theme.of(context).textTheme.titleMedium?.fontSize ?? 18;
     final teamTextStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
       fontWeight: FontWeight.w700,
-      color: CassandraColors.primary,
-      fontSize: baseTeamSize + 1,
+      color: CassandraColors.slate,
+      fontSize: baseTeamSize + 2,
     );
 
     return Card(
@@ -50,6 +50,7 @@ class PredictionMatchCard extends StatelessWidget {
                     name: match.homeTeam,
                     logoUrl: match.homeTeamLogo,
                     style: teamTextStyle,
+                    logoScale: 1.1,
                   ),
                 ),
                 Padding(
@@ -67,6 +68,7 @@ class PredictionMatchCard extends StatelessWidget {
                     name: match.awayTeam,
                     logoUrl: match.awayTeamLogo,
                     style: teamTextStyle,
+                    logoScale: 1.1,
                     textAlign: TextAlign.end,
                     reversed: true,
                   ),
