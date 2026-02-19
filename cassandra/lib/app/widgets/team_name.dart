@@ -27,7 +27,7 @@ class TeamName extends StatelessWidget {
     // Altezza logo ≈ altezza lettera maiuscola (circa 70-75% del fontSize)
     final logoSize = fontSize * logoScale;
 
-    final url = logoUrl;
+    final url = _resolveLogoUrl(name, logoUrl);
     if (url == null || url.isEmpty) {
       return Text(name, style: effectiveStyle, textAlign: textAlign);
     }
@@ -71,5 +71,16 @@ class TeamName extends StatelessWidget {
           : MainAxisAlignment.start,
       children: reversed ? [text, gap, logo] : [logo, gap, text],
     );
+  }
+
+  String? _resolveLogoUrl(String teamName, String? sourceUrl) {
+    final normalized = teamName.trim().toLowerCase();
+    if (normalized == 'juventus') {
+      // API logo attuale risulta poco leggibile su sfondo chiaro: forziamo
+      // il logo ufficiale in variante nera piena.
+      return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/'
+          'Juventus_FC_2017_logo.svg/120px-Juventus_FC_2017_logo.svg.png';
+    }
+    return sourceUrl;
   }
 }
