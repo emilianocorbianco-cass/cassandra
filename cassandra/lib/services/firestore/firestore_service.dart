@@ -5,7 +5,6 @@ import '../../app/state/user_profile.dart';
 import '../../features/predictions/models/pick_option.dart';
 import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
-import '../../features/scoring/models/score_breakdown.dart';
 import '../api_football/models/api_football_standing.dart';
 import 'firestore_serializers.dart';
 import 'models/chat_message_document.dart';
@@ -101,7 +100,7 @@ class FirestoreService {
       'adminUid': adminUid,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'memberCount': 1,
+      'memberCount': 0,
     });
     return docRef.id;
   }
@@ -122,6 +121,17 @@ class FirestoreService {
     return GroupDocument.fromFirestore(doc);
   }
 
+  Future<void> updateGroupImageUrl({
+    required String groupId,
+    required String? imageUrl,
+  }) async {
+    final cleaned = (imageUrl ?? '').trim();
+    await _db.collection('groups').doc(groupId).set({
+      'imageUrl': cleaned.isEmpty ? null : cleaned,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Future<void> joinGroup({
     required String groupId,
     required String uid,
@@ -131,35 +141,51 @@ class FirestoreService {
     String? favoriteTeam,
     String? photoUrl,
   }) async {
-    final batch = _db.batch();
+    final groupRef = _db.collection('groups').doc(groupId);
+    final memberRef = groupRef.collection('members').doc(uid);
+    final userRef = _db.collection('users').doc(uid);
 
-    // Add member subcollection doc
-    batch.set(
-      _db.collection('groups').doc(groupId).collection('members').doc(uid),
-      {
+    await _db.runTransaction((txn) async {
+      final groupSnap = await txn.get(groupRef);
+      if (!groupSnap.exists) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'not-found',
+          message: 'Group not found',
+        );
+      }
+
+      final memberSnap = await txn.get(memberRef);
+      final baseMemberData = <String, dynamic>{
         'displayName': displayName,
         'teamName': teamName,
         'photoUrl': photoUrl,
         'avatarSeed': avatarSeed,
         'favoriteTeam': favoriteTeam,
-        'joinedAt': FieldValue.serverTimestamp(),
-        'role': 'member',
-      },
-    );
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
-    // Increment memberCount
-    batch.update(_db.collection('groups').doc(groupId), {
-      'memberCount': FieldValue.increment(1),
-      'updatedAt': FieldValue.serverTimestamp(),
+      if (!memberSnap.exists) {
+        final currentCount =
+            (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+        txn.set(memberRef, {
+          ...baseMemberData,
+          'joinedAt': FieldValue.serverTimestamp(),
+          'role': 'member',
+        }, SetOptions(merge: true));
+        txn.update(groupRef, {
+          'memberCount': currentCount + 1,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        txn.set(memberRef, baseMemberData, SetOptions(merge: true));
+      }
+
+      txn.set(userRef, {
+        'groupIds': FieldValue.arrayUnion([groupId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     });
-
-    // Ensure user profile doc exists, then append groupId.
-    batch.set(_db.collection('users').doc(uid), {
-      'groupIds': FieldValue.arrayUnion([groupId]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await batch.commit();
   }
 
   Future<void> updateGroupMemberProfileInGroups({
@@ -213,23 +239,31 @@ class FirestoreService {
     required String groupId,
     required String uid,
   }) async {
-    final batch = _db.batch();
+    final groupRef = _db.collection('groups').doc(groupId);
+    final memberRef = groupRef.collection('members').doc(uid);
+    final userRef = _db.collection('users').doc(uid);
 
-    batch.delete(
-      _db.collection('groups').doc(groupId).collection('members').doc(uid),
-    );
+    await _db.runTransaction((txn) async {
+      final groupSnap = await txn.get(groupRef);
+      final memberSnap = await txn.get(memberRef);
 
-    batch.update(_db.collection('groups').doc(groupId), {
-      'memberCount': FieldValue.increment(-1),
-      'updatedAt': FieldValue.serverTimestamp(),
+      if (memberSnap.exists) {
+        txn.delete(memberRef);
+        if (groupSnap.exists) {
+          final currentCount =
+              (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+          txn.update(groupRef, {
+            'memberCount': currentCount > 0 ? currentCount - 1 : 0,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      txn.set(userRef, {
+        'groupIds': FieldValue.arrayRemove([groupId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     });
-
-    batch.set(_db.collection('users').doc(uid), {
-      'groupIds': FieldValue.arrayRemove([groupId]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await batch.commit();
   }
 
   Future<void> deleteGroupAsAdmin({
@@ -282,6 +316,19 @@ class FirestoreService {
         .collection('members')
         .get();
     return snap.docs.map(GroupMemberDocument.fromFirestore).toList();
+  }
+
+  Stream<List<GroupMemberDocument>> streamGroupMembers(String groupId) {
+    return _db
+        .collection('groups')
+        .doc(groupId)
+        .collection('members')
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map(GroupMemberDocument.fromFirestore)
+              .toList(growable: false),
+        );
   }
 
   Future<Map<String, String>> getUserPhotoUrls(List<String> uids) async {
@@ -385,9 +432,13 @@ class FirestoreService {
     required int dayNumber,
     required Map<String, PickOption> picksByMatchId,
     required String visibility,
-    DayScoreBreakdown? score,
+    String? groupId,
+    Object? score,
   }) async {
     final docId = _picksDocId(uid, seasonKey, dayNumber);
+    if (score != null) {
+      // Intentionally ignored: score is backend-authoritative.
+    }
 
     final data = <String, dynamic>{
       'uid': uid,
@@ -398,20 +449,10 @@ class FirestoreService {
       },
       'submittedAt': FieldValue.serverTimestamp(),
       'visibility': visibility,
+      if ((groupId ?? '').trim().isNotEmpty) 'groupId': groupId!.trim(),
     };
-
-    if (score != null) {
-      data['score'] = {
-        'baseTotal': score.baseTotal,
-        'bonusPoints': score.bonusPoints,
-        'total': score.total,
-        'correctCount': score.correctCount,
-        if (score.averageOddsPlayed != null)
-          'averageOddsPlayed': score.averageOddsPlayed,
-      };
-    }
-
-    await _db.collection('picks').doc(docId).set(data);
+    // score/scoredAt are backend-authoritative and must not be written by client.
+    await _db.collection('picks').doc(docId).set(data, SetOptions(merge: true));
   }
 
   Future<PicksDocument?> getPicks({
@@ -429,37 +470,94 @@ class FirestoreService {
     required String seasonKey,
     required int dayNumber,
     required List<String> uids,
+    String? groupId,
   }) async {
     if (uids.isEmpty) return [];
 
     // Firestore 'whereIn' supports max 30 items
     final results = <PicksDocument>[];
+    final scopedGroupId = groupId?.trim() ?? '';
     for (var i = 0; i < uids.length; i += 30) {
       final chunk = uids.sublist(
         i,
         i + 30 > uids.length ? uids.length : i + 30,
       );
-      final snap = await _db
+      var query = _db
           .collection('picks')
           .where('seasonKey', isEqualTo: seasonKey)
-          .where('dayNumber', isEqualTo: dayNumber)
-          .where('uid', whereIn: chunk)
-          .get();
+          .where('dayNumber', isEqualTo: dayNumber);
+      if (scopedGroupId.isNotEmpty) {
+        query = query.where('groupId', isEqualTo: scopedGroupId);
+      }
+      final snap = await query.where('uid', whereIn: chunk).get();
       results.addAll(snap.docs.map(PicksDocument.fromFirestore));
     }
     return results;
   }
 
+  Stream<List<PicksDocument>> streamPicksForMatchday({
+    required String seasonKey,
+    required int dayNumber,
+  }) {
+    return _db
+        .collection('picks')
+        .where('seasonKey', isEqualTo: seasonKey)
+        .where('dayNumber', isEqualTo: dayNumber)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map(PicksDocument.fromFirestore)
+              .toList(growable: false),
+        );
+  }
+
   Future<List<PicksDocument>> getPicksForUser({
     required String uid,
     required String seasonKey,
+    String? groupId,
   }) async {
-    final snap = await _db
+    var query = _db
         .collection('picks')
         .where('uid', isEqualTo: uid)
-        .where('seasonKey', isEqualTo: seasonKey)
-        .get();
+        .where('seasonKey', isEqualTo: seasonKey);
+    final scopedGroupId = groupId?.trim() ?? '';
+    if (scopedGroupId.isNotEmpty) {
+      query = query.where('groupId', isEqualTo: scopedGroupId);
+    }
+    final snap = await query.get();
     return snap.docs.map(PicksDocument.fromFirestore).toList();
+  }
+
+  Future<List<PicksDocument>> getPicksForSeason({
+    required String seasonKey,
+    String? groupId,
+  }) async {
+    var query = _db
+        .collection('picks')
+        .where('seasonKey', isEqualTo: seasonKey);
+    final scopedGroupId = groupId?.trim() ?? '';
+    if (scopedGroupId.isNotEmpty) {
+      query = query.where('groupId', isEqualTo: scopedGroupId);
+    }
+    final snap = await query.get();
+    return snap.docs.map(PicksDocument.fromFirestore).toList(growable: false);
+  }
+
+  Stream<List<PicksDocument>> streamPicksForSeason({
+    required String seasonKey,
+    String? groupId,
+  }) {
+    var query = _db
+        .collection('picks')
+        .where('seasonKey', isEqualTo: seasonKey);
+    final scopedGroupId = groupId?.trim() ?? '';
+    if (scopedGroupId.isNotEmpty) {
+      query = query.where('groupId', isEqualTo: scopedGroupId);
+    }
+    return query.snapshots().map(
+      (snap) =>
+          snap.docs.map(PicksDocument.fromFirestore).toList(growable: false),
+    );
   }
 
   // ===== MATCHDAY DATA =====
@@ -506,6 +604,26 @@ class FirestoreService {
       seasonKey: seasonKey,
       dayNumber: dayNumber,
     );
+  }
+
+  Stream<MatchdayDocument?> streamMatchdayData({
+    required String seasonKey,
+    required int dayNumber,
+  }) {
+    return _db
+        .collection('seasons')
+        .doc(seasonKey)
+        .collection('matchdays')
+        .doc(dayNumber.toString())
+        .snapshots()
+        .map((doc) {
+          if (!doc.exists) return null;
+          return MatchdayDocument.fromFirestore(
+            doc,
+            seasonKey: seasonKey,
+            dayNumber: dayNumber,
+          );
+        });
   }
 
   Future<List<ApiFootballStanding>> getSeasonStandings({

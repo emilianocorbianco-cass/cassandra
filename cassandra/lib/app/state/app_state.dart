@@ -12,7 +12,6 @@ import 'user_profile.dart';
 import '../../features/group/models/group_member.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import '../../features/scoring/models/score_breakdown.dart';
-import '../../features/scoring/scoring_engine.dart';
 import '../../services/firestore/models/group_document.dart';
 import '../../services/firestore/models/picks_document.dart';
 import '../../services/auth/auth_service.dart';
@@ -54,9 +53,27 @@ class AppState extends ChangeNotifier {
   static const _kRememberedPhotoUrl = 'auth.remembered.photoUrl.v1';
   static const _kRememberedProvider = 'auth.remembered.provider.v1';
   static const _kDevicePushToken = 'push.deviceToken.v1';
+  static const _kFirestoreMigrationV1Done = 'firestore_migration_v1_done';
 
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
+
+  String _scopedHistoryKey(String base, {String? uid, String? seasonKey}) {
+    final scopedUid = (uid ?? _profile.id).trim();
+    final scopedSeason = (seasonKey ?? currentSeasonKey).trim();
+    final safeUid = scopedUid.isEmpty ? 'anon' : scopedUid;
+    final safeSeason = scopedSeason.isEmpty ? 'season' : scopedSeason;
+    return '$base.$safeUid.$safeSeason';
+  }
+
+  String get _kCurrentUserPicksByMatchdayScoped =>
+      _scopedHistoryKey(_kCurrentUserPicksByMatchday);
+  String get _kPredictionOutcomesByMatchdayScoped =>
+      _scopedHistoryKey(_kPredictionOutcomesByMatchday);
+  String get _kMatchdayMatchesByDayScoped =>
+      _scopedHistoryKey(_kMatchdayMatchesByDayV1);
+  String get _kFirestoreMigrationV1DoneScoped =>
+      _scopedHistoryKey(_kFirestoreMigrationV1Done);
 
   static const UserProfile _defaultProfile = UserProfile(
     id: '',
@@ -225,6 +242,7 @@ class AppState extends ChangeNotifier {
         }
       }
       await refreshActiveGroupMetadataFromFirestore();
+      await _repairProfilePhotoReferenceIfNeeded();
     } catch (_) {
       // ignore: best-effort hydration
     }
@@ -618,7 +636,7 @@ class AppState extends ChangeNotifier {
     // scrivo anche la legacy per compatibilità
     await _prefs?.setString(_kTeamNameLegacy, normalized);
     await _syncRememberedIdentityFromProfile();
-    _syncFieldToFirestore({'teamName': normalized});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateDisplayName(String value) async {
@@ -631,12 +649,16 @@ class AppState extends ChangeNotifier {
 
     await _prefs?.setString(_kProfileDisplayName, cleaned);
     await _syncRememberedIdentityFromProfile();
-    _syncFieldToFirestore({'displayName': cleaned});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateProfilePhotoPath(String? path) async {
     final cleaned = (path ?? '').trim();
-    final next = cleaned.isEmpty ? null : cleaned;
+    final nextRaw = cleaned.isEmpty ? null : cleaned;
+    final nextPortable = nextRaw == null
+        ? null
+        : await _portableImageReference(nextRaw);
+    final next = nextPortable ?? nextRaw;
     if (next == _profile.photoUrl) return;
 
     _profile = _profile.copyWith(photoUrl: next, clearPhotoUrl: next == null);
@@ -644,16 +666,14 @@ class AppState extends ChangeNotifier {
 
     if (next == null) {
       await _prefs?.remove(_kProfilePhotoUrl);
-      _syncFieldToFirestore({'photoUrl': null});
+      await _syncRememberedIdentityFromProfile();
+      _syncProfileToFirestore();
       return;
     }
 
     await _prefs?.setString(_kProfilePhotoUrl, next);
     await _syncRememberedIdentityFromProfile();
-    // Sync solo URL web; i path locali non sono portabili cross-device.
-    if (next.startsWith('http://') || next.startsWith('https://')) {
-      _syncFieldToFirestore({'photoUrl': next});
-    }
+    _syncProfileToFirestore();
   }
 
   Future<void> updateFavoriteTeam(String value) async {
@@ -677,7 +697,7 @@ class AppState extends ChangeNotifier {
       await _prefs.setString(_kProfileFavoriteTeam, stored);
       await _prefs.setString(_kFavoriteTeamLegacy, stored);
     }
-    _syncFieldToFirestore({'favoriteTeam': stored});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateLanguage(CassandraLanguage value) async {
@@ -824,6 +844,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> resetAll() async {
+    final scopedUid = _profile.id.trim();
+    final scopedSeason = currentSeasonKey;
+
     _profile = _defaultProfile;
     _language = CassandraLanguage.system;
     _defaultVisibility = PredictionVisibility.friends;
@@ -853,6 +876,39 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kRememberedHandle);
     await _prefs.remove(_kRememberedPhotoUrl);
     await _prefs.remove(_kRememberedProvider);
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kCurrentUserPicksByMatchday,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kPredictionOutcomesByMatchday,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kMatchdayMatchesByDayV1,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kFirestoreMigrationV1Done,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    // Backward-compat cleanup for older global keys.
+    await _prefs.remove(_kCurrentUserPicksByMatchday);
+    await _prefs.remove(_kPredictionOutcomesByMatchday);
+    await _prefs.remove(_kMatchdayMatchesByDayV1);
+    await _prefs.remove(_kFirestoreMigrationV1Done);
   }
 
   bool _hydratingCurrentUserHistoryFromFirestore = false;
@@ -875,6 +931,7 @@ class AppState extends ChangeNotifier {
             dayNumber: dayNumber,
             picksByMatchId: picksByMatchId,
             visibility: visibility,
+            groupId: activeGroupId,
             score: score,
           )
           .catchError((_) {}),
@@ -914,6 +971,7 @@ class AppState extends ChangeNotifier {
       seasonKey: currentSeasonKey,
       dayNumber: dayNumber,
       uids: uids,
+      groupId: activeGroupId,
     );
 
     final revealAtOrAfterLock =
@@ -954,10 +1012,49 @@ class AppState extends ChangeNotifier {
 
   /// Fetch all season picks for a user from Firestore.
   /// Returns list of PicksDocument for the current season.
-  Future<List<PicksDocument>> fetchSeasonPicksForUser(String uid) async {
+  Future<List<PicksDocument>> fetchSeasonPicksForUser(
+    String uid, {
+    String? groupId,
+    bool scopedToActiveGroup = false,
+  }) async {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) return [];
-    return fs.getPicksForUser(uid: uid, seasonKey: currentSeasonKey);
+    final scopedGroupId = scopedToActiveGroup ? activeGroupId : groupId;
+    return fs.getPicksForUser(
+      uid: uid,
+      seasonKey: currentSeasonKey,
+      groupId: scopedGroupId,
+    );
+  }
+
+  Future<Map<String, List<PicksDocument>>>
+  fetchSeasonPicksByMemberForActiveGroup(List<String> memberUids) async {
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs == null || !isAuthenticated || groupId == null) return const {};
+
+    final scopedUids = memberUids
+        .map((uid) => uid.trim())
+        .where((uid) => uid.isNotEmpty)
+        .toSet();
+    if (scopedUids.isEmpty) return const {};
+
+    final seasonDocs = await fs.getPicksForSeason(
+      seasonKey: currentSeasonKey,
+      groupId: groupId,
+    );
+    final out = <String, List<PicksDocument>>{};
+    for (final doc in seasonDocs) {
+      if (!scopedUids.contains(doc.uid)) continue;
+      out.putIfAbsent(doc.uid, () => <PicksDocument>[]).add(doc);
+    }
+    for (final uid in scopedUids) {
+      out.putIfAbsent(uid, () => <PicksDocument>[]);
+    }
+    for (final docs in out.values) {
+      docs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+    }
+    return out;
   }
 
   /// Hydrate picks history + matchday snapshots from Firestore for current user.
@@ -1049,7 +1146,6 @@ class AppState extends ChangeNotifier {
   }
 
   // ===== LOCAL → FIRESTORE MIGRATION =====
-  static const _kFirestoreMigrationV1Done = 'firestore_migration_v1_done';
 
   /// One-time migration: upload local picks + outcomes to Firestore.
   /// Runs once per device, flagged via SharedPreferences.
@@ -1057,7 +1153,7 @@ class AppState extends ChangeNotifier {
     final prefs = _prefs;
     final fs = _firestoreService;
     if (prefs == null || fs == null || !isAuthenticated) return;
-    if (prefs.getBool(_kFirestoreMigrationV1Done) == true) return;
+    if (prefs.getBool(_kFirestoreMigrationV1DoneScoped) == true) return;
 
     final uid = _profile.id;
     if (uid.isEmpty) return;
@@ -1096,7 +1192,7 @@ class AppState extends ChangeNotifier {
           dayNumber: dayNumber,
           picksByMatchId: picks,
           visibility: predictionVisibilityToStorage(_defaultVisibility),
-          score: score,
+          groupId: activeGroupId,
         );
       }
 
@@ -1116,7 +1212,7 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      await prefs.setBool(_kFirestoreMigrationV1Done, true);
+      await prefs.setBool(_kFirestoreMigrationV1DoneScoped, true);
     } catch (_) {
       // Migration failed — will retry next launch
     }

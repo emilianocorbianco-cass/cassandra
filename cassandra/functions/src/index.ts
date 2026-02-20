@@ -2,7 +2,11 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineString } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  FieldValue,
+  Timestamp,
+} from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import * as https from "https";
 
@@ -640,6 +644,209 @@ async function recomputePicksScoresForMatchday(
       `[${logPrefix}] Recomputed picks scores for matchday ${dayNumber}: updated=${updatedDocs}`
     );
   }
+}
+
+function parseGroupIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
+
+async function resolveGroupIdsForUid(
+  db: FirebaseFirestore.Firestore,
+  uid: string
+): Promise<string[]> {
+  const groupIds = new Set<string>();
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  if (userSnap.exists) {
+    const fromUserDoc = parseGroupIds(userSnap.data()?.["groupIds"]);
+    for (const groupId of fromUserDoc) groupIds.add(groupId);
+  }
+
+  // Legacy fallback: derive membership from groups/{groupId}/members/{uid}.
+  // This avoids collectionGroup indexes and remains deterministic for maintenance jobs.
+  const groupsSnap = await db.collection("groups").select().get();
+  if (!groupsSnap.empty) {
+    const memberRefs = groupsSnap.docs.map((groupDoc) =>
+      groupDoc.ref.collection("members").doc(uid)
+    );
+    const memberSnaps = await db.getAll(...memberRefs);
+    for (const memberSnap of memberSnaps) {
+      if (!memberSnap.exists) continue;
+      const groupId = memberSnap.ref.parent.parent?.id;
+      if (groupId && groupId.trim().length > 0) {
+        groupIds.add(groupId.trim());
+      }
+    }
+  }
+
+  return Array.from(groupIds);
+}
+
+async function backfillLegacyPicksGroupIds(
+  db: FirebaseFirestore.Firestore,
+  seasonKey: string,
+  logPrefix: string
+): Promise<void> {
+  const picksSnap = await db
+    .collection("picks")
+    .where("seasonKey", "==", seasonKey)
+    .get();
+  if (picksSnap.empty) return;
+
+  let scanned = 0;
+  let updated = 0;
+  let skippedNoGroup = 0;
+  let skippedAmbiguous = 0;
+  const uidToGroupIds = new Map<string, string[]>();
+  let batch = db.batch();
+  let pendingWrites = 0;
+
+  for (const doc of picksSnap.docs) {
+    scanned += 1;
+    const data = doc.data();
+    const existingGroupId =
+      typeof data["groupId"] === "string" ? data["groupId"].trim() : "";
+    if (existingGroupId.length > 0) continue;
+
+    const uid = typeof data["uid"] === "string" ? data["uid"].trim() : "";
+    if (!uid) continue;
+
+    let groupIds = uidToGroupIds.get(uid);
+    if (groupIds == null) {
+      groupIds = await resolveGroupIdsForUid(db, uid);
+      uidToGroupIds.set(uid, groupIds);
+    }
+
+    if (groupIds.length === 0) {
+      skippedNoGroup += 1;
+      continue;
+    }
+    if (groupIds.length > 1) {
+      skippedAmbiguous += 1;
+      continue;
+    }
+
+    batch.set(
+      doc.ref,
+      {
+        groupId: groupIds[0],
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    pendingWrites += 1;
+    updated += 1;
+
+    if (pendingWrites >= 400) {
+      await batch.commit();
+      batch = db.batch();
+      pendingWrites = 0;
+    }
+  }
+
+  if (pendingWrites > 0) {
+    await batch.commit();
+  }
+
+  console.log(
+    `[${logPrefix}] Backfill picks.groupId season=${seasonKey} scanned=${scanned} updated=${updated} skippedNoGroup=${skippedNoGroup} skippedAmbiguous=${skippedAmbiguous}`
+  );
+}
+
+async function recomputeAllPicksScoresForSeason(
+  db: FirebaseFirestore.Firestore,
+  seasonKey: string,
+  logPrefix: string
+): Promise<void> {
+  const picksSnap = await db
+    .collection("picks")
+    .where("seasonKey", "==", seasonKey)
+    .get();
+  if (picksSnap.empty) return;
+
+  const dayNumberSet = new Set<number>();
+  for (const doc of picksSnap.docs) {
+    const dayNumber = Number(doc.data()["dayNumber"]);
+    if (!Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 60) {
+      continue;
+    }
+    dayNumberSet.add(Math.trunc(dayNumber));
+  }
+  const dayNumbers = Array.from(dayNumberSet).sort((a, b) => a - b);
+  if (dayNumbers.length === 0) return;
+
+  for (const dayNumber of dayNumbers) {
+    await recomputePicksScoresForMatchday(db, seasonKey, dayNumber, logPrefix);
+  }
+  console.log(
+    `[${logPrefix}] Recompute all scores by picks season=${seasonKey} days=${dayNumbers.length}`
+  );
+}
+
+async function cleanupInvalidMatchdayDocsOnce(
+  db: FirebaseFirestore.Firestore,
+  seasonKey: string,
+  logPrefix: string
+): Promise<void> {
+  const stateRef = db.collection("_maintenance").doc(`season-${seasonKey}`);
+  const stateSnap = await stateRef.get();
+  const alreadyCleaned =
+    stateSnap.exists &&
+    stateSnap.data()?.["invalidMatchdaysCleanupDone"] === true;
+  if (alreadyCleaned) return;
+
+  const matchdaysSnap = await db
+    .collection("seasons")
+    .doc(seasonKey)
+    .collection("matchdays")
+    .get();
+  if (matchdaysSnap.empty) {
+    await stateRef.set(
+      {
+        invalidMatchdaysCleanupDone: true,
+        invalidMatchdaysCleanupAt: FieldValue.serverTimestamp(),
+        invalidMatchdaysDeleted: 0,
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  let deleted = 0;
+  let batch = db.batch();
+  let pendingDeletes = 0;
+  for (const doc of matchdaysSnap.docs) {
+    const dayNumber = Number.parseInt(doc.id, 10);
+    if (!Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 60) {
+      batch.delete(doc.ref);
+      pendingDeletes += 1;
+      deleted += 1;
+      if (pendingDeletes >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        pendingDeletes = 0;
+      }
+    }
+  }
+  if (pendingDeletes > 0) {
+    await batch.commit();
+  }
+
+  await stateRef.set(
+    {
+      invalidMatchdaysCleanupDone: true,
+      invalidMatchdaysCleanupAt: FieldValue.serverTimestamp(),
+      invalidMatchdaysDeleted: deleted,
+    },
+    { merge: true }
+  );
+  console.log(
+    `[${logPrefix}] Cleanup invalid matchday docs season=${seasonKey} deleted=${deleted}`
+  );
 }
 
 function isInProgressStatus(rawStatus: string | null | undefined): boolean {
@@ -1645,5 +1852,23 @@ export const cleanupGroupChatMessages = onSchedule(
     }
 
     console.log(`[chat-cleanup] deleted=${deleted}`);
+  }
+);
+
+export const maintenanceBackfillPicksAndScores = onSchedule(
+  {
+    region: "europe-west1",
+    schedule: "every 3 hours",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async () => {
+    const db = getFirestore();
+    const seasonKey = seasonStartYear().toString();
+    const logPrefix = "maintenance-picks";
+
+    await cleanupInvalidMatchdayDocsOnce(db, seasonKey, logPrefix);
+    await backfillLegacyPicksGroupIds(db, seasonKey, logPrefix);
+    await recomputeAllPicksScoresForSeason(db, seasonKey, logPrefix);
   }
 );

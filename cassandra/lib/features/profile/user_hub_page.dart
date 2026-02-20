@@ -90,10 +90,12 @@ class _UserHubPageState extends State<UserHubPage> {
       List<SeasonLeaderboardEntry> entries;
       if (canUseFirestore) {
         final members = await app.fetchFirestoreGroupMembers();
+        final picksByMember = await app.fetchSeasonPicksByMemberForActiveGroup(
+          members.map((m) => m.id).toList(growable: false),
+        );
         final loaded = <SeasonLeaderboardEntry>[];
         for (final member in members) {
-          final picksDocs = await app.fetchSeasonPicksForUser(member.id);
-          picksDocs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+          final picksDocs = picksByMember[member.id] ?? const [];
 
           final perDay = <MemberMatchdayScore>[];
           for (final pd in picksDocs) {
