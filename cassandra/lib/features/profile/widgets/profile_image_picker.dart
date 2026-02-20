@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -35,10 +37,31 @@ class ProfileImageDisplay extends StatelessWidget {
   final String? imagePathOrUrl;
   final double radius;
 
+  Uint8List? _decodeDataImage(String source) {
+    final lower = source.toLowerCase();
+    if (!lower.startsWith('data:image/')) return null;
+    final comma = source.indexOf(',');
+    if (comma <= 0 || comma >= source.length - 1) return null;
+    final b64 = source.substring(comma + 1).trim();
+    if (b64.isEmpty) return null;
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final source = (imagePathOrUrl ?? '').trim();
     if (source.isNotEmpty) {
+      final dataBytes = _decodeDataImage(source);
+      if (dataBytes != null) {
+        return CircleAvatar(
+          radius: radius,
+          backgroundImage: MemoryImage(dataBytes),
+        );
+      }
       if (source.startsWith('http://') || source.startsWith('https://')) {
         return CircleAvatar(
           radius: radius,

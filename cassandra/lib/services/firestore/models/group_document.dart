@@ -5,6 +5,7 @@ class GroupDocument {
   final String name;
   final String inviteCode;
   final String adminUid;
+  final String? imageUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
   final int memberCount;
@@ -14,6 +15,7 @@ class GroupDocument {
     required this.name,
     required this.inviteCode,
     required this.adminUid,
+    this.imageUrl,
     required this.createdAt,
     required this.updatedAt,
     required this.memberCount,
@@ -28,6 +30,7 @@ class GroupDocument {
       name: d['name'] as String? ?? '',
       inviteCode: d['inviteCode'] as String? ?? '',
       adminUid: d['adminUid'] as String? ?? '',
+      imageUrl: d['imageUrl'] as String?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (d['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       memberCount: d['memberCount'] as int? ?? 0,

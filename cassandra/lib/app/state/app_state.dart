@@ -10,7 +10,6 @@ import 'user_profile.dart';
 import '../../features/group/models/group_member.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import '../../features/scoring/models/score_breakdown.dart';
-import '../../features/scoring/scoring_engine.dart';
 import '../../services/firestore/models/group_document.dart';
 import '../../services/firestore/models/picks_document.dart';
 import '../../services/auth/auth_service.dart';
@@ -70,9 +69,27 @@ class AppState extends ChangeNotifier {
   static const _kRememberedPhotoUrl = 'auth.remembered.photoUrl.v1';
   static const _kRememberedProvider = 'auth.remembered.provider.v1';
   static const _kDevicePushToken = 'push.deviceToken.v1';
+  static const _kFirestoreMigrationV1Done = 'firestore_migration_v1_done';
 
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
+
+  String _scopedHistoryKey(String base, {String? uid, String? seasonKey}) {
+    final scopedUid = (uid ?? _profile.id).trim();
+    final scopedSeason = (seasonKey ?? currentSeasonKey).trim();
+    final safeUid = scopedUid.isEmpty ? 'anon' : scopedUid;
+    final safeSeason = scopedSeason.isEmpty ? 'season' : scopedSeason;
+    return '$base.$safeUid.$safeSeason';
+  }
+
+  String get _kCurrentUserPicksByMatchdayScoped =>
+      _scopedHistoryKey(_kCurrentUserPicksByMatchday);
+  String get _kPredictionOutcomesByMatchdayScoped =>
+      _scopedHistoryKey(_kPredictionOutcomesByMatchday);
+  String get _kMatchdayMatchesByDayScoped =>
+      _scopedHistoryKey(_kMatchdayMatchesByDayV1);
+  String get _kFirestoreMigrationV1DoneScoped =>
+      _scopedHistoryKey(_kFirestoreMigrationV1Done);
 
   static const UserProfile _defaultProfile = UserProfile(
     id: '',
@@ -262,6 +279,17 @@ class AppState extends ChangeNotifier {
     if (_groupInviteCode != group.inviteCode) {
       _groupInviteCode = group.inviteCode;
       await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
+      changed = true;
+    }
+    final groupImage = (group.imageUrl ?? '').trim();
+    final normalizedGroupImage = groupImage.isEmpty ? null : groupImage;
+    if (_groupImagePath != normalizedGroupImage) {
+      _groupImagePath = normalizedGroupImage;
+      if (normalizedGroupImage == null) {
+        await _prefs?.remove(_kGroupImagePathV1);
+      } else {
+        await _prefs?.setString(_kGroupImagePathV1, normalizedGroupImage);
+      }
       changed = true;
     }
 
@@ -467,12 +495,30 @@ class AppState extends ChangeNotifier {
   bool get hasGroup => activeGroupId != null || _groupName != null;
 
   Future<void> updateGroupImagePath(String? path) async {
-    _groupImagePath = path;
-    if (path != null) {
-      await _prefs?.setString(_kGroupImagePathV1, path);
+    final cleaned = (path ?? '').trim();
+    final nextRaw = cleaned.isEmpty ? null : cleaned;
+    final nextPortable = nextRaw == null
+        ? null
+        : await _portableImageReference(nextRaw);
+    final next = nextPortable ?? nextRaw;
+
+    _groupImagePath = next;
+    if (next != null) {
+      await _prefs?.setString(_kGroupImagePathV1, next);
     } else {
       await _prefs?.remove(_kGroupImagePathV1);
     }
+
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs != null && isAuthenticated && groupId != null) {
+      try {
+        await fs.updateGroupImageUrl(groupId: groupId, imageUrl: next);
+      } catch (_) {
+        // ignore: best-effort sync
+      }
+    }
+
     notifyListeners();
   }
 
@@ -485,6 +531,12 @@ class AppState extends ChangeNotifier {
   void _deleteGroupImageFile() {
     final path = _groupImagePath;
     if (path == null) return;
+    final lower = path.toLowerCase();
+    if (lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/')) {
+      return;
+    }
     try {
       final file = File(path);
       if (file.existsSync()) file.deleteSync();
@@ -1045,7 +1097,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> updateProfilePhotoPath(String? path) async {
     final cleaned = (path ?? '').trim();
-    final next = cleaned.isEmpty ? null : cleaned;
+    final nextRaw = cleaned.isEmpty ? null : cleaned;
+    final nextPortable = nextRaw == null
+        ? null
+        : await _portableImageReference(nextRaw);
+    final next = nextPortable ?? nextRaw;
     if (next == _profile.photoUrl) return;
 
     _profile = _profile.copyWith(photoUrl: next, clearPhotoUrl: next == null);
@@ -1059,10 +1115,7 @@ class AppState extends ChangeNotifier {
 
     await _prefs?.setString(_kProfilePhotoUrl, next);
     await _syncRememberedIdentityFromProfile();
-    // Sync solo URL web; i path locali non sono portabili cross-device.
-    if (next.startsWith('http://') || next.startsWith('https://')) {
-      _syncFieldToFirestore({'photoUrl': next});
-    }
+    _syncFieldToFirestore({'photoUrl': next});
   }
 
   Future<void> updateFavoriteTeam(String value) async {
@@ -1202,6 +1255,39 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kGroupInviteCodeV1);
     _prefs?.remove(_kGroupImagePathV1);
     _prefs?.remove(_kGroupAdminApprovalV1);
+    _prefs?.remove(
+      _scopedHistoryKey(
+        _kCurrentUserPicksByMatchday,
+        uid: uid,
+        seasonKey: currentSeasonKey,
+      ),
+    );
+    _prefs?.remove(
+      _scopedHistoryKey(
+        _kPredictionOutcomesByMatchday,
+        uid: uid,
+        seasonKey: currentSeasonKey,
+      ),
+    );
+    _prefs?.remove(
+      _scopedHistoryKey(
+        _kMatchdayMatchesByDayV1,
+        uid: uid,
+        seasonKey: currentSeasonKey,
+      ),
+    );
+    _prefs?.remove(
+      _scopedHistoryKey(
+        _kFirestoreMigrationV1Done,
+        uid: uid,
+        seasonKey: currentSeasonKey,
+      ),
+    );
+    // Backward-compat cleanup for older global keys.
+    _prefs?.remove(_kCurrentUserPicksByMatchday);
+    _prefs?.remove(_kPredictionOutcomesByMatchday);
+    _prefs?.remove(_kMatchdayMatchesByDayV1);
+    _prefs?.remove(_kFirestoreMigrationV1Done);
 
     _deleteGroupImageFile();
 
@@ -1254,6 +1340,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> resetAll() async {
+    final scopedUid = _profile.id.trim();
+    final scopedSeason = currentSeasonKey;
+
     _profile = _defaultProfile;
     _language = CassandraLanguage.system;
     _defaultVisibility = PredictionVisibility.friends;
@@ -1292,6 +1381,39 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kRememberedHandle);
     await _prefs.remove(_kRememberedPhotoUrl);
     await _prefs.remove(_kRememberedProvider);
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kCurrentUserPicksByMatchday,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kPredictionOutcomesByMatchday,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kMatchdayMatchesByDayV1,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kFirestoreMigrationV1Done,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
+    // Backward-compat cleanup for older global keys.
+    await _prefs.remove(_kCurrentUserPicksByMatchday);
+    await _prefs.remove(_kPredictionOutcomesByMatchday);
+    await _prefs.remove(_kMatchdayMatchesByDayV1);
+    await _prefs.remove(_kFirestoreMigrationV1Done);
   }
 
   // ===== Runtime cache (NON persistita) =====
@@ -1566,7 +1688,7 @@ class AppState extends ChangeNotifier {
     if (_currentUserPicksHistoryLoaded) return;
     _currentUserPicksHistoryLoaded = true;
 
-    final raw = _prefs?.getString(_kCurrentUserPicksByMatchday);
+    final raw = _prefs?.getString(_kCurrentUserPicksByMatchdayScoped);
     if (raw == null || raw.isEmpty) return;
 
     try {
@@ -1623,7 +1745,7 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      _prefs?.setString(_kCurrentUserPicksByMatchday, jsonEncode(out));
+      _prefs?.setString(_kCurrentUserPicksByMatchdayScoped, jsonEncode(out));
     } catch (_) {
       // ignore
     }
@@ -1632,7 +1754,7 @@ class AppState extends ChangeNotifier {
   void clearCurrentUserPicksHistory() {
     _currentUserPicksByMatchday.clear();
     try {
-      _prefs?.remove(_kCurrentUserPicksByMatchday);
+      _prefs?.remove(_kCurrentUserPicksByMatchdayScoped);
     } catch (_) {
       // ignore
     }
@@ -1657,6 +1779,7 @@ class AppState extends ChangeNotifier {
             dayNumber: dayNumber,
             picksByMatchId: picksByMatchId,
             visibility: visibility,
+            groupId: activeGroupId,
             score: score,
           )
           .catchError((_) {}),
@@ -1673,9 +1796,6 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
-    final photosByUid = await fs.getUserPhotoUrls(
-      docs.map((d) => d.uid).toList(growable: false),
-    );
     return docs
         .map(
           (d) => GroupMember(
@@ -1686,7 +1806,7 @@ class AppState extends ChangeNotifier {
             favoriteTeam: d.favoriteTeam,
             photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
                 ? d.photoUrl!.trim()
-                : photosByUid[d.uid],
+                : null,
           ),
         )
         .toList();
@@ -1716,6 +1836,7 @@ class AppState extends ChangeNotifier {
       seasonKey: currentSeasonKey,
       dayNumber: dayNumber,
       uids: uids,
+      groupId: activeGroupId,
     );
 
     final revealAtOrAfterLock =
@@ -1839,7 +1960,10 @@ class AppState extends ChangeNotifier {
                   .map(_predictionMatchToSnapshot)
                   .toList(),
           };
-          await prefs.setString(_kMatchdayMatchesByDayV1, jsonEncode(encoded));
+          await prefs.setString(
+            _kMatchdayMatchesByDayScoped,
+            jsonEncode(encoded),
+          );
           final out = <String, Object?>{};
           for (final e in _outcomesByMatchday.entries) {
             out[e.key.toString()] = {
@@ -1847,7 +1971,7 @@ class AppState extends ChangeNotifier {
             };
           }
           await prefs.setString(
-            _kPredictionOutcomesByMatchday,
+            _kPredictionOutcomesByMatchdayScoped,
             jsonEncode(out),
           );
         }
@@ -1869,7 +1993,6 @@ class AppState extends ChangeNotifier {
   }
 
   // ===== LOCAL → FIRESTORE MIGRATION =====
-  static const _kFirestoreMigrationV1Done = 'firestore_migration_v1_done';
 
   /// One-time migration: upload local picks + outcomes to Firestore.
   /// Runs once per device, flagged via SharedPreferences.
@@ -1877,7 +2000,7 @@ class AppState extends ChangeNotifier {
     final prefs = _prefs;
     final fs = _firestoreService;
     if (prefs == null || fs == null || !isAuthenticated) return;
-    if (prefs.getBool(_kFirestoreMigrationV1Done) == true) return;
+    if (prefs.getBool(_kFirestoreMigrationV1DoneScoped) == true) return;
 
     final uid = _profile.id;
     if (uid.isEmpty) return;
@@ -1896,26 +2019,13 @@ class AppState extends ChangeNotifier {
         final picks = entry.value;
         if (picks.isEmpty) continue;
 
-        // Compute score if outcomes available
-        DayScoreBreakdown? score;
-        final outcomes = _outcomesByMatchday[dayNumber];
-        final matches =
-            _matchesByMatchday[dayNumber] ?? _matchdayMatchesByDay[dayNumber];
-        if (outcomes != null && matches != null && matches.isNotEmpty) {
-          score = CassandraScoringEngine.computeDayScore(
-            matches: matches,
-            picksByMatchId: picks,
-            outcomesByMatchId: outcomes,
-          );
-        }
-
         await fs.savePicks(
           uid: uid,
           seasonKey: season,
           dayNumber: dayNumber,
           picksByMatchId: picks,
           visibility: predictionVisibilityToStorage(_defaultVisibility),
-          score: score,
+          groupId: activeGroupId,
         );
       }
 
@@ -1935,7 +2045,7 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      await prefs.setBool(_kFirestoreMigrationV1Done, true);
+      await prefs.setBool(_kFirestoreMigrationV1DoneScoped, true);
     } catch (_) {
       // Migration failed — will retry next launch
     }
@@ -1964,7 +2074,7 @@ class AppState extends ChangeNotifier {
     if (_outcomesHistoryLoaded) return;
     _outcomesHistoryLoaded = true;
 
-    final raw = _prefs?.getString(_kPredictionOutcomesByMatchday);
+    final raw = _prefs?.getString(_kPredictionOutcomesByMatchdayScoped);
     if (raw == null || raw.isEmpty) return;
 
     try {
@@ -2013,7 +2123,7 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      _prefs?.setString(_kPredictionOutcomesByMatchday, jsonEncode(out));
+      _prefs?.setString(_kPredictionOutcomesByMatchdayScoped, jsonEncode(out));
     } catch (_) {
       // ignore
     }
@@ -2024,7 +2134,7 @@ class AppState extends ChangeNotifier {
   void clearOutcomesHistory() {
     _outcomesByMatchday.clear();
     try {
-      _prefs?.remove(_kPredictionOutcomesByMatchday);
+      _prefs?.remove(_kPredictionOutcomesByMatchdayScoped);
     } catch (_) {
       // ignore
     }
@@ -2220,6 +2330,27 @@ class AppState extends ChangeNotifier {
     await prefs.setString(_kMemberPicksByMemberIdV1, jsonEncode(outer));
   }
 
+  Future<String?> _portableImageReference(String source) async {
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) return null;
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/')) {
+      return trimmed;
+    }
+
+    try {
+      final file = File(trimmed);
+      if (!file.existsSync()) return trimmed;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return trimmed;
+      return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+    } catch (_) {
+      return trimmed;
+    }
+  }
+
   Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId =>
       cachedPredictionOutcomesByMatchId;
 
@@ -2241,8 +2372,12 @@ class AppState extends ChangeNotifier {
     memberPicksByMemberId = const <String, Map<String, PickOption>>{};
 
     _prefs?.remove(_kCurrentUserPicksByMatchIdV1);
+    _prefs?.remove(_kCurrentUserPicksByMatchdayScoped);
+    _prefs?.remove(_kPredictionOutcomesByMatchdayScoped);
+    _prefs?.remove(_kMatchdayMatchesByDayScoped);
     _prefs?.remove(_kCurrentUserPicksByMatchday);
     _prefs?.remove(_kPredictionOutcomesByMatchday);
+    _prefs?.remove(_kMatchdayMatchesByDayV1);
     _prefs?.remove(_kMemberPicksByMemberIdV1);
 
     notifyListeners();
@@ -2268,7 +2403,7 @@ class AppState extends ChangeNotifier {
     if (_matchdayMatchesByDay.isNotEmpty) return;
 
     final prefs = _prefs!;
-    final raw = prefs.getString(_kMatchdayMatchesByDayV1);
+    final raw = prefs.getString(_kMatchdayMatchesByDayScoped);
     if (raw == null || raw.isEmpty) return;
 
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
@@ -2309,7 +2444,7 @@ class AppState extends ChangeNotifier {
     };
 
     final prefs = _prefs!;
-    await prefs.setString(_kMatchdayMatchesByDayV1, jsonEncode(encoded));
+    await prefs.setString(_kMatchdayMatchesByDayScoped, jsonEncode(encoded));
     notifyListeners();
   }
 

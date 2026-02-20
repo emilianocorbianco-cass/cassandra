@@ -15,20 +15,41 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
     }
 
-    // /users/{uid} — solo il proprietario può scrivere
+    function selfMemberPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid);
+    }
+
+    function isSelfMembershipJoin(groupId) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+        && request.resource.data.memberCount == resource.data.memberCount + 1
+        && !exists(selfMemberPath(groupId))
+        && existsAfter(selfMemberPath(groupId));
+    }
+
+    function isSelfMembershipLeave(groupId) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+        && request.resource.data.memberCount == resource.data.memberCount - 1
+        && exists(selfMemberPath(groupId))
+        && !existsAfter(selfMemberPath(groupId));
+    }
+
+    // /users/{uid} — profilo privato: leggibile e scrivibile solo dal proprietario
     match /users/{uid} {
-      allow read: if signedIn();
+      allow read: if signedIn() && request.auth.uid == uid;
       allow write: if signedIn() && request.auth.uid == uid;
     }
 
-    // /groups/{groupId} — autenticati possono leggere (per join by code)
-    // solo admin può modificare campi del gruppo
+    // /groups/{groupId}
     match /groups/{groupId} {
       allow read: if signedIn();
-      allow create: if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.adminUid == request.auth.uid
+                    && request.resource.data.memberCount == 0;
       allow update: if signedIn()
                     && (resource.data.adminUid == request.auth.uid
-                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt']));
+                        || isSelfMembershipJoin(groupId)
+                        || isSelfMembershipLeave(groupId));
+      allow delete: if signedIn() && resource.data.adminUid == request.auth.uid;
 
       // /groups/{groupId}/members/{uid}
       // un utente può aggiungersi (join) o rimuoversi (leave)
@@ -36,7 +57,8 @@ service cloud.firestore {
       match /members/{memberUid} {
         allow read: if signedIn();
         allow create: if signedIn()
-                      && request.auth.uid == memberUid;
+                      && request.auth.uid == memberUid
+                      && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid));
         allow update: if signedIn()
                       && (request.auth.uid == memberUid
                           || isGroupAdmin(groupId));
@@ -57,28 +79,41 @@ service cloud.firestore {
       }
     }
 
-    // /picks/{docId} — solo il proprietario (uid nel doc) può scrivere
-    // autenticati possono leggere (per classifica)
+    // /picks/{docId}
     match /picks/{docId} {
-      allow read: if signedIn();
+      allow read: if signedIn()
+                  && (resource.data.uid == request.auth.uid
+                      || (resource.data.groupId is string
+                          && isGroupMember(resource.data.groupId)));
       allow create: if signedIn()
-                    && request.resource.data.uid == request.auth.uid;
+                    && request.resource.data.uid == request.auth.uid
+                    && (!request.resource.data.keys().hasAny(['groupId'])
+                        || (request.resource.data.groupId is string
+                            && isGroupMember(request.resource.data.groupId)))
+                    && !request.resource.data.keys().hasAny(['score', 'scoredAt']);
       allow update: if signedIn()
-                    && resource.data.uid == request.auth.uid;
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == resource.data.uid
+                    && request.resource.data.seasonKey == resource.data.seasonKey
+                    && request.resource.data.dayNumber == resource.data.dayNumber
+                    && request.resource.data.groupId == resource.data.groupId
+                    && request.resource.data.score == resource.data.score
+                    && request.resource.data.scoredAt == resource.data.scoredAt;
+      allow delete: if false;
     }
 
     // /seasons/{seasonKey}/matchdays/{dayNumber}
-    // autenticati possono leggere e scrivere (last-writer-wins per MVP)
+    // cache backend readonly per client
     match /seasons/{seasonKey}/matchdays/{dayNumber} {
       allow read: if signedIn();
-      allow write: if signedIn();
+      allow write: if false;
     }
 
     // /seasons/{seasonKey}/standings/{docId}
     // classifica Serie A cache backend (readonly per client)
     match /seasons/{seasonKey}/standings/{docId} {
       allow read: if signedIn();
-      allow write: if signedIn();
+      allow write: if false;
     }
   }
 }

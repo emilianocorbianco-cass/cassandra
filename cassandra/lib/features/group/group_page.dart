@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
@@ -28,6 +30,8 @@ import 'group_matchday_page.dart';
 import 'models/group_member.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../../services/firestore/models/picks_document.dart';
+import '../../services/firestore/models/group_document.dart';
+import '../../services/firestore/models/matchday_document.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -60,11 +64,25 @@ class _GroupPageState extends State<GroupPage> {
   Map<String, List<PicksDocument>>? _firestoreSeasonPicksByMemberId;
   String? _firestoreGroupId;
   bool _firestoreLoading = false;
+  String? _firestoreSeasonKey;
+  int? _firestoreDayNumber;
+  List<PicksDocument> _firestoreSeasonPicksDocs = const <PicksDocument>[];
+  MatchdayDocument? _firestoreCurrentMatchday;
+  Timer? _firestoreRevealTimer;
+  StreamSubscription<List<GroupMemberDocument>>? _firestoreMembersSub;
+  StreamSubscription<List<PicksDocument>>? _firestoreSeasonPicksSub;
+  StreamSubscription<MatchdayDocument?>? _firestoreMatchdaySub;
 
   @override
   void initState() {
     super.initState();
     _fallbackMatches = mockPredictionMatches();
+  }
+
+  @override
+  void dispose() {
+    _cancelFirestoreRealtime();
+    super.dispose();
   }
 
   @override
@@ -117,7 +135,12 @@ class _GroupPageState extends State<GroupPage> {
           _firestorePicksByMemberId != null ||
           _firestoreSeasonPicksByMemberId != null ||
           _firestoreGroupId != null ||
+          _firestoreSeasonKey != null ||
+          _firestoreDayNumber != null ||
+          _firestoreCurrentMatchday != null ||
+          _firestoreSeasonPicksDocs.isNotEmpty ||
           _firestoreLoading) {
+        _cancelFirestoreRealtime();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           setState(() {
@@ -125,6 +148,10 @@ class _GroupPageState extends State<GroupPage> {
             _firestorePicksByMemberId = null;
             _firestoreSeasonPicksByMemberId = null;
             _firestoreGroupId = null;
+            _firestoreSeasonKey = null;
+            _firestoreDayNumber = null;
+            _firestoreCurrentMatchday = null;
+            _firestoreSeasonPicksDocs = const <PicksDocument>[];
             _firestoreLoading = false;
           });
         });
@@ -133,18 +160,27 @@ class _GroupPageState extends State<GroupPage> {
     }
 
     final groupId = appState.activeGroupId!;
+    final seasonKey = appState.currentSeasonKey;
+    final dayNumber = appState.uiMatchdayNumber;
     final groupChanged = _firestoreGroupId != groupId;
+    final seasonChanged = _firestoreSeasonKey != seasonKey;
+    final dayChanged = _firestoreDayNumber != dayNumber;
     final neverLoaded = _firestoreMembers == null && !_firestoreLoading;
-    if (!groupChanged && !neverLoaded) return;
+    if (!groupChanged && !seasonChanged && !dayChanged && !neverLoaded) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (groupChanged) {
+      if (groupChanged || seasonChanged || dayChanged) {
+        _cancelFirestoreRealtime();
         setState(() {
           _firestoreGroupId = groupId;
+          _firestoreSeasonKey = seasonKey;
+          _firestoreDayNumber = dayNumber;
           _firestoreMembers = null;
           _firestorePicksByMemberId = null;
           _firestoreSeasonPicksByMemberId = null;
+          _firestoreCurrentMatchday = null;
+          _firestoreSeasonPicksDocs = const <PicksDocument>[];
         });
       }
       _refreshFromFirestore();
@@ -159,50 +195,245 @@ class _GroupPageState extends State<GroupPage> {
 
     setState(() => _firestoreLoading = true);
     try {
+      final fs = appState.firestoreService;
+      if (fs == null) {
+        if (!mounted) return;
+        setState(() {
+          _firestoreLoading = false;
+        });
+        return;
+      }
+
       final members = await appState.fetchFirestoreGroupMembers();
       final uids = members.map((m) => m.id).toList(growable: false);
-      final picks = uids.isEmpty
-          ? const <String, Map<String, PickOption>>{}
-          : await appState.fetchFirestorePicksForMatchday(
-              dayNumber: appState.uiMatchdayNumber,
-              uids: uids,
-            );
-      final seasonPicksByMemberId = <String, List<PicksDocument>>{};
-      if (uids.isNotEmpty) {
-        final loaded = await Future.wait(
-          uids.map((uid) async {
-            try {
-              final docs = await appState.fetchSeasonPicksForUser(uid);
-              docs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
-              return MapEntry(uid, docs);
-            } catch (_) {
-              return MapEntry(uid, const <PicksDocument>[]);
-            }
-          }),
-        );
-        for (final e in loaded) {
-          seasonPicksByMemberId[e.key] = e.value;
-        }
-      }
+      final matchdayData = await fs.getMatchdayData(
+        seasonKey: appState.currentSeasonKey,
+        dayNumber: appState.uiMatchdayNumber,
+      );
+      final seasonDocs = await fs.getPicksForSeason(
+        seasonKey: appState.currentSeasonKey,
+        groupId: groupId,
+      );
+      final memberIdSet = uids.toSet();
+      final filteredSeasonDocs = seasonDocs
+          .where((d) => memberIdSet.contains(d.uid))
+          .toList(growable: false);
+      final seasonPicksByMemberId = _buildSeasonPicksByMember(
+        filteredSeasonDocs,
+      );
+      final currentDayDocs = filteredSeasonDocs
+          .where((d) => d.dayNumber == appState.uiMatchdayNumber)
+          .toList(growable: false);
+      final picks = _buildVisibleMatchdayPicks(
+        docs: currentDayDocs,
+        requesterUid: appState.profile.id,
+        lockTime: matchdayData?.lockTime,
+      );
 
       if (!mounted) return;
       setState(() {
         _firestoreGroupId = groupId;
+        _firestoreSeasonKey = appState.currentSeasonKey;
+        _firestoreDayNumber = appState.uiMatchdayNumber;
         _firestoreMembers = members;
+        _firestoreCurrentMatchday = matchdayData;
+        _firestoreSeasonPicksDocs = filteredSeasonDocs;
         _firestorePicksByMemberId = picks;
         _firestoreSeasonPicksByMemberId = seasonPicksByMemberId;
         _firestoreLoading = false;
       });
+
+      _scheduleFirestoreReveal(matchdayData?.lockTime);
+      _bindFirestoreRealtime(
+        appState: appState,
+        groupId: groupId,
+        seasonKey: appState.currentSeasonKey,
+        dayNumber: appState.uiMatchdayNumber,
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _firestoreGroupId = groupId;
+        _firestoreSeasonKey = appState.currentSeasonKey;
+        _firestoreDayNumber = appState.uiMatchdayNumber;
         _firestoreMembers = const <GroupMember>[];
         _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
         _firestoreSeasonPicksByMemberId = const <String, List<PicksDocument>>{};
+        _firestoreCurrentMatchday = null;
+        _firestoreSeasonPicksDocs = const <PicksDocument>[];
         _firestoreLoading = false;
       });
     }
+  }
+
+  void _bindFirestoreRealtime({
+    required AppState appState,
+    required String groupId,
+    required String seasonKey,
+    required int dayNumber,
+  }) {
+    final fs = appState.firestoreService;
+    if (fs == null) return;
+
+    final shouldRebind =
+        _firestoreMembersSub == null ||
+        _firestoreSeasonPicksSub == null ||
+        _firestoreMatchdaySub == null ||
+        _firestoreGroupId != groupId ||
+        _firestoreSeasonKey != seasonKey ||
+        _firestoreDayNumber != dayNumber;
+    if (!shouldRebind) return;
+
+    _cancelFirestoreRealtime();
+
+    _firestoreMembersSub = fs.streamGroupMembers(groupId).listen((docs) async {
+      final members = docs
+          .map(
+            (d) => GroupMember(
+              id: d.uid,
+              displayName: d.displayName,
+              teamName: d.teamName,
+              avatarSeed: d.avatarSeed,
+              favoriteTeam: d.favoriteTeam,
+              photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
+                  ? d.photoUrl!.trim()
+                  : null,
+            ),
+          )
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() {
+        _firestoreMembers = members;
+      });
+      _recomputeFirestoreDerived(appState);
+    });
+
+    _firestoreSeasonPicksSub = fs
+        .streamPicksForSeason(seasonKey: seasonKey, groupId: groupId)
+        .listen((docs) {
+          if (!mounted) return;
+          setState(() {
+            _firestoreSeasonPicksDocs = docs;
+          });
+          _recomputeFirestoreDerived(appState);
+        });
+
+    _firestoreMatchdaySub = fs
+        .streamMatchdayData(seasonKey: seasonKey, dayNumber: dayNumber)
+        .listen((doc) {
+          if (!mounted) return;
+          setState(() {
+            _firestoreCurrentMatchday = doc;
+          });
+          _scheduleFirestoreReveal(doc?.lockTime);
+          _recomputeFirestoreDerived(appState);
+        });
+  }
+
+  void _cancelFirestoreRealtime() {
+    _firestoreRevealTimer?.cancel();
+    _firestoreRevealTimer = null;
+    _firestoreMembersSub?.cancel();
+    _firestoreMembersSub = null;
+    _firestoreSeasonPicksSub?.cancel();
+    _firestoreSeasonPicksSub = null;
+    _firestoreMatchdaySub?.cancel();
+    _firestoreMatchdaySub = null;
+  }
+
+  Map<String, List<PicksDocument>> _buildSeasonPicksByMember(
+    List<PicksDocument> docs,
+  ) {
+    final byMember = <String, List<PicksDocument>>{};
+    for (final doc in docs) {
+      byMember.putIfAbsent(doc.uid, () => <PicksDocument>[]).add(doc);
+    }
+    for (final picks in byMember.values) {
+      picks.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+    }
+    return byMember;
+  }
+
+  Map<String, Map<String, PickOption>> _buildVisibleMatchdayPicks({
+    required List<PicksDocument> docs,
+    required String requesterUid,
+    required DateTime? lockTime,
+  }) {
+    final revealAtOrAfterLock =
+        lockTime != null && !DateTime.now().isBefore(lockTime);
+    final out = <String, Map<String, PickOption>>{};
+
+    for (final d in docs) {
+      if (d.uid == requesterUid) {
+        out[d.uid] = d.picksByMatchId;
+        continue;
+      }
+
+      final visibility = d.visibility.toLowerCase().trim();
+      if (visibility == 'public') {
+        out[d.uid] = d.picksByMatchId;
+        continue;
+      }
+
+      final hiddenUntilLock =
+          visibility == 'private' ||
+          visibility == 'friends' ||
+          visibility.isEmpty;
+      if (hiddenUntilLock && revealAtOrAfterLock) {
+        out[d.uid] = d.picksByMatchId;
+      } else {
+        out[d.uid] = const <String, PickOption>{};
+      }
+    }
+
+    return out;
+  }
+
+  void _recomputeFirestoreDerived(AppState appState) {
+    if (!mounted) return;
+    final members = _firestoreMembers ?? const <GroupMember>[];
+    if (members.isEmpty) {
+      setState(() {
+        _firestorePicksByMemberId = const <String, Map<String, PickOption>>{};
+        _firestoreSeasonPicksByMemberId = const <String, List<PicksDocument>>{};
+      });
+      return;
+    }
+
+    final memberIds = members.map((m) => m.id).toSet();
+    final seasonDocs = _firestoreSeasonPicksDocs
+        .where((d) => memberIds.contains(d.uid))
+        .toList(growable: false);
+    final seasonPicksByMemberId = _buildSeasonPicksByMember(seasonDocs);
+    final dayNumber = _firestoreDayNumber ?? appState.uiMatchdayNumber;
+    final currentDayDocs = seasonDocs
+        .where((d) => d.dayNumber == dayNumber)
+        .toList(growable: false);
+    final picksByMemberId = _buildVisibleMatchdayPicks(
+      docs: currentDayDocs,
+      requesterUid: appState.profile.id,
+      lockTime: _firestoreCurrentMatchday?.lockTime,
+    );
+
+    setState(() {
+      _firestoreSeasonPicksByMemberId = seasonPicksByMemberId;
+      _firestorePicksByMemberId = picksByMemberId;
+    });
+  }
+
+  void _scheduleFirestoreReveal(DateTime? lockTime) {
+    _firestoreRevealTimer?.cancel();
+    _firestoreRevealTimer = null;
+    if (lockTime == null) return;
+    final now = DateTime.now();
+    if (!now.isBefore(lockTime)) return;
+    final wait = lockTime.difference(now) + const Duration(seconds: 1);
+    _firestoreRevealTimer = Timer(wait, () {
+      if (!mounted) return;
+      final appState = CassandraScope.of(context);
+      _recomputeFirestoreDerived(appState);
+    });
   }
 
   String _matchdayLabelFor(
@@ -341,14 +572,23 @@ class _GroupPageState extends State<GroupPage> {
     ).languageCode.toLowerCase().startsWith('en');
     final groupName = appState.groupName ?? l10n.groupDefaultName;
     final currentMatchdayNumber = appState.uiMatchdayNumber;
+    final currentMatches =
+        (_firestoreCurrentMatchday?.matches.isNotEmpty ?? false)
+        ? _firestoreCurrentMatchday!.matches
+        : _matches;
 
     // Storico reale: picks/outcomes salvati per giornata
     appState.ensureCurrentUserPicksHistoryLoaded();
     appState.ensureOutcomesHistoryLoaded();
 
-    final baseOutcomesByMatchId = appState.cachedPredictionMatchesAreReal
+    final firestoreOutcomes =
+        _firestoreCurrentMatchday?.outcomesByMatchId ??
+        const <String, MatchOutcome>{};
+    final baseOutcomesByMatchId = firestoreOutcomes.isNotEmpty
+        ? firestoreOutcomes
+        : appState.cachedPredictionMatchesAreReal
         ? <String, MatchOutcome>{
-            for (final m in _matches)
+            for (final m in currentMatches)
               if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
                 m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
           }
@@ -366,8 +606,8 @@ class _GroupPageState extends State<GroupPage> {
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
 
-    final totalMatches = _matches.length;
-    final gradedCount = _matches.where((m) {
+    final totalMatches = currentMatches.length;
+    final gradedCount = currentMatches.where((m) {
       final o = outcomesByMatchId[m.id] ?? MatchOutcome.pending;
       return !o.isPending;
     }).length;
@@ -507,7 +747,7 @@ class _GroupPageState extends State<GroupPage> {
           picksByMemberByDay[currentMatchdayNumber]?[member.id] ??
           const <String, PickOption>{};
       final currentDayScore = CassandraScoringEngine.computeDayScore(
-        matches: _matches,
+        matches: currentMatches,
         picksByMatchId: currentPicks,
         outcomesByMatchId: outcomesByMatchId,
       );
@@ -609,7 +849,7 @@ class _GroupPageState extends State<GroupPage> {
                             Text(
                               _matchdayLabelFor(
                                 appState.uiMatchdayNumber,
-                                _matches,
+                                currentMatches,
                                 english: en,
                                 l10n: l10n,
                               ),
@@ -724,7 +964,7 @@ class _GroupPageState extends State<GroupPage> {
                                 member: e.member,
                                 rank: i + 1,
                                 totalPlayers: generalEntries.length,
-                                matches: _matches,
+                                matches: currentMatches,
                                 picksByMatchId: e.currentDayPicksByMatchId,
                                 outcomesByMatchId: outcomesByMatchId,
                                 day: e.currentDay,
@@ -737,7 +977,7 @@ class _GroupPageState extends State<GroupPage> {
                               onTap: () {
                                 final md = MatchdayData(
                                   dayNumber: currentMatchdayNumber,
-                                  matches: _matches,
+                                  matches: currentMatches,
                                   outcomesByMatchId: outcomesByMatchId,
                                 );
 
