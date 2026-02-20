@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
 import 'models/mock_prediction_data.dart';
 import 'models/pick_option.dart';
 import 'models/prediction_match.dart';
 import 'models/formatters.dart';
 import 'widgets/prediction_match_card.dart';
+import 'widgets/predictions_matchday_summary.dart';
+import 'widgets/predictions_submit_bar.dart';
+import 'widgets/predictions_history_list.dart';
 import 'package:flutter/foundation.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/scoring_engine.dart';
@@ -13,14 +15,11 @@ import '../../app/state/cassandra_scope.dart';
 import '../../l10n/app_localizations.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
-import '../leaderboards/mock_season_data.dart';
-import '../leaderboards/models/matchday_data.dart';
-import 'predictions_matchday_page.dart';
-import 'predictions_history_page.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../../services/api_football/models/api_football_standing.dart';
 import '../../services/firestore/models/matchday_document.dart';
 import 'widgets/serie_a_standings_table.dart';
+import 'predictions_history_page.dart';
 
 enum VisibilityChoice { private, public }
 
@@ -91,8 +90,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (_didLoadRealFixtures) return;
     _didLoadRealFixtures = true;
 
-    // Se home_shell ha già caricato dati reali in cache, sincronizziamo subito
-    // lo stato locale così il badge "dati: reali" appare immediatamente.
     final scope = CassandraScope.of(context);
     final cached = scope.cachedPredictionMatches;
     if (cached != null &&
@@ -156,7 +153,6 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   void _setPick(String matchId, PickOption pick) {
     final l10n = AppLocalizations.of(context)!;
-    // Lock: non permettere modifiche ai pick se la partita è già iniziata.
     final PredictionMatch? match = matches.cast<PredictionMatch?>().firstWhere(
       (m) => m?.id == matchId,
       orElse: () => null,
@@ -212,7 +208,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (missing > 0) {
       final ok = await _confirmSubmitIfMissing(missing);
       if (!ok) return;
-      if (!mounted) return; // dopo await
+      if (!mounted) return;
     }
     if (!mounted) return;
     setState(() {
@@ -225,7 +221,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.predictionsSlipSubmitted(label))),
     );
-    // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
     final appState = CassandraScope.of(context);
     appState.ensureCurrentUserPicksHistoryLoaded();
     appState.ensureMatchdayMatchesLoaded();
@@ -243,7 +238,6 @@ class _PredictionsPageState extends State<PredictionsPage>
       matchdayNumber: _effectiveMatchdayNumber,
       matches: matches,
     );
-    // Se abbiamo outcomes disponibili, salvali anche nello storico (per punteggi stabili)
     final outcomesNow = <String, MatchOutcome>{
       for (final e in appState.effectivePredictionOutcomesByMatchId.entries)
         e.key: e.value,
@@ -256,7 +250,6 @@ class _PredictionsPageState extends State<PredictionsPage>
       );
     }
 
-    // Firestore sync (fire-and-forget)
     DayScoreBreakdown? scoreCache;
     if (outcomesNow.isNotEmpty) {
       scoreCache = CassandraScoringEngine.computeDayScore(
@@ -282,7 +275,6 @@ class _PredictionsPageState extends State<PredictionsPage>
 
     try {
       final scope = appState;
-      // DEV: se abbiamo cache DEMO (isReal=false), non sovrascrivere con backend cache
       final cached = scope.cachedPredictionMatches;
       if (cached != null && !scope.cachedPredictionMatchesAreReal) {
         if (mounted) {
@@ -292,7 +284,6 @@ class _PredictionsPageState extends State<PredictionsPage>
             _usingRealFixtures = false;
           });
         }
-        // Compute MatchdayProgress for demo fixtures
         final demoNow = DateTime.now();
         final demoAppState = scope;
         demoAppState.ensureOriginKickoffsLoaded();
@@ -345,7 +336,6 @@ class _PredictionsPageState extends State<PredictionsPage>
       MatchdayDocument? resolvedDoc;
       MatchdayProgress? resolvedProgress;
 
-      // Catch-up automatico: salta le giornate già "primaryDone" in un unico load.
       const maxLookAheadDays = 12;
       for (var i = 0; i <= maxLookAheadDays; i++) {
         final candidate = await fs.getMatchdayData(
@@ -445,165 +435,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
   }
 
-  Widget _buildHistory(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final isEnglish = l10n.localeName.startsWith('en');
-    final appState = CassandraScope.of(context);
-    appState.ensureCurrentUserPicksLoaded();
-    final liveMatches = appState.cachedPredictionMatches ?? _matches;
-    final liveOutcomes =
-        appState.hasSavedOutcomesForMatchday(_effectiveMatchdayNumber)
-        ? appState.outcomesForMatchday(_effectiveMatchdayNumber)
-        : <String, MatchOutcome>{
-            for (final m in liveMatches)
-              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
-                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
-          };
-    final liveMatchday = MatchdayData(
-      dayNumber: _effectiveMatchdayNumber,
-      matches: liveMatches,
-      outcomesByMatchId: liveOutcomes,
-    );
-    final historyDaySet = <int>{
-      ...appState.recentMatchesByMatchday.keys,
-      ...appState.currentUserPicksByMatchday.keys,
-      ...appState.matchesByMatchday.keys,
-      ...appState.outcomesByMatchday.keys,
-    };
-    final historyDays = historyDaySet.toList()..sort((a, b) => b.compareTo(a));
-    final nonCurrentHistoryDays = historyDays
-        .where((day) => day != _effectiveMatchdayNumber)
-        .toList(growable: false);
-    final demoHistory = mockSeasonMatchdays(
-      startDay: 16,
-      count: 4,
-      demoSeed: appState.demoSeed,
-    )..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
-    Widget tileFor(MatchdayData md, {String? tag}) {
-      final daysLabel = formatMatchdayDays(
-        md.matches.map((m) => m.kickoff),
-        english: isEnglish,
-      );
-      final total = md.matches.length;
-      final graded = md.matches.where((m) {
-        final o = md.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
-        return !o.isPending;
-      }).length;
-      final resultsLabel = graded == total
-          ? l10n.groupResultsLabel(graded, total)
-          : l10n.groupResultsLabelPartial(graded, total);
-      final title = tag == null
-          ? l10n.groupMatchdayTitle(md.dayNumber)
-          : '${l10n.groupMatchdayTitle(md.dayNumber)} ($tag)';
-      final appState = CassandraScope.of(context);
-      final savedMatches = appState.matchesByMatchday[md.dayNumber];
-      final matchesEffective = (savedMatches != null && savedMatches.isNotEmpty)
-          ? savedMatches
-          : md.matches;
-      final savedOutcomes = appState.outcomesByMatchday[md.dayNumber];
-      final outcomesEffective =
-          (savedOutcomes != null && savedOutcomes.isNotEmpty)
-          ? savedOutcomes
-          : md.outcomesByMatchId;
-      final picksEffective = appState.picksForCurrentUserForMatchday(
-        md.dayNumber,
-      );
-      return Card(
-        child: ListTile(
-          title: Text(title),
-          subtitle: Text('$daysLabel\n$resultsLabel'),
-          isThreeLine: true,
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => PredictionsMatchdayPage(
-                  matchdayNumber: md.dayNumber,
-                  matches: matchesEffective,
-                  outcomesByMatchId: outcomesEffective,
-                  picksByMatchId: picksEffective,
-                ),
-              ),
-            );
-          },
-        ),
-      );
-    }
-
-    final liveTag = appState.cachedPredictionMatchesAreReal
-        ? l10n.predictionsTagLive
-        : l10n.predictionsTagDemo;
-    appState.ensureCurrentUserPicksHistoryLoaded();
-    final hasSavedLive = appState.hasSavedPicksForMatchday(
-      _effectiveMatchdayNumber,
-    );
-    final liveTagEffective = hasSavedLive ? l10n.predictionsTagSaved : liveTag;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              l10n.predictionsHistoryDemoInfo,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        tileFor(liveMatchday, tag: liveTagEffective),
-        const SizedBox(height: 12),
-        if (nonCurrentHistoryDays.isNotEmpty)
-          for (final day in nonCurrentHistoryDays)
-            Builder(
-              builder: (context) {
-                final savedMatches = appState.matchesByMatchday[day];
-                final recentMatches = appState.recentMatchesByMatchday[day];
-                final matchesEffective =
-                    (savedMatches != null && savedMatches.isNotEmpty)
-                    ? savedMatches
-                    : (recentMatches ?? const <PredictionMatch>[]);
-                final savedOutcomes = appState.outcomesByMatchday[day];
-                final recentOutcomes = appState.recentOutcomesByMatchday[day];
-                final outcomesEffective =
-                    (savedOutcomes != null && savedOutcomes.isNotEmpty)
-                    ? savedOutcomes
-                    : (recentOutcomes ?? const <String, MatchOutcome>{});
-                final prog = appState.matchdayProgressFor(day);
-                final tag =
-                    (prog != null && prog.primaryDone && !prog.finalDone)
-                    ? l10n.predictionsTagRecoveries
-                    : (appState.hasSavedPicksForMatchday(day)
-                          ? l10n.predictionsTagSaved
-                          : l10n.predictionsTagLive);
-                final md = MatchdayData(
-                  dayNumber: day,
-                  matches: matchesEffective,
-                  outcomesByMatchId: outcomesEffective,
-                );
-                return tileFor(md, tag: tag);
-              },
-            ),
-        if (nonCurrentHistoryDays.isEmpty)
-          for (final md in demoHistory)
-            tileFor(
-              appState.hasSavedOutcomesForMatchday(md.dayNumber)
-                  ? MatchdayData(
-                      dayNumber: md.dayNumber,
-                      matches: md.matches,
-                      outcomesByMatchId: appState.outcomesForMatchday(
-                        md.dayNumber,
-                      ),
-                    )
-                  : md,
-              tag: appState.hasSavedPicksForMatchday(md.dayNumber)
-                  ? l10n.predictionsTagSaved
-                  : l10n.predictionsTagDemo,
-            ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -616,7 +447,6 @@ class _PredictionsPageState extends State<PredictionsPage>
         ? appState.cachedSeasonStandings
         : _standings;
 
-    // Mentre i dati reali si caricano, mostra spinner
     if (matches.isEmpty) {
       return Scaffold(
         appBar: AppBar(
@@ -686,18 +516,18 @@ class _PredictionsPageState extends State<PredictionsPage>
         : (l10n.localeName.startsWith('it')
               ? 'Punti: $basePoints'
               : 'Points: $basePoints');
-    final matchdayHeaderStyle = Theme.of(context).textTheme.titleMedium
-        ?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: CassandraColors.slate,
-          fontSize:
-              (Theme.of(context).textTheme.titleMedium?.fontSize ?? 16) + 2,
-        );
-    final summaryLineStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-      fontWeight: FontWeight.w600,
-      color: CassandraColors.slate,
-    );
     final isOffline = !usingRealFixturesNow;
+
+    // Compute live outcomes for history
+    final liveOutcomes =
+        appState.hasSavedOutcomesForMatchday(_effectiveMatchdayNumber)
+        ? appState.outcomesForMatchday(_effectiveMatchdayNumber)
+        : <String, MatchOutcome>{
+            for (final m in matches)
+              if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+                m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+          };
+
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -740,104 +570,16 @@ class _PredictionsPageState extends State<PredictionsPage>
                     },
                   ),
                   const SizedBox(height: 10),
-                  Card(
-                    margin: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: CassandraColors.primary.withValues(alpha: 0.15),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(matchdayTitle, style: matchdayHeaderStyle),
-                          if (matchdayRange.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  matchdayRange,
-                                  maxLines: 1,
-                                  style: matchdayHeaderStyle,
-                                ),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              if (lockLabel.isNotEmpty)
-                                Expanded(
-                                  child: _buildMetaChip(
-                                    icon: _locked
-                                        ? Icons.lock_outline
-                                        : Icons.schedule_outlined,
-                                    label: lockLabel,
-                                    backgroundColor: _locked
-                                        ? CassandraColors.primary.withValues(
-                                            alpha: 0.13,
-                                          )
-                                        : CassandraColors.bg,
-                                    borderColor: _locked
-                                        ? CassandraColors.primary.withValues(
-                                            alpha: 0.35,
-                                          )
-                                        : CassandraColors.primary.withValues(
-                                            alpha: 0.22,
-                                          ),
-                                  ),
-                                ),
-                              if (isOffline && lockLabel.isNotEmpty)
-                                const SizedBox(width: 8),
-                              if (isOffline)
-                                Flexible(
-                                  child: _buildMetaChip(
-                                    icon: Icons.wifi_off_outlined,
-                                    label: l10n.predictionsOfflineStatus,
-                                    backgroundColor: isOffline
-                                        ? CassandraColors.primary.withValues(
-                                            alpha: 0.12,
-                                          )
-                                        : CassandraColors.bg,
-                                    borderColor: isOffline
-                                        ? CassandraColors.primary.withValues(
-                                            alpha: 0.35,
-                                          )
-                                        : CassandraColors.primary.withValues(
-                                            alpha: 0.22,
-                                          ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          if (lockLabel.isNotEmpty || isOffline)
-                            const SizedBox(height: 8),
-                          Text(correctLine, style: summaryLineStyle),
-                          const SizedBox(height: 4),
-                          Text(pointsLine, style: summaryLineStyle),
-                          if (_submittedVisibility != null &&
-                              _submittedAt != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              l10n.predictionsLastSubmit(
-                                formatKickoff(_submittedAt!),
-                                _submittedVisibility == VisibilityChoice.public
-                                    ? l10n.predictionsVisibilityPublic
-                                    : l10n.predictionsVisibilityPrivate,
-                              ),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: CassandraColors.slate),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                  PredictionsMatchdaySummary(
+                    matchdayTitle: matchdayTitle,
+                    matchdayRange: matchdayRange,
+                    lockLabel: lockLabel,
+                    locked: _locked,
+                    isOffline: isOffline,
+                    correctLine: correctLine,
+                    pointsLine: pointsLine,
+                    submittedVisibility: _submittedVisibility,
+                    submittedAt: _submittedAt,
                   ),
                 ],
               ),
@@ -845,7 +587,11 @@ class _PredictionsPageState extends State<PredictionsPage>
             const Divider(height: 1),
             Expanded(
               child: _segment == 1
-                  ? _buildHistory(context)
+                  ? PredictionsHistoryList(
+                      effectiveMatchdayNumber: _effectiveMatchdayNumber,
+                      liveMatches: appState.cachedPredictionMatches ?? _matches,
+                      liveOutcomes: liveOutcomes,
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
                       itemCount:
@@ -872,128 +618,11 @@ class _PredictionsPageState extends State<PredictionsPage>
       ),
       bottomNavigationBar: _segment == 1
           ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: CassandraColors.bg.withValues(alpha: 0.96),
-                  border: Border(
-                    top: BorderSide(
-                      color: CassandraColors.primary.withValues(alpha: 0.14),
-                    ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: CassandraColors.primary.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _locked
-                              ? null
-                              : () => _submit(VisibilityChoice.private),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: CassandraColors.primary.withValues(
-                                alpha: 0.65,
-                              ),
-                            ),
-                            foregroundColor: CassandraColors.primary,
-                            backgroundColor: CassandraColors.bg,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                          ),
-                          icon: const Icon(
-                            Icons.visibility_off_outlined,
-                            size: 18,
-                          ),
-                          label: Text(
-                            l10n.predictionsSubmitWithoutShowing,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _locked
-                              ? null
-                              : () => _submit(VisibilityChoice.public),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: CassandraColors.primary,
-                            foregroundColor: CassandraColors.onPrimary,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                          ),
-                          icon: const Icon(Icons.visibility_outlined, size: 18),
-                          label: Text(
-                            l10n.predictionsSubmitAndShow,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          : PredictionsSubmitBar(
+              locked: _locked,
+              onSubmitPrivate: () => _submit(VisibilityChoice.private),
+              onSubmitPublic: () => _submit(VisibilityChoice.public),
             ),
-    );
-  }
-
-  Widget _buildMetaChip({
-    required IconData icon,
-    required String label,
-    Color? backgroundColor,
-    Color? borderColor,
-  }) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 320),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: backgroundColor ?? CassandraColors.bg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color:
-                borderColor ?? CassandraColors.primary.withValues(alpha: 0.2),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: CassandraColors.primary),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: CassandraColors.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
