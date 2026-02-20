@@ -32,16 +32,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginDifferentAccountContinue => 'Continue with this account';
 
   @override
-  String get loginDifferentAccountCancelled => 'Sign-in cancelled. Press Sign in again if you want to retry.';
+  String get loginDifferentAccountCancelled =>
+      'Sign-in cancelled. Press Sign in again if you want to retry.';
 
   @override
-  String get loginPrivacyNotice => 'We only use what\'s strictly necessary to identify you.';
+  String get loginPrivacyNotice =>
+      'We only use what\'s strictly necessary to identify you.';
 
   @override
   String get profileSetupTitle => 'Complete your profile';
 
   @override
-  String get profileSetupSubtitle => 'Set your details so Cassandra can recognize you instantly.';
+  String get profileSetupSubtitle =>
+      'Set your details so Cassandra can recognize you instantly.';
 
   @override
   String get profileSetupRememberMe => 'Remember me on this device';
@@ -61,22 +64,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get welcomeBackNotYou => 'Not you?';
 
   @override
-  String get welcomeBackAuthReason => 'Confirm your identity to enter Cassandra.';
+  String get welcomeBackAuthReason =>
+      'Confirm your identity to enter Cassandra.';
 
   @override
-  String get welcomeBackAuthCancelled => 'Authentication was cancelled. Please try again.';
+  String get welcomeBackAuthCancelled =>
+      'Authentication was cancelled. Please try again.';
 
   @override
-  String get welcomeBackQuickSignInUnavailable => 'Quick sign-in is unavailable. Tap \"Not you?\" to use another account.';
+  String get welcomeBackQuickSignInUnavailable =>
+      'Quick sign-in is unavailable. Tap \"Not you?\" to use another account.';
 
   @override
-  String get welcomeBackUidMismatch => 'This account does not match the profile saved on this device. Tap \"Not you?\" to switch account.';
+  String get welcomeBackUidMismatch =>
+      'This account does not match the profile saved on this device. Tap \"Not you?\" to switch account.';
 
   @override
   String get createGroupTitle => 'Create your group';
 
   @override
-  String get createGroupSubtitle => 'Challenge your friends on Serie A predictions';
+  String get createGroupSubtitle =>
+      'Challenge your friends on Serie A predictions';
 
   @override
   String get createGroupTapAddPhoto => 'Tap to add photo';
@@ -109,7 +117,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createGroupContinue => 'Continue';
 
   @override
-  String get createGroupError => 'Unable to create the group. Please try again.';
+  String get createGroupError =>
+      'Unable to create the group. Please try again.';
 
   @override
   String groupShareInviteMessage(Object groupName, Object inviteCode) {
@@ -156,7 +165,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupDefaultName => 'Cassandra Crew';
 
   @override
-  String get groupSampleDataBanner => 'Sample data - join a group to see real data';
+  String get groupSampleDataBanner =>
+      'Sample data - join a group to see real data';
 
   @override
   String get groupDataRefreshing => 'refreshing...';
@@ -171,10 +181,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupSignInRequired => 'Sign in to continue.';
 
   @override
-  String get backendPermissionDenied => 'Backend access denied. Check login and Firestore rules.';
+  String get backendPermissionDenied =>
+      'Backend access denied. Check login and Firestore rules.';
 
   @override
-  String get groupShareUnavailableCodeCopied => 'Sharing is unavailable here. Invite code copied.';
+  String get groupShareUnavailableCodeCopied =>
+      'Sharing is unavailable here. Invite code copied.';
 
   @override
   String get shortUpdated => 'upd.';
@@ -204,7 +216,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupStats => 'stats';
 
   @override
-  String get groupHistoryDemoCard => 'Matchday history (DEMO)\nShowing 16-19 from mocks. Once we have real history via API, we\'ll make it live.';
+  String get groupHistoryDemoCard =>
+      'Matchday history (DEMO)\nShowing 16-19 from mocks. Once we have real history via API, we\'ll make it live.';
 
   @override
   String groupMatchdayTitle(Object dayNumber) {
@@ -234,13 +247,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsResetDone => 'Reset done';
 
   @override
-  String get settingsBackendNotConfigured => 'Backend not configured on this device';
+  String get settingsBackendNotConfigured =>
+      'Backend not configured on this device';
 
   @override
-  String get settingsNoBackendDataCurrentMatchday => 'No backend data available for the current matchday';
+  String get settingsNoBackendDataCurrentMatchday =>
+      'No backend data available for the current matchday';
 
   @override
-  String get settingsCacheRefreshedFromBackend => 'Cache refreshed from backend';
+  String get settingsCacheRefreshedFromBackend =>
+      'Cache refreshed from backend';
 
   @override
   String get settingsCacheRefreshError => 'Error refreshing from backend';
@@ -258,16 +274,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDeleteGroup => 'Delete group';
 
   @override
-  String get settingsDeleteGroupQuestion => 'This action will delete the group for all members. Continue?';
+  String get settingsDeleteGroupQuestion =>
+      'This action will delete the group for all members. Continue?';
 
   @override
   String get settingsDeleteGroupDone => 'Group deleted';
 
   @override
-  String get settingsDeleteGroupOnlyAdmin => 'Only the group creator can delete it.';
+  String get settingsDeleteGroupOnlyAdmin =>
+      'Only the group creator can delete it.';
 
   @override
-  String get settingsDeleteGroupFailed => 'Unable to delete group. Please try again.';
+  String get settingsDeleteGroupFailed =>
+      'Unable to delete group. Please try again.';
 
   @override
   String get settingsSignIn => 'Sign in';
@@ -282,7 +301,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsCancel => 'Cancel';
 
   @override
-  String get settingsDeleteAccountQuestion => 'This action is irreversible. Continue?';
+  String get settingsDeleteAccountQuestion =>
+      'This action is irreversible. Continue?';
 
   @override
   String get settingsDelete => 'Delete';
@@ -422,7 +442,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAdminApprovalTitle => 'Admin approval';
 
   @override
-  String get settingsAdminApprovalSubtitle => 'Only the admin can accept new members';
+  String get settingsAdminApprovalSubtitle =>
+      'Only the admin can accept new members';
 
   @override
   String get settingsAccount => 'Account';
@@ -440,7 +461,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLanguageEn => 'EN';
 
   @override
-  String get settingsTranslationNote => 'Note: translations are continuously maintained.';
+  String get settingsTranslationNote =>
+      'Note: translations are continuously maintained.';
 
   @override
   String get settingsPicksPrivacyDefault => 'Picks privacy (default)';
@@ -455,7 +477,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPrivacyPrivate => 'Private';
 
   @override
-  String get settingsPrivacyNote => 'This preference will be used once we connect picks submission + backend.';
+  String get settingsPrivacyNote =>
+      'This preference will be used once we connect picks submission + backend.';
 
   @override
   String get settingsDiagnostics => 'Diagnostics';
@@ -467,13 +490,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRefreshCacheNowTitle => 'Refresh cache now';
 
   @override
-  String get settingsRefreshCacheNowSubtitle => 'Reads current matchday from backend cache.';
+  String get settingsRefreshCacheNowSubtitle =>
+      'Reads current matchday from backend cache.';
 
   @override
   String get settingsClearFixturesCacheTitle => 'Clear fixtures cache';
 
   @override
-  String get settingsClearFixturesCacheSubtitle => 'Fallback to local demo data until next refresh.';
+  String get settingsClearFixturesCacheSubtitle =>
+      'Fallback to local demo data until next refresh.';
 
   @override
   String get settingsCacheCleared => 'Cache cleared';
@@ -482,7 +507,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsBackendDiagnosticsTitle => 'Backend diagnostics';
 
   @override
-  String get settingsBackendDiagnosticsSubtitle => 'Verify matchday cache loaded from Firestore.';
+  String get settingsBackendDiagnosticsSubtitle =>
+      'Verify matchday cache loaded from Firestore.';
 
   @override
   String get settingsSave => 'Save';
@@ -503,10 +529,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predHistoryTitle => 'Predictions history';
 
   @override
-  String get predHistoryInfo => 'Here you can find the matchdays you saved/submitted.\nIf we don\'t have historical fixtures via API, we use a DEMO fallback to show details anyway.';
+  String get predHistoryInfo =>
+      'Here you can find the matchdays you saved/submitted.\nIf we don\'t have historical fixtures via API, we use a DEMO fallback to show details anyway.';
 
   @override
-  String get predHistoryEmpty => 'No matchday saved.\nGo to Predictions and submit at least one matchday to see it here.';
+  String get predHistoryEmpty =>
+      'No matchday saved.\nGo to Predictions and submit at least one matchday to see it here.';
 
   @override
   String get predHistoryTagSaved => 'SAVED';
@@ -598,7 +626,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get leaderboardsTitle => 'Standings';
 
   @override
-  String get leaderboardsDemoBanner => 'Sample data - real data will appear after first submission';
+  String get leaderboardsDemoBanner =>
+      'Sample data - real data will appear after first submission';
 
   @override
   String get leaderboardsDataRefreshing => 'refreshing...';
@@ -755,10 +784,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatNoGroupTitle => 'Chat is available only inside your group';
 
   @override
-  String get chatNoGroupSubtitle => 'Create or join a group in the Group tab to start chatting.';
+  String get chatNoGroupSubtitle =>
+      'Create or join a group in the Group tab to start chatting.';
 
   @override
-  String get chatEphemeralNotice => 'Messages are automatically deleted after 24 hours.';
+  String get chatEphemeralNotice =>
+      'Messages are automatically deleted after 24 hours.';
 
   @override
   String get chatEmpty => 'No messages in the last 24 hours.';
@@ -907,7 +938,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsTagRecoveries => 'RECOVERIES';
 
   @override
-  String get predictionsHistoryDemoInfo => 'Predictions history (DEMO)\nShowing 16-19 from mocks. Current matchday is visible above (LIVE/DEMO).';
+  String get predictionsHistoryDemoInfo =>
+      'Predictions history (DEMO)\nShowing 16-19 from mocks. Current matchday is visible above (LIVE/DEMO).';
 
   @override
   String get predictionsPicksLocked => 'picks locked';
@@ -918,7 +950,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String predictionsScoreSummary(Object total, Object base, Object bonus, Object correct, Object count, Object avgOdds) {
+  String predictionsScoreSummary(
+    Object total,
+    Object base,
+    Object bonus,
+    Object correct,
+    Object count,
+    Object avgOdds,
+  ) {
     return 'points: $total (base $base • bonus $bonus) • correct $correct/$count • avg odds $avgOdds';
   }
 
@@ -935,7 +974,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsForceDemoData => 'Force demo data';
 
   @override
-  String get predictionsSampleDataBanner => 'Sample data - wait for backend sync';
+  String get predictionsSampleDataBanner =>
+      'Sample data - wait for backend sync';
 
   @override
   String get predictionsOfflineStatus => 'You\'re offline';
@@ -957,7 +997,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String predictionsDebugShifted(Object shifted, Object under48, Object over48) {
+  String predictionsDebugShifted(
+    Object shifted,
+    Object under48,
+    Object over48,
+  ) {
     return 'debug: shifted $shifted • <48h $under48 • >48h $over48';
   }
 
@@ -989,7 +1033,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsBaseLabel => 'Base';
 
   @override
-  String get predictionsDataDemoFixturesNotSaved => 'Data: DEMO (fixtures not saved)';
+  String get predictionsDataDemoFixturesNotSaved =>
+      'Data: DEMO (fixtures not saved)';
 
   @override
   String get predictionsDataSaved => 'Data: saved';
@@ -998,10 +1043,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsOutcomePending => 'pending';
 
   @override
-  String get settingsDiagNoMatchdayDoc => 'No matchday document found in Firestore.';
+  String get settingsDiagNoMatchdayDoc =>
+      'No matchday document found in Firestore.';
 
   @override
-  String get settingsDiagSourceFirestore => 'Source: Firestore /seasons/<season>/matchdays/<day>';
+  String get settingsDiagSourceFirestore =>
+      'Source: Firestore /seasons/<season>/matchdays/<day>';
 
   @override
   String settingsDiagSeasonKey(Object value) {
