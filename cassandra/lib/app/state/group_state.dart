@@ -385,16 +385,17 @@ class GroupState extends ChangeNotifier {
   }
 
   /// Refresh metadata del gruppo attivo da Firestore.
-  Future<void> refreshActiveGroupMetadataFromFirestore({
+  /// Returns the fetched GroupDocument (or null) for caller use (e.g. repair).
+  Future<GroupDocument?> refreshActiveGroupMetadataFromFirestore({
     required bool isAuthenticated,
     required FirestoreService? firestoreService,
   }) async {
     final fs = firestoreService;
     final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return;
+    if (fs == null || !isAuthenticated || groupId == null) return null;
 
     final group = await fs.getGroup(groupId);
-    if (group == null) return;
+    if (group == null) return null;
 
     var changed = false;
     if (_groupName != group.name) {
@@ -407,8 +408,20 @@ class GroupState extends ChangeNotifier {
       await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
       changed = true;
     }
+    final groupImage = (group.imageUrl ?? '').trim();
+    final normalizedGroupImage = groupImage.isEmpty ? null : groupImage;
+    if (_groupImagePath != normalizedGroupImage) {
+      _groupImagePath = normalizedGroupImage;
+      if (normalizedGroupImage == null) {
+        await _prefs?.remove(_kGroupImagePathV1);
+      } else {
+        await _prefs?.setString(_kGroupImagePathV1, normalizedGroupImage);
+      }
+      changed = true;
+    }
 
     if (changed) notifyListeners();
+    return group;
   }
 
   /// Fetch group members da Firestore.
@@ -421,23 +434,37 @@ class GroupState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
-    final photosByUid = await fs.getUserPhotoUrls(
-      docs.map((d) => d.uid).toList(growable: false),
-    );
-    return docs
-        .map(
-          (d) => GroupMember(
-            id: d.uid,
-            displayName: d.displayName,
-            teamName: d.teamName,
-            avatarSeed: d.avatarSeed,
-            favoriteTeam: d.favoriteTeam,
-            photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
-                ? d.photoUrl!.trim()
-                : photosByUid[d.uid],
-          ),
-        )
-        .toList();
+    final missingPhotoUids = docs
+        .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
+        .map((d) => d.uid)
+        .where((uid) => uid.trim().isNotEmpty)
+        .toList(growable: false);
+    final userPhotoUrls = missingPhotoUids.isEmpty
+        ? const <String, String>{}
+        : await fs.getUserPhotoUrls(missingPhotoUids);
+    return docs.map((d) {
+      final directPhoto = (d.photoUrl ?? '').trim();
+      final fallbackPhoto = (userPhotoUrls[d.uid] ?? '').trim();
+      final fallbackPortable =
+          fallbackPhoto.isNotEmpty && _looksLikePortableImageRef(fallbackPhoto)
+          ? fallbackPhoto
+          : null;
+      return GroupMember(
+        id: d.uid,
+        displayName: d.displayName,
+        teamName: d.teamName,
+        avatarSeed: d.avatarSeed,
+        favoriteTeam: d.favoriteTeam,
+        photoUrl: directPhoto.isNotEmpty ? directPhoto : fallbackPortable,
+      );
+    }).toList();
+  }
+
+  static bool _looksLikePortableImageRef(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/');
   }
 
   /// Fetch active group document da Firestore.
@@ -474,6 +501,12 @@ class GroupState extends ChangeNotifier {
   void _deleteGroupImageFile() {
     final path = _groupImagePath;
     if (path == null) return;
+    final lower = path.toLowerCase();
+    if (lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/')) {
+      return;
+    }
     try {
       final file = File(path);
       if (file.existsSync()) file.deleteSync();

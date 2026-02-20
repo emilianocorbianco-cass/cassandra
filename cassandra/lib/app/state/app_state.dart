@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -57,6 +59,11 @@ class AppState extends ChangeNotifier {
 
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
+
+  // Key strings duplicated from PredictionState for scoped key generation.
+  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
+  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
+  static const _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
 
   String _scopedHistoryKey(String base, {String? uid, String? seasonKey}) {
     final scopedUid = (uid ?? _profile.id).trim();
@@ -249,10 +256,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshActiveGroupMetadataFromFirestore() async {
-    await groupState.refreshActiveGroupMetadataFromFirestore(
+    final group = await groupState.refreshActiveGroupMetadataFromFirestore(
       isAuthenticated: isAuthenticated,
       firestoreService: _firestoreService,
     );
+    if (group != null) {
+      await _repairGroupImageReferenceIfNeeded(group);
+    }
   }
 
   /// Fire-and-forget: sync a single field to Firestore.
@@ -329,8 +339,26 @@ class AppState extends ChangeNotifier {
 
   void setActiveGroupId(String? id) => groupState.setActiveGroupId(id);
 
-  Future<void> updateGroupImagePath(String? path) =>
-      groupState.updateGroupImagePath(path);
+  Future<void> updateGroupImagePath(String? path) async {
+    final cleaned = (path ?? '').trim();
+    final nextRaw = cleaned.isEmpty ? null : cleaned;
+    final nextPortable = nextRaw == null
+        ? null
+        : await _portableImageReference(nextRaw);
+    final next = nextPortable ?? nextRaw;
+
+    await groupState.updateGroupImagePath(next);
+
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs != null && isAuthenticated && groupId != null) {
+      try {
+        await fs.updateGroupImageUrl(groupId: groupId, imageUrl: next);
+      } catch (_) {
+        // ignore: best-effort sync
+      }
+    }
+  }
 
   Future<void> updateGroupAdminApproval(bool value) =>
       groupState.updateGroupAdminApproval(value);
@@ -1172,20 +1200,6 @@ class AppState extends ChangeNotifier {
         final picks = entry.value;
         if (picks.isEmpty) continue;
 
-        // Compute score if outcomes available
-        DayScoreBreakdown? score;
-        final outcomes = predictionState.outcomesByMatchday[dayNumber];
-        final matches =
-            predictionState.matchesForMatchday(dayNumber) ??
-            predictionState.savedMatchesForMatchday(dayNumber);
-        if (outcomes != null && matches != null && matches.isNotEmpty) {
-          score = CassandraScoringEngine.computeDayScore(
-            matches: matches,
-            picksByMatchId: picks,
-            outcomesByMatchId: outcomes,
-          );
-        }
-
         await fs.savePicks(
           uid: uid,
           seasonKey: season,
@@ -1443,5 +1457,111 @@ class AppState extends ChangeNotifier {
     _demoSeed = _demoSeed + 1;
     await _prefs?.setInt(_kDemoSeedV1, _demoSeed);
     notifyListeners();
+  }
+
+  // ===== PORTABLE IMAGE UTILITIES =====
+
+  Future<String?> _portableImageReference(String source) async {
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) return null;
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/')) {
+      return trimmed;
+    }
+
+    try {
+      var filePath = trimmed;
+      if (lower.startsWith('file://')) {
+        final uri = Uri.tryParse(trimmed);
+        if (uri != null && uri.scheme == 'file') {
+          filePath = uri.toFilePath();
+        } else {
+          filePath = trimmed.replaceFirst(RegExp(r'^file://'), '');
+        }
+      }
+
+      final file = File(filePath);
+      if (!file.existsSync()) return trimmed;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return trimmed;
+      String mime = 'image/jpeg';
+      final lowerPath = file.path.toLowerCase();
+      if (lowerPath.endsWith('.png')) {
+        mime = 'image/png';
+      } else if (lowerPath.endsWith('.webp')) {
+        mime = 'image/webp';
+      } else if (lowerPath.endsWith('.gif')) {
+        mime = 'image/gif';
+      }
+      return 'data:$mime;base64,${base64Encode(bytes)}';
+    } catch (_) {
+      return trimmed;
+    }
+  }
+
+  bool _looksLikePortableImageRef(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/');
+  }
+
+  bool _looksLikeLocalFileRef(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    final lower = trimmed.toLowerCase();
+    return lower.startsWith('file://') ||
+        lower.startsWith('/var/') ||
+        lower.startsWith('/private/var/') ||
+        lower.startsWith('/data/') ||
+        lower.startsWith('/storage/') ||
+        lower.startsWith('/users/');
+  }
+
+  Future<void> _repairProfilePhotoReferenceIfNeeded() async {
+    final current = (_profile.photoUrl ?? '').trim();
+    if (current.isEmpty ||
+        _looksLikePortableImageRef(current) ||
+        !_looksLikeLocalFileRef(current)) {
+      return;
+    }
+
+    final converted = await _portableImageReference(current);
+    if (converted == null ||
+        converted.trim().isEmpty ||
+        converted == current ||
+        !_looksLikePortableImageRef(converted)) {
+      return;
+    }
+
+    _profile = _profile.copyWith(photoUrl: converted);
+    await _prefs?.setString(_kProfilePhotoUrl, converted);
+    await _syncRememberedIdentityFromProfile();
+    _syncProfileToFirestore();
+    notifyListeners();
+  }
+
+  Future<void> _repairGroupImageReferenceIfNeeded(GroupDocument group) async {
+    final raw = (group.imageUrl ?? '').trim();
+    if (raw.isEmpty ||
+        _looksLikePortableImageRef(raw) ||
+        !_looksLikeLocalFileRef(raw)) {
+      return;
+    }
+    if (group.adminUid.trim() != _profile.id.trim()) {
+      return;
+    }
+
+    final converted = await _portableImageReference(raw);
+    if (converted == null ||
+        converted.trim().isEmpty ||
+        converted == raw ||
+        !_looksLikePortableImageRef(converted)) {
+      return;
+    }
+
+    await updateGroupImagePath(converted);
   }
 }
