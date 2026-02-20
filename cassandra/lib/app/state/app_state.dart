@@ -18,7 +18,6 @@ import '../../services/firestore/models/picks_document.dart';
 import '../../services/auth/auth_service.dart';
 import '../../services/firestore/firestore_service.dart';
 import 'dart:async';
-import 'dart:convert';
 import '../../features/predictions/models/pick_option.dart';
 
 import '../../features/predictions/models/prediction_match.dart';
