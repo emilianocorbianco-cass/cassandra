@@ -278,7 +278,7 @@ class AppState extends ChangeNotifier {
       matches: matches,
     );
 
-    saveMatchesHistory(matchdayNumber: matchdayNumber, matches: matches);
+    await saveMatchesHistory(matchdayNumber: matchdayNumber, matches: matches);
 
     saveOutcomesHistory(
       dayNumber: matchdayNumber,
@@ -1072,8 +1072,7 @@ class AppState extends ChangeNotifier {
       predictionState.ensureOutcomesHistoryLoaded();
 
       final season = currentSeasonKey;
-      for (final entry
-          in predictionState.currentUserPicksByMatchday.entries) {
+      for (final entry in predictionState.currentUserPicksByMatchday.entries) {
         final dayNumber = entry.key;
         final picks = entry.value;
         if (picks.isEmpty) continue;
@@ -1081,7 +1080,8 @@ class AppState extends ChangeNotifier {
         // Compute score if outcomes available
         DayScoreBreakdown? score;
         final outcomes = predictionState.outcomesByMatchday[dayNumber];
-        final matches = predictionState.matchesForMatchday(dayNumber) ??
+        final matches =
+            predictionState.matchesForMatchday(dayNumber) ??
             predictionState.savedMatchesForMatchday(dayNumber);
         if (outcomes != null && matches != null && matches.isNotEmpty) {
           score = CassandraScoringEngine.computeDayScore(
@@ -1108,8 +1108,7 @@ class AppState extends ChangeNotifier {
         final matches = entry.value;
         if (matches.isEmpty) continue;
 
-        final outcomes =
-            predictionState.outcomesByMatchday[dayNumber] ?? {};
+        final outcomes = predictionState.outcomesByMatchday[dayNumber] ?? {};
         await fs.saveMatchdayData(
           seasonKey: season,
           dayNumber: dayNumber,
@@ -1165,8 +1164,7 @@ class AppState extends ChangeNotifier {
     matchId: matchId,
     fallbackKickoff: fallbackKickoff,
   );
-  Future<void> persistOriginKickoffs() =>
-      matchdayState.persistOriginKickoffs();
+  Future<void> persistOriginKickoffs() => matchdayState.persistOriginKickoffs();
 
   // --- Progress (runtime) ---
   int get uiMatchdayNumber => matchdayState.uiMatchdayNumber;
@@ -1324,10 +1322,8 @@ class AppState extends ChangeNotifier {
   void setCachedSeasonStandings(
     List<ApiFootballStanding> standings, {
     DateTime? updatedAt,
-  }) => predictionState.setCachedSeasonStandings(
-    standings,
-    updatedAt: updatedAt,
-  );
+  }) =>
+      predictionState.setCachedSeasonStandings(standings, updatedAt: updatedAt);
   void clearAllPredictionCache() => predictionState.clearAllPredictionCache();
 
   // --- Recent matchday data ---

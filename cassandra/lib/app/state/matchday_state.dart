@@ -42,10 +42,9 @@ class MatchdayState extends ChangeNotifier {
 
   /// Giornata "corrente" secondo Cassandra (ignorando recuperi di round vecchi).
   /// Persistita in SharedPreferences.
-  int get cassandraMatchdayCursor =>
-      _cassandraMatchdayCursor ??=
+  int get cassandraMatchdayCursor => _cassandraMatchdayCursor ??=
       (_prefs?.getInt(_kCassandraMatchdayCursorV1) ??
-          _kCassandraDefaultMatchdayCursor);
+      _kCassandraDefaultMatchdayCursor);
 
   Future<void> setCassandraMatchdayCursor(int dayNumber) async {
     if (dayNumber <= 0) return;
@@ -141,8 +140,7 @@ class MatchdayState extends ChangeNotifier {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
         _originKickoffIsoByMatchId = {
-          for (final e in decoded.entries)
-            e.key.toString(): e.value.toString(),
+          for (final e in decoded.entries) e.key.toString(): e.value.toString(),
         };
       }
     } catch (_) {

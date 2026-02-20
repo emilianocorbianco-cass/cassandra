@@ -79,8 +79,9 @@ class GroupState extends ChangeNotifier {
     _firestoreGroupIds = ids;
     if (_activeGroupId == null ||
         !_firestoreGroupIds.contains(_activeGroupId)) {
-      _activeGroupId =
-          _firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null;
+      _activeGroupId = _firestoreGroupIds.isNotEmpty
+          ? _firestoreGroupIds.first
+          : null;
     }
   }
 
@@ -258,11 +259,13 @@ class GroupState extends ChangeNotifier {
 
     await fs.leaveGroup(groupId: groupId, uid: uid);
 
-    _firestoreGroupIds =
-        _firestoreGroupIds.where((id) => id != groupId).toList();
+    _firestoreGroupIds = _firestoreGroupIds
+        .where((id) => id != groupId)
+        .toList();
     if (_activeGroupId == groupId) {
-      _activeGroupId =
-          _firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null;
+      _activeGroupId = _firestoreGroupIds.isNotEmpty
+          ? _firestoreGroupIds.first
+          : null;
     }
 
     if (_firestoreGroupIds.isEmpty) {
@@ -314,10 +317,12 @@ class GroupState extends ChangeNotifier {
     }
 
     if (group == null) {
-      _firestoreGroupIds =
-          _firestoreGroupIds.where((id) => id != groupId).toList();
-      _activeGroupId =
-          _firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null;
+      _firestoreGroupIds = _firestoreGroupIds
+          .where((id) => id != groupId)
+          .toList();
+      _activeGroupId = _firestoreGroupIds.isNotEmpty
+          ? _firestoreGroupIds.first
+          : null;
       if (_activeGroupId == null) {
         await _clearLocalGroupData();
       }
@@ -333,10 +338,12 @@ class GroupState extends ChangeNotifier {
       return 'Delete group failed';
     }
 
-    _firestoreGroupIds =
-        _firestoreGroupIds.where((id) => id != groupId).toList();
-    _activeGroupId =
-        _firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null;
+    _firestoreGroupIds = _firestoreGroupIds
+        .where((id) => id != groupId)
+        .toList();
+    _activeGroupId = _firestoreGroupIds.isNotEmpty
+        ? _firestoreGroupIds.first
+        : null;
 
     _deleteGroupImageFile();
     _groupImagePath = null;

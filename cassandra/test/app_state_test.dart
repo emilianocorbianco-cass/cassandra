@@ -175,10 +175,7 @@ void main() {
     test('saveOutcomesHistory stores outcomes', () {
       state.saveOutcomesHistory(
         dayNumber: 20,
-        outcomesByMatchId: {
-          'm1': MatchOutcome.home,
-          'm2': MatchOutcome.draw,
-        },
+        outcomesByMatchId: {'m1': MatchOutcome.home, 'm2': MatchOutcome.draw},
       );
       expect(state.hasSavedOutcomesForMatchday(20), isTrue);
       expect(state.outcomesForMatchday(20)['m1'], MatchOutcome.home);
@@ -257,9 +254,7 @@ void main() {
     });
 
     test('setCachedPredictionOutcomesByMatchId stores outcomes', () {
-      state.setCachedPredictionOutcomesByMatchId({
-        'm1': MatchOutcome.home,
-      });
+      state.setCachedPredictionOutcomesByMatchId({'m1': MatchOutcome.home});
       expect(
         state.effectivePredictionOutcomesByMatchId['m1'],
         MatchOutcome.home,
@@ -333,11 +328,14 @@ void main() {
       expect(state.isMatchdayFinalized(20), isFalse);
     });
 
-    test('markMatchdayFinalized marks and returns true on first call', () async {
-      final result = await state.markMatchdayFinalized(20);
-      expect(result, isTrue);
-      expect(state.isMatchdayFinalized(20), isTrue);
-    });
+    test(
+      'markMatchdayFinalized marks and returns true on first call',
+      () async {
+        final result = await state.markMatchdayFinalized(20);
+        expect(result, isTrue);
+        expect(state.isMatchdayFinalized(20), isTrue);
+      },
+    );
 
     test('markMatchdayFinalized returns false on duplicate', () async {
       await state.markMatchdayFinalized(20);
@@ -364,7 +362,9 @@ void main() {
     });
 
     test('setRecentMatchdayDataBulk stores data', () {
-      final matches = {20: [_makeMatch('m1'), _makeMatch('m2')]};
+      final matches = {
+        20: [_makeMatch('m1'), _makeMatch('m2')],
+      };
       final outcomes = {
         20: {'m1': MatchOutcome.home, 'm2': MatchOutcome.draw},
       };
@@ -375,20 +375,25 @@ void main() {
       );
 
       expect(state.recentMatchesByMatchday[20], hasLength(2));
-      expect(
-        state.recentOutcomesByMatchday[20]!['m1'],
-        MatchOutcome.home,
-      );
+      expect(state.recentOutcomesByMatchday[20]!['m1'], MatchOutcome.home);
     });
 
     test('setRecentMatchdayDataBulk with replace clears old data', () {
       state.setRecentMatchdayDataBulk(
-        matchesByMatchday: {19: [_makeMatch('m1')]},
-        outcomesByMatchday: {19: {'m1': MatchOutcome.home}},
+        matchesByMatchday: {
+          19: [_makeMatch('m1')],
+        },
+        outcomesByMatchday: {
+          19: {'m1': MatchOutcome.home},
+        },
       );
       state.setRecentMatchdayDataBulk(
-        matchesByMatchday: {20: [_makeMatch('m2')]},
-        outcomesByMatchday: {20: {'m2': MatchOutcome.away}},
+        matchesByMatchday: {
+          20: [_makeMatch('m2')],
+        },
+        outcomesByMatchday: {
+          20: {'m2': MatchOutcome.away},
+        },
         replace: true,
       );
 
@@ -435,14 +440,8 @@ void main() {
       });
 
       expect(state.memberPicksByMemberId, hasLength(2));
-      expect(
-        state.memberPicksByMemberId['member-1']!['m1'],
-        PickOption.home,
-      );
-      expect(
-        state.memberPicksByMemberId['member-2']!['m1'],
-        PickOption.away,
-      );
+      expect(state.memberPicksByMemberId['member-1']!['m1'], PickOption.home);
+      expect(state.memberPicksByMemberId['member-2']!['m1'], PickOption.away);
     });
 
     test('setMemberPicksBulk with replace clears previous', () {
@@ -461,9 +460,7 @@ void main() {
       state.setMemberPicksBulk({
         'member-1': {'m1': PickOption.home},
       });
-      state.setMemberPicksBulk({
-        'member-1': {},
-      });
+      state.setMemberPicksBulk({'member-1': {}});
       expect(state.memberPicksByMemberId.containsKey('member-1'), isFalse);
     });
 
@@ -476,15 +473,18 @@ void main() {
       expect(state.memberPicksByMemberId, isEmpty);
     });
 
-    test('clearMemberPicks with specific memberId removes only that member', () {
-      state.setMemberPicksBulk({
-        'member-1': {'m1': PickOption.home},
-        'member-2': {'m2': PickOption.away},
-      });
-      state.clearMemberPicks(memberId: 'member-1');
-      expect(state.memberPicksByMemberId.containsKey('member-1'), isFalse);
-      expect(state.memberPicksByMemberId.containsKey('member-2'), isTrue);
-    });
+    test(
+      'clearMemberPicks with specific memberId removes only that member',
+      () {
+        state.setMemberPicksBulk({
+          'member-1': {'m1': PickOption.home},
+          'member-2': {'m2': PickOption.away},
+        });
+        state.clearMemberPicks(memberId: 'member-1');
+        expect(state.memberPicksByMemberId.containsKey('member-1'), isFalse);
+        expect(state.memberPicksByMemberId.containsKey('member-2'), isTrue);
+      },
+    );
   });
 
   group('Group state (local, no Firestore)', () {
@@ -623,7 +623,9 @@ void main() {
         dayNumber: 20,
         outcomesByMatchId: {'m1': MatchOutcome.home},
       );
-      state.setMemberPicksBulk({'member-1': {'m1': PickOption.away}});
+      state.setMemberPicksBulk({
+        'member-1': {'m1': PickOption.away},
+      });
 
       state.clearAllHistory();
 

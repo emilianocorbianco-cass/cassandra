@@ -239,11 +239,12 @@ void main() {
 
     test('setMemberPicksBulk with replace clears old', () {
       final s = PredictionState.inMemory();
-      s.setMemberPicksBulk({'alice': {'m1': PickOption.home}});
-      s.setMemberPicksBulk(
-        {'bob': {'m1': PickOption.draw}},
-        replace: true,
-      );
+      s.setMemberPicksBulk({
+        'alice': {'m1': PickOption.home},
+      });
+      s.setMemberPicksBulk({
+        'bob': {'m1': PickOption.draw},
+      }, replace: true);
 
       expect(s.memberPicksByMemberId.containsKey('alice'), isFalse);
       expect(s.memberPicksByMemberId['bob']!['m1'], PickOption.draw);
@@ -251,7 +252,9 @@ void main() {
 
     test('clearMemberPicks all', () {
       final s = PredictionState.inMemory();
-      s.setMemberPicksBulk({'alice': {'m1': PickOption.home}});
+      s.setMemberPicksBulk({
+        'alice': {'m1': PickOption.home},
+      });
       s.clearMemberPicks();
 
       expect(s.memberPicksByMemberId, isEmpty);
@@ -271,7 +274,9 @@ void main() {
 
     test('setMemberPicksBulk removes member with empty picks', () {
       final s = PredictionState.inMemory();
-      s.setMemberPicksBulk({'alice': {'m1': PickOption.home}});
+      s.setMemberPicksBulk({
+        'alice': {'m1': PickOption.home},
+      });
       s.setMemberPicksBulk({'alice': <String, PickOption>{}});
 
       expect(s.memberPicksByMemberId.containsKey('alice'), isFalse);
@@ -322,13 +327,8 @@ void main() {
 
     test('setCachedPredictionOutcomesByMatchId stores', () {
       final s = PredictionState.inMemory();
-      s.setCachedPredictionOutcomesByMatchId(
-        {'m1': MatchOutcome.home},
-      );
-      expect(
-        s.cachedPredictionOutcomesByMatchId['m1'],
-        MatchOutcome.home,
-      );
+      s.setCachedPredictionOutcomesByMatchId({'m1': MatchOutcome.home});
+      expect(s.cachedPredictionOutcomesByMatchId['m1'], MatchOutcome.home);
     });
 
     test('clearCachedPredictionOutcomes resets', () {
@@ -352,10 +352,7 @@ void main() {
     test('effectivePredictionOutcomesByMatchId delegates', () {
       final s = PredictionState.inMemory();
       s.setCachedPredictionOutcomesByMatchId({'m1': MatchOutcome.draw});
-      expect(
-        s.effectivePredictionOutcomesByMatchId['m1'],
-        MatchOutcome.draw,
-      );
+      expect(s.effectivePredictionOutcomesByMatchId['m1'], MatchOutcome.draw);
     });
   });
 
@@ -369,7 +366,9 @@ void main() {
       s.addListener(() => notified++);
 
       s.setRecentMatchdayDataBulk(
-        matchesByMatchday: {20: [_makeMatch('m1')]},
+        matchesByMatchday: {
+          20: [_makeMatch('m1')],
+        },
         outcomesByMatchday: {
           20: {'m1': MatchOutcome.home},
         },
@@ -383,11 +382,15 @@ void main() {
     test('setRecentMatchdayDataBulk replace clears old data', () {
       final s = PredictionState.inMemory();
       s.setRecentMatchdayDataBulk(
-        matchesByMatchday: {20: [_makeMatch('m1')]},
+        matchesByMatchday: {
+          20: [_makeMatch('m1')],
+        },
         outcomesByMatchday: {},
       );
       s.setRecentMatchdayDataBulk(
-        matchesByMatchday: {21: [_makeMatch('m2')]},
+        matchesByMatchday: {
+          21: [_makeMatch('m2')],
+        },
         outcomesByMatchday: {},
         replace: true,
       );
@@ -430,7 +433,9 @@ void main() {
         dayNumber: 20,
         outcomesByMatchId: {'m1': MatchOutcome.home},
       );
-      s.setMemberPicksBulk({'alice': {'m1': PickOption.home}});
+      s.setMemberPicksBulk({
+        'alice': {'m1': PickOption.home},
+      });
 
       var notified = 0;
       s.addListener(() => notified++);

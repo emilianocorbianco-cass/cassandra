@@ -20,8 +20,7 @@ class PredictionState extends ChangeNotifier {
   // ===== SharedPreferences keys =====
   static const _kCurrentUserPicksByMatchIdV1 =
       'cassandra.current_user_picks_by_match_id_v1';
-  static const _kCurrentUserPicksByMatchday =
-      'picks.currentUser.byMatchday.v1';
+  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
   static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
   static const _kMemberPicksByMemberIdV1 =
       'cassandra.member_picks_by_member_id_v1';
@@ -162,8 +161,9 @@ class PredictionState extends ChangeNotifier {
     required Map<String, PickOption> picksByMatchId,
   }) {
     ensureCurrentUserPicksHistoryLoaded();
-    _currentUserPicksByMatchday[dayNumber] =
-        Map<String, PickOption>.from(picksByMatchId);
+    _currentUserPicksByMatchday[dayNumber] = Map<String, PickOption>.from(
+      picksByMatchId,
+    );
     _persistCurrentUserPicksHistoryToPrefs();
     notifyListeners();
   }
@@ -250,8 +250,9 @@ class PredictionState extends ChangeNotifier {
     required Map<String, MatchOutcome> outcomesByMatchId,
   }) {
     ensureOutcomesHistoryLoaded();
-    _outcomesByMatchday[dayNumber] =
-        Map<String, MatchOutcome>.from(outcomesByMatchId);
+    _outcomesByMatchday[dayNumber] = Map<String, MatchOutcome>.from(
+      outcomesByMatchId,
+    );
 
     final out = <String, Object?>{};
     for (final e in _outcomesByMatchday.entries) {
@@ -433,8 +434,9 @@ class PredictionState extends ChangeNotifier {
     if (memberId == null) {
       memberPicksByMemberId = const <String, Map<String, PickOption>>{};
     } else {
-      final next =
-          Map<String, Map<String, PickOption>>.of(memberPicksByMemberId);
+      final next = Map<String, Map<String, PickOption>>.of(
+        memberPicksByMemberId,
+      );
       next.remove(memberId);
       memberPicksByMemberId = Map.unmodifiable(next);
     }
@@ -487,8 +489,7 @@ class PredictionState extends ChangeNotifier {
   DateTime? get cachedPredictionMatchesUpdatedAt =>
       _cachedPredictionMatchesUpdatedAt;
   Map<int, ApiFootballFixtureOdds>? get cachedRealOdds => _cachedRealOdds;
-  List<ApiFootballStanding> get cachedSeasonStandings =>
-      _cachedSeasonStandings;
+  List<ApiFootballStanding> get cachedSeasonStandings => _cachedSeasonStandings;
   DateTime? get cachedSeasonStandingsUpdatedAt =>
       _cachedSeasonStandingsUpdatedAt;
 
@@ -586,8 +587,7 @@ class PredictionState extends ChangeNotifier {
     final allDays = <int>{
       ..._recentMatchesByMatchday.keys,
       ..._recentOutcomesByMatchday.keys,
-    }.toList()
-      ..sort((a, b) => b.compareTo(a));
+    }.toList()..sort((a, b) => b.compareTo(a));
     if (allDays.length <= maxEntries) return;
 
     for (final day in allDays.skip(maxEntries)) {
@@ -607,12 +607,14 @@ class PredictionState extends ChangeNotifier {
     }
 
     for (final e in matchesByMatchday.entries) {
-      _recentMatchesByMatchday[e.key] =
-          List<PredictionMatch>.unmodifiable(e.value);
+      _recentMatchesByMatchday[e.key] = List<PredictionMatch>.unmodifiable(
+        e.value,
+      );
     }
     for (final e in outcomesByMatchday.entries) {
-      _recentOutcomesByMatchday[e.key] =
-          Map<String, MatchOutcome>.unmodifiable(e.value);
+      _recentOutcomesByMatchday[e.key] = Map<String, MatchOutcome>.unmodifiable(
+        e.value,
+      );
     }
     _pruneRecentMatchdayData();
     notifyListeners();

@@ -10,16 +10,15 @@ MatchdayProgress _makeProgress({
   int playedFixtures = 10,
   int voidFixtures = 0,
   bool isLocked = true,
-}) =>
-    MatchdayProgress(
-      lockAt: DateTime(2026, 3, 1, 14, 0),
-      isLocked: isLocked,
-      primaryDone: primaryDone,
-      finalDone: finalDone,
-      totalFixtures: totalFixtures,
-      playedFixtures: playedFixtures,
-      voidFixtures: voidFixtures,
-    );
+}) => MatchdayProgress(
+  lockAt: DateTime(2026, 3, 1, 14, 0),
+  isLocked: isLocked,
+  primaryDone: primaryDone,
+  finalDone: finalDone,
+  totalFixtures: totalFixtures,
+  playedFixtures: playedFixtures,
+  voidFixtures: voidFixtures,
+);
 
 void main() {
   // ==========================================================================
@@ -120,14 +119,16 @@ void main() {
       expect(s.lastAutoBumpFromMatchday, isNull);
     });
 
-    test('maybeAutoBumpCassandraMatchdayCursor returns false without prefs',
-        () async {
-      final s = MatchdayState.inMemory();
-      final result = await s.maybeAutoBumpCassandraMatchdayCursor(
-        fromMatchday: 10,
-      );
-      expect(result, isFalse);
-    });
+    test(
+      'maybeAutoBumpCassandraMatchdayCursor returns false without prefs',
+      () async {
+        final s = MatchdayState.inMemory();
+        final result = await s.maybeAutoBumpCassandraMatchdayCursor(
+          fromMatchday: 10,
+        );
+        expect(result, isFalse);
+      },
+    );
   });
 
   // ==========================================================================
@@ -237,10 +238,7 @@ void main() {
 
     test('setMatchdayProgress updates uiMatchdayNumber', () {
       final s = MatchdayState.inMemory();
-      s.setMatchdayProgress(
-        matchdayNumber: 15,
-        progress: _makeProgress(),
-      );
+      s.setMatchdayProgress(matchdayNumber: 15, progress: _makeProgress());
       expect(s.uiMatchdayNumber, 15);
     });
 
@@ -270,10 +268,7 @@ void main() {
       final s = MatchdayState.inMemory();
       await s.setCassandraMatchdayCursor(5);
 
-      s.setMatchdayProgress(
-        matchdayNumber: 10,
-        progress: _makeProgress(),
-      );
+      s.setMatchdayProgress(matchdayNumber: 10, progress: _makeProgress());
       expect(s.uiMatchdayNumber, 10);
 
       s.clearMatchdayProgress(10);
@@ -281,44 +276,40 @@ void main() {
       expect(s.uiMatchdayNumber, 5);
     });
 
-    test('auto-advance triggers when primaryDone + valid + on cursor', () async {
-      final s = MatchdayState.inMemory();
-      await s.setCassandraMatchdayCursor(10);
+    test(
+      'auto-advance triggers when primaryDone + valid + on cursor',
+      () async {
+        final s = MatchdayState.inMemory();
+        await s.setCassandraMatchdayCursor(10);
 
-      final progress = _makeProgress(
-        primaryDone: true,
-        playedFixtures: 8,
-      );
-      s.setMatchdayProgress(
-        matchdayNumber: 10,
-        progress: progress,
-      );
+        final progress = _makeProgress(primaryDone: true, playedFixtures: 8);
+        s.setMatchdayProgress(matchdayNumber: 10, progress: progress);
 
-      // Wait for microtask to complete
-      await Future.delayed(Duration.zero);
-      await Future.delayed(Duration.zero);
-      expect(s.cassandraMatchdayCursor, 11);
-    });
+        // Wait for microtask to complete
+        await Future.delayed(Duration.zero);
+        await Future.delayed(Duration.zero);
+        expect(s.cassandraMatchdayCursor, 11);
+      },
+    );
 
-    test('auto-advance does not trigger if allowAutoAdvance is false',
-        () async {
-      final s = MatchdayState.inMemory();
-      await s.setCassandraMatchdayCursor(10);
+    test(
+      'auto-advance does not trigger if allowAutoAdvance is false',
+      () async {
+        final s = MatchdayState.inMemory();
+        await s.setCassandraMatchdayCursor(10);
 
-      final progress = _makeProgress(
-        primaryDone: true,
-        playedFixtures: 8,
-      );
-      s.setMatchdayProgress(
-        matchdayNumber: 10,
-        progress: progress,
-        allowAutoAdvance: false,
-      );
+        final progress = _makeProgress(primaryDone: true, playedFixtures: 8);
+        s.setMatchdayProgress(
+          matchdayNumber: 10,
+          progress: progress,
+          allowAutoAdvance: false,
+        );
 
-      await Future.delayed(Duration.zero);
-      await Future.delayed(Duration.zero);
-      expect(s.cassandraMatchdayCursor, 10);
-    });
+        await Future.delayed(Duration.zero);
+        await Future.delayed(Duration.zero);
+        expect(s.cassandraMatchdayCursor, 10);
+      },
+    );
 
     test('auto-advance does not trigger for non-cursor matchday', () async {
       final s = MatchdayState.inMemory();
