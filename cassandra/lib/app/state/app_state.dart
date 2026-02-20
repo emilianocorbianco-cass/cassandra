@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
 import 'group_state.dart';
+import 'matchday_state.dart';
 import 'prediction_state.dart';
 import 'user_profile.dart';
 import '../../features/group/models/group_member.dart';
@@ -38,14 +39,7 @@ class AppState extends ChangeNotifier {
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
-  static const _kCassandraMatchdayCursorV1 = 'cassandra.matchday.cursor.v1';
-  static const int _kCassandraDefaultMatchdayCursor = 20;
   static const _kDemoSeedV1 = 'demo_seed.v1';
-  static const _kFinalizedMatchdaysV1 = 'matchday.finalized.v1';
-  static const _kCassandraMatchdayLastAutoBumpFromV1 =
-      'cassandra.matchday.lastAutoBumpFrom.v1';
-  static const _kOriginKickoffsByMatchIdV1 =
-      'fixtures.originKickoffsByMatchId.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -173,6 +167,9 @@ class AppState extends ChangeNotifier {
   // ===== PREDICTION STATE (delegated) =====
   late final PredictionState predictionState;
 
+  // ===== MATCHDAY STATE (delegated) =====
+  late final MatchdayState matchdayState;
+
   // Forwarding getters per compatibilità con codice esistente.
   List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
 
@@ -258,75 +255,18 @@ class AppState extends ChangeNotifier {
     return (now.month >= 8 ? now.year : now.year - 1).toString();
   }
 
-  int? _cassandraMatchdayCursor;
-
-  /// Giornata “corrente” secondo Cassandra (ignorando recuperi di round vecchi).
-  /// Persistita in SharedPreferences.
-  int get cassandraMatchdayCursor => _cassandraMatchdayCursor ??=
-      (_prefs?.getInt(_kCassandraMatchdayCursorV1) ??
-      _kCassandraDefaultMatchdayCursor);
-
-  Future<void> setCassandraMatchdayCursor(int dayNumber) async {
-    if (dayNumber <= 0) return;
-    _cassandraMatchdayCursor = dayNumber;
-    await _prefs?.setInt(_kCassandraMatchdayCursorV1, dayNumber);
-
-    _uiMatchdayNumber = null;
-    notifyListeners();
-  }
-
-  Future<void> bumpCassandraMatchdayCursor() async {
-    await setCassandraMatchdayCursor(cassandraMatchdayCursor + 1);
-  }
-
-  void ensureFinalizedMatchdaysLoaded() {
-    if (_finalizedMatchdaysLoaded) return;
-    _finalizedMatchdaysLoaded = true;
-
-    final raw = _prefs?.getString(_kFinalizedMatchdaysV1);
-    if (raw == null || raw.trim().isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        for (final e in decoded) {
-          final n = int.tryParse(e.toString());
-          if (n != null && n > 0) _finalizedMatchdays.add(n);
-        }
-      }
-    } catch (_) {
-      // ignore corrupt storage
-    }
-  }
-
-  bool isMatchdayFinalized(int matchdayNumber) {
-    ensureFinalizedMatchdaysLoaded();
-    return _finalizedMatchdays.contains(matchdayNumber);
-  }
-
-  Future<bool> markMatchdayFinalized(int matchdayNumber) async {
-    if (matchdayNumber <= 0) return false;
-    ensureFinalizedMatchdaysLoaded();
-    if (_finalizedMatchdays.contains(matchdayNumber)) return false;
-
-    _finalizedMatchdays.add(matchdayNumber);
-    final list = _finalizedMatchdays.toList()..sort();
-    await _prefs?.setString(_kFinalizedMatchdaysV1, jsonEncode(list));
-    notifyListeners();
-    return true;
-  }
-
   /// Finalizza una matchday quando `finalDone` (e valida >= 6):
   /// - salva snapshot matches
   /// - salva matches/outcomes nello storico (per leaderboard stabile)
   ///
   /// Idempotente: se già finalizzata non fa nulla.
+  /// Cross-cutting: coordina MatchdayState e PredictionState.
   Future<bool> maybeFinalizeMatchday({
     required int matchdayNumber,
     required List<PredictionMatch> matches,
     required Map<String, MatchOutcome> outcomesByMatchId,
   }) async {
-    final didMark = await markMatchdayFinalized(matchdayNumber);
+    final didMark = await matchdayState.markMatchdayFinalized(matchdayNumber);
     if (!didMark) return false;
 
     ensureMatchdayMatchesLoaded();
@@ -346,72 +286,6 @@ class AppState extends ChangeNotifier {
     );
 
     return true;
-  }
-
-  int? get lastAutoBumpFromMatchday =>
-      _prefs?.getInt(_kCassandraMatchdayLastAutoBumpFromV1);
-
-  Future<bool> maybeAutoBumpCassandraMatchdayCursor({
-    required int fromMatchday,
-  }) async {
-    final prefs = _prefs;
-    if (prefs == null) return false;
-
-    final last = prefs.getInt(_kCassandraMatchdayLastAutoBumpFromV1) ?? -1;
-    if (last == fromMatchday) return false;
-
-    await prefs.setInt(_kCassandraMatchdayLastAutoBumpFromV1, fromMatchday);
-    await setCassandraMatchdayCursor(fromMatchday + 1);
-    return true;
-  }
-
-  void ensureOriginKickoffsLoaded() {
-    if (_originKickoffsLoaded) return;
-    _originKickoffsLoaded = true;
-    final raw = _prefs?.getString(_kOriginKickoffsByMatchIdV1);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        _originKickoffIsoByMatchId = {
-          for (final e in decoded.entries) e.key.toString(): e.value.toString(),
-        };
-      }
-    } catch (_) {
-      // ignore: keep empty
-    }
-  }
-
-  void registerOriginKickoff({
-    required String matchId,
-    required DateTime kickoff,
-  }) {
-    ensureOriginKickoffsLoaded();
-    _originKickoffIsoByMatchId.putIfAbsent(
-      matchId,
-      () => kickoff.toUtc().toIso8601String(),
-    );
-  }
-
-  DateTime originKickoffFor({
-    required String matchId,
-    required DateTime fallbackKickoff,
-  }) {
-    ensureOriginKickoffsLoaded();
-    final iso = _originKickoffIsoByMatchId[matchId];
-    if (iso == null) return fallbackKickoff;
-    final parsed = DateTime.tryParse(iso);
-    return parsed?.toLocal() ?? fallbackKickoff;
-  }
-
-  Future<void> persistOriginKickoffs() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
-    ensureOriginKickoffsLoaded();
-    await prefs.setString(
-      _kOriginKickoffsByMatchIdV1,
-      jsonEncode(_originKickoffIsoByMatchId),
-    );
   }
 
   UserProfile _profile;
@@ -480,13 +354,6 @@ class AppState extends ChangeNotifier {
 
   Future<void> updateGroupName(String name) => groupState.updateGroupName(name);
 
-  // ===== MATCHDAY FINALIZATION (finalDone) =====
-  bool _finalizedMatchdaysLoaded = false;
-  final Set<int> _finalizedMatchdays = <int>{};
-
-  bool _originKickoffsLoaded = false;
-  Map<String, String> _originKickoffIsoByMatchId = {};
-
   AppState._(
     this._prefs, {
     required UserProfile profile,
@@ -494,6 +361,7 @@ class AppState extends ChangeNotifier {
     required PredictionVisibility defaultVisibility,
     required GroupState groupStateInstance,
     required PredictionState predictionStateInstance,
+    required MatchdayState matchdayStateInstance,
     int demoSeed = 0,
   }) : _profile = profile,
        _language = language,
@@ -501,9 +369,11 @@ class AppState extends ChangeNotifier {
        _demoSeed = demoSeed {
     groupState = groupStateInstance;
     predictionState = predictionStateInstance;
+    matchdayState = matchdayStateInstance;
     // Propaga notifiche da sub-states -> AppState listeners.
     groupState.addListener(notifyListeners);
     predictionState.addListener(notifyListeners);
+    matchdayState.addListener(notifyListeners);
   }
 
   /// --- getters usati dal resto dell'app ---
@@ -682,6 +552,7 @@ class AppState extends ChangeNotifier {
 
     final groupStateInstance = GroupState.fromPrefs(prefs);
     final predictionStateInstance = PredictionState.fromPrefs(prefs);
+    final matchdayStateInstance = MatchdayState.fromPrefs(prefs);
     final rememberMeEnabled = prefs.getBool(_kRememberMeEnabled) ?? false;
     final rememberedUid = (prefs.getString(_kRememberedUid) ?? '').trim();
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
@@ -702,6 +573,7 @@ class AppState extends ChangeNotifier {
         defaultVisibility: visibility,
         groupStateInstance: groupStateInstance,
         predictionStateInstance: predictionStateInstance,
+        matchdayStateInstance: matchdayStateInstance,
         demoSeed: demoSeed,
       )
       .._rememberMeEnabled = rememberMeEnabled
@@ -731,6 +603,7 @@ class AppState extends ChangeNotifier {
       defaultVisibility: defaultVisibility,
       groupStateInstance: GroupState.inMemory(),
       predictionStateInstance: PredictionState.inMemory(),
+      matchdayStateInstance: MatchdayState.inMemory(),
       demoSeed: 0,
     );
   }
@@ -981,66 +854,6 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kRememberedHandle);
     await _prefs.remove(_kRememberedPhotoUrl);
     await _prefs.remove(_kRememberedProvider);
-  }
-
-  // ===== MatchdayProgress (runtime, non persistito) =====
-  final Map<int, MatchdayProgress> _matchdayProgressByDay = {};
-
-  int? _uiMatchdayNumber;
-  int? _autoAdvancedFromMatchday;
-  int? _autoFinalizedFromMatchday;
-  int get uiMatchdayNumber => _uiMatchdayNumber ?? cassandraMatchdayCursor;
-
-  void setUiMatchdayNumber(int? matchdayNumber) {
-    _uiMatchdayNumber = matchdayNumber;
-    notifyListeners();
-  }
-
-  MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
-      _matchdayProgressByDay[matchdayNumber];
-
-  void setMatchdayProgress({
-    required int matchdayNumber,
-    required MatchdayProgress progress,
-    bool allowAutoAdvance = true,
-  }) {
-    _matchdayProgressByDay[matchdayNumber] = progress;
-
-    _uiMatchdayNumber = matchdayNumber;
-
-    // AUTO-ADVANCE: primaryDone
-    if (allowAutoAdvance &&
-        progress.primaryDone &&
-        progress.isValidMatchday &&
-        matchdayNumber == cassandraMatchdayCursor &&
-        _autoAdvancedFromMatchday != matchdayNumber) {
-      _autoAdvancedFromMatchday = matchdayNumber;
-      Future.microtask(() async {
-        try {
-          await setCassandraMatchdayCursor(matchdayNumber + 1);
-        } catch (_) {}
-      });
-    }
-
-    // AUTO-FINALIZE: finalDone
-    if (progress.finalDone &&
-        progress.isValidMatchday &&
-        _autoFinalizedFromMatchday != matchdayNumber) {
-      _autoFinalizedFromMatchday = matchdayNumber;
-      Future.microtask(() async {
-        try {} catch (_) {}
-        isMatchdayFinalized(matchdayNumber);
-      });
-    }
-
-    notifyListeners();
-  }
-
-  void clearMatchdayProgress(int matchdayNumber) {
-    if (_matchdayProgressByDay.remove(matchdayNumber) != null) {
-      if (_uiMatchdayNumber == matchdayNumber) _uiMatchdayNumber = null;
-      notifyListeners();
-    }
   }
 
   bool _hydratingCurrentUserHistoryFromFirestore = false;
@@ -1310,6 +1123,68 @@ class AppState extends ChangeNotifier {
       // Migration failed — will retry next launch
     }
   }
+
+  // ===== MATCHDAY STATE FORWARDING =====
+  // Forwarding getters/methods per compatibilità con codice esistente.
+  // La logica è ora in MatchdayState.
+
+  // --- Cursor ---
+  int get cassandraMatchdayCursor => matchdayState.cassandraMatchdayCursor;
+  Future<void> setCassandraMatchdayCursor(int dayNumber) =>
+      matchdayState.setCassandraMatchdayCursor(dayNumber);
+  Future<void> bumpCassandraMatchdayCursor() =>
+      matchdayState.bumpCassandraMatchdayCursor();
+
+  // --- Finalization ---
+  void ensureFinalizedMatchdaysLoaded() =>
+      matchdayState.ensureFinalizedMatchdaysLoaded();
+  bool isMatchdayFinalized(int matchdayNumber) =>
+      matchdayState.isMatchdayFinalized(matchdayNumber);
+  Future<bool> markMatchdayFinalized(int matchdayNumber) =>
+      matchdayState.markMatchdayFinalized(matchdayNumber);
+
+  // --- Auto-bump ---
+  int? get lastAutoBumpFromMatchday => matchdayState.lastAutoBumpFromMatchday;
+  Future<bool> maybeAutoBumpCassandraMatchdayCursor({
+    required int fromMatchday,
+  }) => matchdayState.maybeAutoBumpCassandraMatchdayCursor(
+    fromMatchday: fromMatchday,
+  );
+
+  // --- Origin kickoffs ---
+  void ensureOriginKickoffsLoaded() =>
+      matchdayState.ensureOriginKickoffsLoaded();
+  void registerOriginKickoff({
+    required String matchId,
+    required DateTime kickoff,
+  }) => matchdayState.registerOriginKickoff(matchId: matchId, kickoff: kickoff);
+  DateTime originKickoffFor({
+    required String matchId,
+    required DateTime fallbackKickoff,
+  }) => matchdayState.originKickoffFor(
+    matchId: matchId,
+    fallbackKickoff: fallbackKickoff,
+  );
+  Future<void> persistOriginKickoffs() =>
+      matchdayState.persistOriginKickoffs();
+
+  // --- Progress (runtime) ---
+  int get uiMatchdayNumber => matchdayState.uiMatchdayNumber;
+  void setUiMatchdayNumber(int? matchdayNumber) =>
+      matchdayState.setUiMatchdayNumber(matchdayNumber);
+  MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
+      matchdayState.matchdayProgressFor(matchdayNumber);
+  void setMatchdayProgress({
+    required int matchdayNumber,
+    required MatchdayProgress progress,
+    bool allowAutoAdvance = true,
+  }) => matchdayState.setMatchdayProgress(
+    matchdayNumber: matchdayNumber,
+    progress: progress,
+    allowAutoAdvance: allowAutoAdvance,
+  );
+  void clearMatchdayProgress(int matchdayNumber) =>
+      matchdayState.clearMatchdayProgress(matchdayNumber);
 
   // ===== PREDICTION STATE FORWARDING =====
   // Forwarding getters/methods per compatibilità con codice esistente.
