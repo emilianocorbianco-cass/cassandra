@@ -227,6 +227,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _clearBackendError() {
+    if (_lastBackendSyncError == null && _lastBackendSyncErrorAt == null) {
+      return;
+    }
+    _lastBackendSyncError = null;
+    _lastBackendSyncErrorAt = null;
+    notifyListeners();
+  }
+
   /// Fire-and-forget (debounced): sync full user profile to Firestore.
   void _syncProfileToFirestore() {
     _profileSyncPending = true;
@@ -271,11 +280,13 @@ class AppState extends ChangeNotifier {
           photoUrl: _profile.photoUrl,
         );
       }
+      _clearBackendError();
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[profile-sync] failed: $e');
         debugPrint('$st');
       }
+      _recordBackendError(e, st);
     } finally {
       _profileSyncInFlight = false;
       if (_profileSyncPending) {
@@ -329,9 +340,12 @@ class AppState extends ChangeNotifier {
     final uid = _profile.id;
     if (uid.isEmpty) return;
     unawaited(
-      fs.updateUserField(uid, fields).catchError((Object e, StackTrace st) {
-        _recordBackendError(e, st);
-      }),
+      fs
+          .updateUserField(uid, fields)
+          .then((_) => _clearBackendError())
+          .catchError((Object e, StackTrace st) {
+            _recordBackendError(e, st);
+          }),
     );
   }
 
@@ -879,6 +893,7 @@ class AppState extends ChangeNotifier {
       unawaited(
         _firestoreService
             ?.addUserFcmToken(uid: user.uid, token: token)
+            .then((_) => _clearBackendError())
             .catchError((Object e, StackTrace st) {
               _recordBackendError(e, st);
             }),
@@ -1061,6 +1076,7 @@ class AppState extends ChangeNotifier {
             groupId: activeGroupId,
             score: score,
           )
+          .then((_) => _clearBackendError())
           .catchError((Object e, StackTrace st) {
             _recordBackendError(e, st);
           }),

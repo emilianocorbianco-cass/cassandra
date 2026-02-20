@@ -17,6 +17,8 @@ import '../../domain/serie_a/team_name_normalizer.dart';
 /// member picks, cache runtime (fixtures, outcomes, standings, odds),
 /// recent matchday data.
 class PredictionState extends ChangeNotifier {
+  static const int _kMaxMatchdayHistoryEntries = 64;
+
   // ===== SharedPreferences keys =====
   static const _kCurrentUserPicksByMatchIdV1 =
       'cassandra.current_user_picks_by_match_id_v1';
@@ -164,6 +166,7 @@ class PredictionState extends ChangeNotifier {
     _currentUserPicksByMatchday[dayNumber] = Map<String, PickOption>.from(
       picksByMatchId,
     );
+    _pruneOldestByDay(_currentUserPicksByMatchday);
     _persistCurrentUserPicksHistoryToPrefs();
     notifyListeners();
   }
@@ -259,6 +262,7 @@ class PredictionState extends ChangeNotifier {
     next[dayNumber] = Map<String, MatchOutcome>.unmodifiable(
       Map<String, MatchOutcome>.from(outcomesByMatchId),
     );
+    _pruneOldestByDay(next);
     _outcomesByMatchday = Map.unmodifiable(next);
 
     final out = <String, Object?>{};
@@ -303,6 +307,7 @@ class PredictionState extends ChangeNotifier {
   }) async {
     final next = Map<int, List<PredictionMatch>>.of(_matchesByMatchday);
     next[matchdayNumber] = List<PredictionMatch>.unmodifiable(matches);
+    _pruneOldestByDay(next);
     _matchesByMatchday = Map.unmodifiable(next);
     notifyListeners();
   }
@@ -358,6 +363,7 @@ class PredictionState extends ChangeNotifier {
   }) async {
     await ensureMatchdayMatchesLoaded();
     _matchdayMatchesByDay[matchdayNumber] = List<PredictionMatch>.of(matches);
+    _pruneOldestByDay(_matchdayMatchesByDay);
 
     final encoded = <String, dynamic>{
       for (final e in _matchdayMatchesByDay.entries)
@@ -611,6 +617,18 @@ class PredictionState extends ChangeNotifier {
       for (final e in _recentOutcomesByMatchday.entries)
         if (keepDays.contains(e.key)) e.key: e.value,
     });
+  }
+
+  void _pruneOldestByDay<T>(
+    Map<int, T> map, {
+    int maxEntries = _kMaxMatchdayHistoryEntries,
+  }) {
+    if (map.length <= maxEntries) return;
+    final ordered = map.keys.toList()..sort((a, b) => a.compareTo(b));
+    final removeCount = ordered.length - maxEntries;
+    for (var i = 0; i < removeCount; i++) {
+      map.remove(ordered[i]);
+    }
   }
 
   void setRecentMatchdayDataBulk({
