@@ -143,8 +143,11 @@ class GroupState extends ChangeNotifier {
         (_) => chars[rng.nextInt(chars.length)],
       ).join();
       final code = 'CASS-$suffix';
+      final localGroupId = 'local-$code';
       _groupName = cleaned;
       _groupInviteCode = code;
+      _activeGroupId = localGroupId;
+      _firestoreGroupIds = [localGroupId];
       await _prefs?.setString(_kGroupNameV1, cleaned);
       await _prefs?.setString(_kGroupInviteCodeV1, code);
       notifyListeners();
