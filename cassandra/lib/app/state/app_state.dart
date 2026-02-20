@@ -73,12 +73,6 @@ class AppState extends ChangeNotifier {
     return '$base.$safeUid.$safeSeason';
   }
 
-  String get _kCurrentUserPicksByMatchdayScoped =>
-      _scopedHistoryKey(_kCurrentUserPicksByMatchday);
-  String get _kPredictionOutcomesByMatchdayScoped =>
-      _scopedHistoryKey(_kPredictionOutcomesByMatchday);
-  String get _kMatchdayMatchesByDayScoped =>
-      _scopedHistoryKey(_kMatchdayMatchesByDayV1);
   String get _kFirestoreMigrationV1DoneScoped =>
       _scopedHistoryKey(_kFirestoreMigrationV1Done);
 
