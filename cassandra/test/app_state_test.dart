@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cassandra/app/state/app_state.dart';
@@ -773,6 +775,367 @@ void main() {
       state.setCurrentUserPick('m1', PickOption.away);
       final picks = state.picksForCurrentUserForMatchday(99);
       expect(picks['m1'], PickOption.away);
+    });
+  });
+
+  // ==========================================================================
+  // Team name normalization
+  // ==========================================================================
+  group('updateTeamName', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('adds @ prefix when missing', () async {
+      await state.updateTeamName('myteam');
+      expect(state.teamName, '@myteam');
+    });
+
+    test('preserves existing @ prefix', () async {
+      await state.updateTeamName('@myteam');
+      expect(state.teamName, '@myteam');
+    });
+
+    test('strips whitespace', () async {
+      await state.updateTeamName('  my team  ');
+      expect(state.teamName, '@myteam');
+    });
+
+    test('empty string falls back to @cassandra', () async {
+      await state.updateTeamName('');
+      expect(state.teamName, '@cassandra');
+    });
+
+    test('just @ falls back to @cassandra', () async {
+      await state.updateTeamName('@');
+      expect(state.teamName, '@cassandra');
+    });
+
+    test('no-op when value is unchanged', () async {
+      await state.updateTeamName('testuser');
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateTeamName('testuser');
+      expect(notified, 0);
+    });
+  });
+
+  // ==========================================================================
+  // Display name
+  // ==========================================================================
+  group('updateDisplayName', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('updates display name', () async {
+      await state.updateDisplayName('New Name');
+      expect(state.profile.displayName, 'New Name');
+    });
+
+    test('ignores empty string', () async {
+      await state.updateDisplayName('');
+      expect(state.profile.displayName, 'Test User');
+    });
+
+    test('trims whitespace', () async {
+      await state.updateDisplayName('  Trimmed  ');
+      expect(state.profile.displayName, 'Trimmed');
+    });
+
+    test('no-op when value is unchanged', () async {
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateDisplayName('Test User');
+      expect(notified, 0);
+    });
+  });
+
+  // ==========================================================================
+  // Language updates
+  // ==========================================================================
+  group('updateLanguage', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('updates language and notifies', () async {
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateLanguage(CassandraLanguage.it);
+      expect(state.language, CassandraLanguage.it);
+      expect(notified, 1);
+    });
+
+    test('no-op when value is unchanged', () async {
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateLanguage(CassandraLanguage.system);
+      expect(notified, 0);
+    });
+
+    test('localeOverride reflects language', () async {
+      expect(state.localeOverride, isNull); // system
+      await state.updateLanguage(CassandraLanguage.en);
+      expect(state.localeOverride, const Locale('en'));
+    });
+  });
+
+  // ==========================================================================
+  // Default visibility updates
+  // ==========================================================================
+  group('updateDefaultVisibility', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('updates visibility and notifies', () async {
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateDefaultVisibility(PredictionVisibility.public);
+      expect(state.defaultVisibility, PredictionVisibility.public);
+      expect(notified, 1);
+    });
+
+    test('no-op when value is unchanged', () async {
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateDefaultVisibility(PredictionVisibility.friends);
+      expect(notified, 0);
+    });
+  });
+
+  // ==========================================================================
+  // Favorite team
+  // ==========================================================================
+  group('updateFavoriteTeam', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('updates favorite team', () async {
+      await state.updateFavoriteTeam('Milan');
+      expect(state.favoriteTeam, 'Milan');
+    });
+
+    test('empty string clears favorite team', () async {
+      await state.updateFavoriteTeam('');
+      expect(state.profile.favoriteTeam, isNull);
+    });
+
+    test('no-op when value is unchanged', () async {
+      var notified = 0;
+      state.addListener(() => notified++);
+      await state.updateFavoriteTeam('Inter');
+      expect(notified, 0);
+    });
+  });
+
+  // ==========================================================================
+  // maybeFinalizeMatchday (cross-state orchestration)
+  // ==========================================================================
+  group('maybeFinalizeMatchday', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('finalizes matchday on first call', () async {
+      final matches = [_makeMatch('m1'), _makeMatch('m2')];
+      final outcomes = {'m1': MatchOutcome.home, 'm2': MatchOutcome.draw};
+      final result = await state.maybeFinalizeMatchday(
+        matchdayNumber: 20,
+        matches: matches,
+        outcomesByMatchId: outcomes,
+      );
+
+      expect(result, isTrue);
+      expect(state.isMatchdayFinalized(20), isTrue);
+      expect(state.hasSavedOutcomesForMatchday(20), isTrue);
+    });
+
+    test('returns false on duplicate finalization', () async {
+      final matches = [_makeMatch('m1')];
+      final outcomes = {'m1': MatchOutcome.home};
+
+      await state.maybeFinalizeMatchday(
+        matchdayNumber: 20,
+        matches: matches,
+        outcomesByMatchId: outcomes,
+      );
+      final result = await state.maybeFinalizeMatchday(
+        matchdayNumber: 20,
+        matches: matches,
+        outcomesByMatchId: outcomes,
+      );
+
+      expect(result, isFalse);
+    });
+  });
+
+  // ==========================================================================
+  // completeProfileSetup
+  // ==========================================================================
+  group('completeProfileSetup', () {
+    test('marks profile setup complete', () async {
+      final state = AppState.inMemory(profile: _testProfile);
+      expect(state.hasCompletedProfileSetup, isFalse);
+      await state.completeProfileSetup(rememberMe: false);
+      expect(state.hasCompletedProfileSetup, isTrue);
+    });
+
+    test('enables remember-me when requested', () async {
+      final state = AppState.inMemory(profile: _testProfile);
+      await state.completeProfileSetup(rememberMe: true);
+      expect(state.rememberMeEnabled, isTrue);
+    });
+
+    test('no-op for empty profile id', () async {
+      final state = AppState.inMemory();
+      await state.completeProfileSetup(rememberMe: true);
+      expect(state.hasCompletedProfileSetup, isFalse);
+    });
+  });
+
+  // ==========================================================================
+  // mergeFirestoreProfile
+  // ==========================================================================
+  group('mergeFirestoreProfile', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('merges display name from Firestore', () {
+      state.mergeFirestoreProfile({'displayName': 'Remote Name'});
+      expect(state.profile.displayName, 'Remote Name');
+    });
+
+    test('ignores empty display name', () {
+      state.mergeFirestoreProfile({'displayName': ''});
+      expect(state.profile.displayName, 'Test User');
+    });
+
+    test('merges favorite team when local is null', () {
+      final s = AppState.inMemory(
+        profile: const UserProfile(
+          id: 'uid-1',
+          displayName: 'Test',
+          teamName: '@test',
+        ),
+      );
+      s.mergeFirestoreProfile({'favoriteTeam': 'Napoli'});
+      expect(s.profile.favoriteTeam, 'Napoli');
+    });
+
+    test('does not overwrite existing favorite team', () {
+      state.mergeFirestoreProfile({'favoriteTeam': 'Milan'});
+      expect(state.profile.favoriteTeam, 'Inter');
+    });
+
+    test('merges language', () {
+      state.mergeFirestoreProfile({'language': 'en'});
+      expect(state.language, CassandraLanguage.en);
+    });
+
+    test('merges visibility', () {
+      state.mergeFirestoreProfile({'defaultVisibility': 'private'});
+      expect(state.defaultVisibility, PredictionVisibility.private);
+    });
+
+    test('merges photo url', () {
+      state.mergeFirestoreProfile({'photoUrl': 'https://new.photo/url.png'});
+      expect(state.profile.photoUrl, 'https://new.photo/url.png');
+    });
+
+    test('notifies listeners when data changes', () {
+      var notified = 0;
+      state.addListener(() => notified++);
+      state.mergeFirestoreProfile({'displayName': 'Changed'});
+      expect(notified, 1);
+    });
+
+    test('does not notify when nothing changes', () {
+      var notified = 0;
+      state.addListener(() => notified++);
+      state.mergeFirestoreProfile({});
+      expect(notified, 0);
+    });
+  });
+
+  // ==========================================================================
+  // Sub-state delegation
+  // ==========================================================================
+  group('Sub-state delegation', () {
+    test('groupState changes propagate to AppState listeners', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      var notified = 0;
+      state.addListener(() => notified++);
+      state.setActiveGroupId('test-group');
+      expect(notified, 1);
+    });
+
+    test('predictionState changes propagate to AppState listeners', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      var notified = 0;
+      state.addListener(() => notified++);
+      state.setCurrentUserPick('m1', PickOption.home);
+      expect(notified, 1);
+    });
+
+    test('matchdayState changes propagate to AppState listeners', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      var notified = 0;
+      state.addListener(() => notified++);
+      state.setUiMatchdayNumber(30);
+      expect(notified, 1);
+    });
+  });
+
+  // ==========================================================================
+  // signOut resets state
+  // ==========================================================================
+  group('signOut', () {
+    test('resets profile and state', () async {
+      final state = AppState.inMemory(profile: _testProfile);
+      state.setCurrentUserPick('m1', PickOption.home);
+      await state.createGroup('Test');
+
+      await state.signOut();
+
+      expect(state.profile.id, isEmpty);
+      expect(state.profile.displayName, isEmpty);
+      expect(state.currentUserPicksByMatchId, isEmpty);
+      expect(state.hasGroup, isFalse);
+      expect(state.rememberMeEnabled, isFalse);
+    });
+  });
+
+  // ==========================================================================
+  // Cached standings
+  // ==========================================================================
+  group('cachedSeasonStandings', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    test('initially empty', () {
+      expect(state.cachedSeasonStandings, isEmpty);
+      expect(state.cachedSeasonStandingsUpdatedAt, isNull);
     });
   });
 }

@@ -46,6 +46,7 @@ class PicksDocument {
   final Map<String, PickOption> picksByMatchId;
   final DateTime submittedAt;
   final String visibility;
+  final String? groupId;
   final PicksScoreCache? score;
 
   const PicksDocument({
@@ -56,6 +57,7 @@ class PicksDocument {
     required this.picksByMatchId,
     required this.submittedAt,
     required this.visibility,
+    this.groupId,
     this.score,
   });
 
@@ -82,6 +84,7 @@ class PicksDocument {
       picksByMatchId: picks,
       submittedAt: (d['submittedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       visibility: d['visibility'] as String? ?? 'friends',
+      groupId: d['groupId'] as String?,
       score: rawScore != null ? PicksScoreCache.fromMap(rawScore) : null,
     );
   }

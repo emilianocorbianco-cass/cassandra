@@ -339,16 +339,23 @@ class FirestoreService {
         .toList(growable: false);
     if (clean.isEmpty) return const {};
 
-    final docs = await Future.wait(
-      clean.map((uid) => _db.collection('users').doc(uid).get()),
-    );
+    // Batch-read user docs using whereIn (max 30 per query) instead of
+    // N individual document reads. This reduces Firestore round-trips.
     final out = <String, String>{};
-    for (final doc in docs) {
-      if (!doc.exists) continue;
-      final data = doc.data();
-      final photo = (data?['photoUrl'] as String?)?.trim() ?? '';
-      if (photo.isEmpty) continue;
-      out[doc.id] = photo;
+    for (var i = 0; i < clean.length; i += 30) {
+      final chunk = clean.sublist(
+        i,
+        i + 30 > clean.length ? clean.length : i + 30,
+      );
+      final snap = await _db
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final photo = (data['photoUrl'] as String?)?.trim() ?? '';
+        if (photo.isNotEmpty) out[doc.id] = photo;
+      }
     }
     return out;
   }
@@ -474,23 +481,34 @@ class FirestoreService {
   }) async {
     if (uids.isEmpty) return [];
 
-    // Firestore 'whereIn' supports max 30 items
-    final results = <PicksDocument>[];
+    // Doc IDs follow the pattern {uid}_{seasonKey}_{dayNumber}, so we can
+    // fetch them directly by ID instead of running composite queries.
+    // This avoids the need for composite indexes and is faster.
     final scopedGroupId = groupId?.trim() ?? '';
-    for (var i = 0; i < uids.length; i += 30) {
-      final chunk = uids.sublist(
+    final docIds = uids
+        .map((uid) => _picksDocId(uid, seasonKey, dayNumber))
+        .toList(growable: false);
+
+    final results = <PicksDocument>[];
+    // Batch by 30 (whereIn limit) using FieldPath.documentId
+    for (var i = 0; i < docIds.length; i += 30) {
+      final chunk = docIds.sublist(
         i,
-        i + 30 > uids.length ? uids.length : i + 30,
+        i + 30 > docIds.length ? docIds.length : i + 30,
       );
-      var query = _db
+      final snap = await _db
           .collection('picks')
-          .where('seasonKey', isEqualTo: seasonKey)
-          .where('dayNumber', isEqualTo: dayNumber);
-      if (scopedGroupId.isNotEmpty) {
-        query = query.where('groupId', isEqualTo: scopedGroupId);
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in snap.docs) {
+        final parsed = PicksDocument.fromFirestore(doc);
+        // Client-side groupId filter (only if scoped)
+        if (scopedGroupId.isNotEmpty &&
+            (parsed.groupId?.trim() ?? '') != scopedGroupId) {
+          continue;
+        }
+        results.add(parsed);
       }
-      final snap = await query.where('uid', whereIn: chunk).get();
-      results.addAll(snap.docs.map(PicksDocument.fromFirestore));
     }
     return results;
   }

@@ -1124,11 +1124,17 @@ class AppState extends ChangeNotifier {
       final recentMatches = <int, List<PredictionMatch>>{};
       final recentOutcomes = <int, Map<String, MatchOutcome>>{};
       final sortedDays = dayNumbers.toList()..sort((a, b) => b.compareTo(a));
-      for (final day in sortedDays) {
-        final md = await fs.getMatchdayData(
-          seasonKey: currentSeasonKey,
-          dayNumber: day,
-        );
+
+      // Fetch all matchday data in parallel instead of sequentially.
+      final season = currentSeasonKey;
+      final matchdayFutures = sortedDays.map(
+        (day) => fs.getMatchdayData(seasonKey: season, dayNumber: day),
+      );
+      final matchdayDocs = await Future.wait(matchdayFutures);
+
+      for (var i = 0; i < sortedDays.length; i++) {
+        final day = sortedDays[i];
+        final md = matchdayDocs[i];
         if (md == null || md.matches.isEmpty) continue;
 
         await predictionState.saveMatchesHistory(
