@@ -257,6 +257,7 @@ class AppState extends ChangeNotifier {
         }
       }
       await refreshActiveGroupMetadataFromFirestore();
+      await _repairProfilePhotoReferenceIfNeeded();
     } catch (_) {
       // ignore: best-effort hydration
     }
@@ -294,6 +295,7 @@ class AppState extends ChangeNotifier {
     }
 
     if (changed) notifyListeners();
+    await _repairGroupImageReferenceIfNeeded(group);
   }
 
   /// Fire-and-forget: sync a single field to Firestore.
@@ -1079,7 +1081,7 @@ class AppState extends ChangeNotifier {
     // scrivo anche la legacy per compatibilità
     await _prefs?.setString(_kTeamNameLegacy, normalized);
     await _syncRememberedIdentityFromProfile();
-    _syncFieldToFirestore({'teamName': normalized});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateDisplayName(String value) async {
@@ -1092,7 +1094,7 @@ class AppState extends ChangeNotifier {
 
     await _prefs?.setString(_kProfileDisplayName, cleaned);
     await _syncRememberedIdentityFromProfile();
-    _syncFieldToFirestore({'displayName': cleaned});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateProfilePhotoPath(String? path) async {
@@ -1109,13 +1111,14 @@ class AppState extends ChangeNotifier {
 
     if (next == null) {
       await _prefs?.remove(_kProfilePhotoUrl);
-      _syncFieldToFirestore({'photoUrl': null});
+      await _syncRememberedIdentityFromProfile();
+      _syncProfileToFirestore();
       return;
     }
 
     await _prefs?.setString(_kProfilePhotoUrl, next);
     await _syncRememberedIdentityFromProfile();
-    _syncFieldToFirestore({'photoUrl': next});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateFavoriteTeam(String value) async {
@@ -1139,7 +1142,7 @@ class AppState extends ChangeNotifier {
       await _prefs.setString(_kProfileFavoriteTeam, stored);
       await _prefs.setString(_kFavoriteTeamLegacy, stored);
     }
-    _syncFieldToFirestore({'favoriteTeam': stored});
+    _syncProfileToFirestore();
   }
 
   Future<void> updateLanguage(CassandraLanguage value) async {
@@ -1796,20 +1799,30 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
-    return docs
-        .map(
-          (d) => GroupMember(
-            id: d.uid,
-            displayName: d.displayName,
-            teamName: d.teamName,
-            avatarSeed: d.avatarSeed,
-            favoriteTeam: d.favoriteTeam,
-            photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
-                ? d.photoUrl!.trim()
-                : null,
-          ),
-        )
-        .toList();
+    final missingPhotoUids = docs
+        .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
+        .map((d) => d.uid)
+        .where((uid) => uid.trim().isNotEmpty)
+        .toList(growable: false);
+    final userPhotoUrls = missingPhotoUids.isEmpty
+        ? const <String, String>{}
+        : await fs.getUserPhotoUrls(missingPhotoUids);
+    return docs.map((d) {
+      final directPhoto = (d.photoUrl ?? '').trim();
+      final fallbackPhoto = (userPhotoUrls[d.uid] ?? '').trim();
+      final fallbackPortable =
+          fallbackPhoto.isNotEmpty && _looksLikePortableImageRef(fallbackPhoto)
+          ? fallbackPhoto
+          : null;
+      return GroupMember(
+        id: d.uid,
+        displayName: d.displayName,
+        teamName: d.teamName,
+        avatarSeed: d.avatarSeed,
+        favoriteTeam: d.favoriteTeam,
+        photoUrl: directPhoto.isNotEmpty ? directPhoto : fallbackPortable,
+      );
+    }).toList();
   }
 
   /// Fetch picks from Firestore for a list of UIDs + matchday.
@@ -1878,10 +1891,49 @@ class AppState extends ChangeNotifier {
 
   /// Fetch all season picks for a user from Firestore.
   /// Returns list of PicksDocument for the current season.
-  Future<List<PicksDocument>> fetchSeasonPicksForUser(String uid) async {
+  Future<List<PicksDocument>> fetchSeasonPicksForUser(
+    String uid, {
+    String? groupId,
+    bool scopedToActiveGroup = false,
+  }) async {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) return [];
-    return fs.getPicksForUser(uid: uid, seasonKey: currentSeasonKey);
+    final scopedGroupId = scopedToActiveGroup ? activeGroupId : groupId;
+    return fs.getPicksForUser(
+      uid: uid,
+      seasonKey: currentSeasonKey,
+      groupId: scopedGroupId,
+    );
+  }
+
+  Future<Map<String, List<PicksDocument>>>
+  fetchSeasonPicksByMemberForActiveGroup(List<String> memberUids) async {
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    if (fs == null || !isAuthenticated || groupId == null) return const {};
+
+    final scopedUids = memberUids
+        .map((uid) => uid.trim())
+        .where((uid) => uid.isNotEmpty)
+        .toSet();
+    if (scopedUids.isEmpty) return const {};
+
+    final seasonDocs = await fs.getPicksForSeason(
+      seasonKey: currentSeasonKey,
+      groupId: groupId,
+    );
+    final out = <String, List<PicksDocument>>{};
+    for (final doc in seasonDocs) {
+      if (!scopedUids.contains(doc.uid)) continue;
+      out.putIfAbsent(doc.uid, () => <PicksDocument>[]).add(doc);
+    }
+    for (final uid in scopedUids) {
+      out.putIfAbsent(uid, () => <PicksDocument>[]);
+    }
+    for (final docs in out.values) {
+      docs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
+    }
+    return out;
   }
 
   /// Hydrate picks history + matchday snapshots from Firestore for current user.
@@ -2341,14 +2393,97 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final file = File(trimmed);
+      var filePath = trimmed;
+      if (lower.startsWith('file://')) {
+        final uri = Uri.tryParse(trimmed);
+        if (uri != null && uri.scheme == 'file') {
+          filePath = uri.toFilePath();
+        } else {
+          filePath = trimmed.replaceFirst(RegExp(r'^file://'), '');
+        }
+      }
+
+      final file = File(filePath);
       if (!file.existsSync()) return trimmed;
       final bytes = await file.readAsBytes();
       if (bytes.isEmpty) return trimmed;
-      return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      String mime = 'image/jpeg';
+      final lowerPath = file.path.toLowerCase();
+      if (lowerPath.endsWith('.png')) {
+        mime = 'image/png';
+      } else if (lowerPath.endsWith('.webp')) {
+        mime = 'image/webp';
+      } else if (lowerPath.endsWith('.gif')) {
+        mime = 'image/gif';
+      }
+      return 'data:$mime;base64,${base64Encode(bytes)}';
     } catch (_) {
       return trimmed;
     }
+  }
+
+  bool _looksLikePortableImageRef(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/');
+  }
+
+  bool _looksLikeLocalFileRef(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    final lower = trimmed.toLowerCase();
+    return lower.startsWith('file://') ||
+        lower.startsWith('/var/') ||
+        lower.startsWith('/private/var/') ||
+        lower.startsWith('/data/') ||
+        lower.startsWith('/storage/') ||
+        lower.startsWith('/users/');
+  }
+
+  Future<void> _repairProfilePhotoReferenceIfNeeded() async {
+    final current = (_profile.photoUrl ?? '').trim();
+    if (current.isEmpty ||
+        _looksLikePortableImageRef(current) ||
+        !_looksLikeLocalFileRef(current)) {
+      return;
+    }
+
+    final converted = await _portableImageReference(current);
+    if (converted == null ||
+        converted.trim().isEmpty ||
+        converted == current ||
+        !_looksLikePortableImageRef(converted)) {
+      return;
+    }
+
+    _profile = _profile.copyWith(photoUrl: converted);
+    await _prefs?.setString(_kProfilePhotoUrl, converted);
+    await _syncRememberedIdentityFromProfile();
+    _syncProfileToFirestore();
+    notifyListeners();
+  }
+
+  Future<void> _repairGroupImageReferenceIfNeeded(GroupDocument group) async {
+    final raw = (group.imageUrl ?? '').trim();
+    if (raw.isEmpty ||
+        _looksLikePortableImageRef(raw) ||
+        !_looksLikeLocalFileRef(raw)) {
+      return;
+    }
+    if (group.adminUid.trim() != _profile.id.trim()) {
+      return;
+    }
+
+    final converted = await _portableImageReference(raw);
+    if (converted == null ||
+        converted.trim().isEmpty ||
+        converted == raw ||
+        !_looksLikePortableImageRef(converted)) {
+      return;
+    }
+
+    await updateGroupImagePath(converted);
   }
 
   Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId =>

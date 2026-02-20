@@ -514,12 +514,17 @@ class FirestoreService {
   Future<List<PicksDocument>> getPicksForUser({
     required String uid,
     required String seasonKey,
+    String? groupId,
   }) async {
-    final snap = await _db
+    var query = _db
         .collection('picks')
         .where('uid', isEqualTo: uid)
-        .where('seasonKey', isEqualTo: seasonKey)
-        .get();
+        .where('seasonKey', isEqualTo: seasonKey);
+    final scopedGroupId = groupId?.trim() ?? '';
+    if (scopedGroupId.isNotEmpty) {
+      query = query.where('groupId', isEqualTo: scopedGroupId);
+    }
+    final snap = await query.get();
     return snap.docs.map(PicksDocument.fromFirestore).toList();
   }
 

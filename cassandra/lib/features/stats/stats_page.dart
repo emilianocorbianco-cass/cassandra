@@ -4,7 +4,6 @@ import 'package:cassandra/l10n/app_localizations.dart';
 import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
-import '../../services/firestore/models/picks_document.dart';
 import '../group/models/group_member.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../leaderboards/models/member_matchday_score.dart';
@@ -108,12 +107,12 @@ class _StatsPageState extends State<StatsPage> {
     final members = await app.fetchFirestoreGroupMembers();
     if (members.isEmpty) return const [];
 
-    final picksByMember = <String, List<PicksDocument>>{};
+    final memberUids = members.map((m) => m.id).toList(growable: false);
+    final picksByMember = await app.fetchSeasonPicksByMemberForActiveGroup(
+      memberUids,
+    );
     final daysNeedingFallbackScore = <int>{};
-    for (final member in members) {
-      final picksDocs = await app.fetchSeasonPicksForUser(member.id);
-      picksDocs.sort((a, b) => a.dayNumber.compareTo(b.dayNumber));
-      picksByMember[member.id] = picksDocs;
+    for (final picksDocs in picksByMember.values) {
       for (final pd in picksDocs) {
         if (pd.score == null && pd.dayNumber > 0) {
           daysNeedingFallbackScore.add(pd.dayNumber);

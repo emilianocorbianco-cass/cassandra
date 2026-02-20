@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-
 import '../theme/cassandra_colors.dart';
 
 class TeamName extends StatelessWidget {
@@ -32,7 +30,7 @@ class TeamName extends StatelessWidget {
     'fiorentina': 'assets/logos/fiorentina.png',
     'genoa': 'assets/logos/genoa.png',
     'inter': 'assets/logos/inter.png',
-    'juventus': 'assets/logos/juventus_mark.svg',
+    'juventus': 'assets/logos/juventus.png',
     'lazio': 'assets/logos/lazio.png',
     'lecce': 'assets/logos/lecce.png',
     'milan': 'assets/logos/milan.png',
@@ -87,9 +85,38 @@ class TeamName extends StatelessWidget {
     if (key.isEmpty) return null;
     final direct = _bundledLogosByTeam[key];
     if (direct != null) return direct;
-    if (key.contains('juventus')) return 'assets/logos/juventus_mark.svg';
+    for (final entry in _aliasesByTeam.entries) {
+      final teamAsset = _bundledLogosByTeam[entry.key];
+      if (teamAsset == null) continue;
+      final aliases = entry.value;
+      final matches = aliases.any((alias) => key.contains(alias));
+      if (matches) return teamAsset;
+    }
     return null;
   }
+
+  static const Map<String, List<String>> _aliasesByTeam = {
+    'atalanta': ['atalanta'],
+    'bologna': ['bologna'],
+    'cagliari': ['cagliari'],
+    'como': ['como'],
+    'cremonese': ['cremonese'],
+    'fiorentina': ['fiorentina'],
+    'genoa': ['genoa'],
+    'inter': ['inter', 'internazionale'],
+    'juventus': ['juventus'],
+    'lazio': ['lazio'],
+    'lecce': ['lecce'],
+    'milan': ['milan'],
+    'napoli': ['napoli'],
+    'parma': ['parma'],
+    'pisa': ['pisa'],
+    'roma': ['roma'],
+    'sassuolo': ['sassuolo'],
+    'torino': ['torino'],
+    'udinese': ['udinese'],
+    'verona': ['verona', 'hellas'],
+  };
 
   String _svgToPngUrl(String value) {
     final trimmed = value.trim();
@@ -119,47 +146,27 @@ class TeamName extends StatelessWidget {
     final url = rawUrl == null ? null : _normalizeLogoUrl(rawUrl);
 
     final logoWidget = bundledAsset != null
-        ? (bundledAsset.endsWith('.svg')
-              ? SvgPicture.asset(
-                  bundledAsset,
-                  width: logoSize,
-                  height: logoSize,
-                  fit: BoxFit.contain,
-                )
-              : Image.asset(
-                  bundledAsset,
-                  width: logoSize,
-                  height: logoSize,
-                  fit: BoxFit.contain,
-                ))
+        ? Image.asset(
+            bundledAsset,
+            width: logoSize,
+            height: logoSize,
+            fit: BoxFit.contain,
+          )
         : url != null && url.startsWith('assets/')
-        ? (_isSvgUrl(url)
-              ? SvgPicture.asset(
-                  url,
-                  width: logoSize,
-                  height: logoSize,
-                  fit: BoxFit.contain,
-                )
-              : Image.asset(
-                  url,
-                  width: logoSize,
-                  height: logoSize,
-                  fit: BoxFit.contain,
-                ))
+        ? Image.asset(
+            url,
+            width: logoSize,
+            height: logoSize,
+            fit: BoxFit.contain,
+          )
         : _isSvgUrl(url!)
         ? Image.network(
             _svgToPngUrl(url),
             width: logoSize,
             height: logoSize,
             fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => SvgPicture.network(
-              url,
-              width: logoSize,
-              height: logoSize,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) =>
-                  SizedBox(width: logoSize, height: logoSize),
-            ),
+            errorBuilder: (context, error, stackTrace) =>
+                SizedBox(width: logoSize, height: logoSize),
           )
         : Image.network(
             url,

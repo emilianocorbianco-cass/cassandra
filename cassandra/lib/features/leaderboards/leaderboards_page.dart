@@ -57,10 +57,14 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
         return;
       }
 
-      // Fetch all season picks for all members
+      final picksByMember = await app.fetchSeasonPicksByMemberForActiveGroup(
+        members.map((m) => m.id).toList(growable: false),
+      );
+
+      // Build all season entries for all group members
       final entries = <SeasonLeaderboardEntry>[];
       for (final member in members) {
-        final picksDocs = await app.fetchSeasonPicksForUser(member.id);
+        final picksDocs = picksByMember[member.id] ?? const [];
         if (picksDocs.isEmpty) {
           entries.add(
             SeasonLeaderboardEntry(

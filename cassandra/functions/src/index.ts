@@ -2,7 +2,11 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineString } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  FieldValue,
+  Timestamp,
+} from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import * as https from "https";
 
@@ -654,14 +658,32 @@ async function resolveGroupIdsForUid(
   db: FirebaseFirestore.Firestore,
   uid: string
 ): Promise<string[]> {
+  const groupIds = new Set<string>();
+
   const userSnap = await db.collection("users").doc(uid).get();
   if (userSnap.exists) {
     const fromUserDoc = parseGroupIds(userSnap.data()?.["groupIds"]);
-    if (fromUserDoc.length > 0) {
-      return Array.from(new Set(fromUserDoc));
+    for (const groupId of fromUserDoc) groupIds.add(groupId);
+  }
+
+  // Legacy fallback: derive membership from groups/{groupId}/members/{uid}.
+  // This avoids collectionGroup indexes and remains deterministic for maintenance jobs.
+  const groupsSnap = await db.collection("groups").select().get();
+  if (!groupsSnap.empty) {
+    const memberRefs = groupsSnap.docs.map((groupDoc) =>
+      groupDoc.ref.collection("members").doc(uid)
+    );
+    const memberSnaps = await db.getAll(...memberRefs);
+    for (const memberSnap of memberSnaps) {
+      if (!memberSnap.exists) continue;
+      const groupId = memberSnap.ref.parent.parent?.id;
+      if (groupId && groupId.trim().length > 0) {
+        groupIds.add(groupId.trim());
+      }
     }
   }
-  return [];
+
+  return Array.from(groupIds);
 }
 
 async function backfillLegacyPicksGroupIds(
@@ -740,23 +762,28 @@ async function recomputeAllPicksScoresForSeason(
   seasonKey: string,
   logPrefix: string
 ): Promise<void> {
-  const matchdaysSnap = await db
-    .collection("seasons")
-    .doc(seasonKey)
-    .collection("matchdays")
+  const picksSnap = await db
+    .collection("picks")
+    .where("seasonKey", "==", seasonKey)
     .get();
-  if (matchdaysSnap.empty) return;
+  if (picksSnap.empty) return;
 
-  const dayNumbers = matchdaysSnap.docs
-    .map((doc) => Number.parseInt(doc.id, 10))
-    .filter((n) => Number.isFinite(n) && n >= 1 && n <= 60)
-    .sort((a, b) => a - b);
+  const dayNumberSet = new Set<number>();
+  for (const doc of picksSnap.docs) {
+    const dayNumber = Number(doc.data()["dayNumber"]);
+    if (!Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 60) {
+      continue;
+    }
+    dayNumberSet.add(Math.trunc(dayNumber));
+  }
+  const dayNumbers = Array.from(dayNumberSet).sort((a, b) => a - b);
+  if (dayNumbers.length === 0) return;
 
   for (const dayNumber of dayNumbers) {
     await recomputePicksScoresForMatchday(db, seasonKey, dayNumber, logPrefix);
   }
   console.log(
-    `[${logPrefix}] Recompute all finalized scores season=${seasonKey} days=${dayNumbers.length}`
+    `[${logPrefix}] Recompute all scores by picks season=${seasonKey} days=${dayNumbers.length}`
   );
 }
 
