@@ -339,16 +339,19 @@ class FirestoreService {
         .toList(growable: false);
     if (clean.isEmpty) return const {};
 
-    final docs = await Future.wait(
-      clean.map((uid) => _db.collection('users').doc(uid).get()),
-    );
     final out = <String, String>{};
-    for (final doc in docs) {
-      if (!doc.exists) continue;
-      final data = doc.data();
-      final photo = (data?['photoUrl'] as String?)?.trim() ?? '';
-      if (photo.isEmpty) continue;
-      out[doc.id] = photo;
+    for (final uid in clean) {
+      try {
+        final doc = await _db.collection('users').doc(uid).get();
+        if (!doc.exists) continue;
+        final data = doc.data();
+        final photo = (data?['photoUrl'] as String?)?.trim() ?? '';
+        if (photo.isEmpty) continue;
+        out[doc.id] = photo;
+      } catch (_) {
+        // Some profiles may be unreadable by security rules (e.g. not self).
+        // Ignore and continue with available member-level photoUrl data.
+      }
     }
     return out;
   }
