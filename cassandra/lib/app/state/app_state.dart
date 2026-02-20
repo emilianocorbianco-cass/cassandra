@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
@@ -6,6 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
+import 'group_state.dart';
+import 'matchday_state.dart';
+import 'prediction_state.dart';
 import 'user_profile.dart';
 import '../../features/group/models/group_member.dart';
 import '../../features/scoring/models/match_outcome.dart';
@@ -15,14 +19,11 @@ import '../../services/firestore/models/picks_document.dart';
 import '../../services/auth/auth_service.dart';
 import '../../services/firestore/firestore_service.dart';
 import 'dart:async';
-import 'dart:convert';
 import '../../features/predictions/models/pick_option.dart';
-import 'dart:math';
 
 import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
-import '../../domain/serie_a/team_name_normalizer.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
@@ -35,25 +36,10 @@ class AppState extends ChangeNotifier {
     return '@$body';
   }
 
-  Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
-  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
-  static const _kCassandraMatchdayCursorV1 = 'cassandra.matchday.cursor.v1';
-  static const int _kCassandraDefaultMatchdayCursor = 20;
-  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
   static const _kDemoSeedV1 = 'demo_seed.v1';
-  static const _kFinalizedMatchdaysV1 = 'matchday.finalized.v1';
-  static const _kCassandraMatchdayLastAutoBumpFromV1 =
-      'cassandra.matchday.lastAutoBumpFrom.v1';
-  static const _kOriginKickoffsByMatchIdV1 =
-      'fixtures.originKickoffsByMatchId.v1';
-
-  static const _kGroupNameV1 = 'group.name.v1';
-  static const _kGroupInviteCodeV1 = 'group.inviteCode.v1';
-  static const _kGroupImagePathV1 = 'group.imagePath.v1';
-  static const _kGroupAdminApprovalV1 = 'group.adminApproval.v1';
 
   // Chiavi legacy (macro-step 1 precedente)
   static const _kTeamNameLegacy = 'teamName';
@@ -74,6 +60,11 @@ class AppState extends ChangeNotifier {
   static const _kLanguage = 'language';
   static const _kDefaultVisibility = 'defaultVisibility';
 
+  // Key strings duplicated from PredictionState for scoped key generation.
+  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
+  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
+  static const _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
+
   String _scopedHistoryKey(String base, {String? uid, String? seasonKey}) {
     final scopedUid = (uid ?? _profile.id).trim();
     final scopedSeason = (seasonKey ?? currentSeasonKey).trim();
@@ -82,12 +73,6 @@ class AppState extends ChangeNotifier {
     return '$base.$safeUid.$safeSeason';
   }
 
-  String get _kCurrentUserPicksByMatchdayScoped =>
-      _scopedHistoryKey(_kCurrentUserPicksByMatchday);
-  String get _kPredictionOutcomesByMatchdayScoped =>
-      _scopedHistoryKey(_kPredictionOutcomesByMatchday);
-  String get _kMatchdayMatchesByDayScoped =>
-      _scopedHistoryKey(_kMatchdayMatchesByDayV1);
   String get _kFirestoreMigrationV1DoneScoped =>
       _scopedHistoryKey(_kFirestoreMigrationV1Done);
 
@@ -181,27 +166,29 @@ class AppState extends ChangeNotifier {
         ?.cast<String>()
         .toList();
     if (remoteGroupIds != null) {
-      _firestoreGroupIds = remoteGroupIds;
-      if (_activeGroupId == null ||
-          !_firestoreGroupIds.contains(_activeGroupId)) {
-        _activeGroupId = _firestoreGroupIds.isNotEmpty
-            ? _firestoreGroupIds.first
-            : null;
-      }
+      groupState.setFirestoreGroupIds(remoteGroupIds);
       changed = true;
     }
 
     if (changed) notifyListeners();
 
     if ((remoteGroupIds?.isNotEmpty ?? false) &&
-        (_groupName == null || _groupInviteCode == null)) {
+        (groupState.groupName == null || groupState.groupInviteCode == null)) {
       unawaited(refreshActiveGroupMetadataFromFirestore().catchError((_) {}));
     }
   }
 
-  // Firestore group IDs (multi-group)
-  List<String> _firestoreGroupIds = [];
-  List<String> get firestoreGroupIds => _firestoreGroupIds;
+  // ===== GROUP STATE (delegated) =====
+  late final GroupState groupState;
+
+  // ===== PREDICTION STATE (delegated) =====
+  late final PredictionState predictionState;
+
+  // ===== MATCHDAY STATE (delegated) =====
+  late final MatchdayState matchdayState;
+
+  // Forwarding getters per compatibilità con codice esistente.
+  List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
 
   /// Fire-and-forget: sync full user profile to Firestore.
   void _syncProfileToFirestore() {
@@ -220,12 +207,12 @@ class AppState extends ChangeNotifier {
           )
           .catchError((_) {}),
     );
-    if (_firestoreGroupIds.isNotEmpty) {
+    if (groupState.firestoreGroupIds.isNotEmpty) {
       unawaited(
         fs
             .updateGroupMemberProfileInGroups(
               uid: uid,
-              groupIds: _firestoreGroupIds,
+              groupIds: groupState.firestoreGroupIds,
               displayName: _profile.displayName,
               teamName: _profile.teamName,
               avatarSeed: currentUserAvatarSeed,
@@ -247,11 +234,10 @@ class AppState extends ChangeNotifier {
       if (data != null) {
         mergeFirestoreProfile(data);
       }
-      if (_firestoreGroupIds.isEmpty) {
+      if (groupState.firestoreGroupIds.isEmpty) {
         final recoveredGroupIds = await fs.findGroupIdsForMember(targetUid);
         if (recoveredGroupIds.isNotEmpty) {
-          _firestoreGroupIds = recoveredGroupIds;
-          _activeGroupId = recoveredGroupIds.first;
+          groupState.setFirestoreGroupIds(recoveredGroupIds);
           await fs.mergeUserField(targetUid, {'groupIds': recoveredGroupIds});
           notifyListeners();
         }
@@ -264,38 +250,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshActiveGroupMetadataFromFirestore() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return;
-
-    final group = await fs.getGroup(groupId);
-    if (group == null) return;
-
-    var changed = false;
-    if (_groupName != group.name) {
-      _groupName = group.name;
-      await _prefs?.setString(_kGroupNameV1, group.name);
-      changed = true;
+    final group = await groupState.refreshActiveGroupMetadataFromFirestore(
+      isAuthenticated: isAuthenticated,
+      firestoreService: _firestoreService,
+    );
+    if (group != null) {
+      await _repairGroupImageReferenceIfNeeded(group);
     }
-    if (_groupInviteCode != group.inviteCode) {
-      _groupInviteCode = group.inviteCode;
-      await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
-      changed = true;
-    }
-    final groupImage = (group.imageUrl ?? '').trim();
-    final normalizedGroupImage = groupImage.isEmpty ? null : groupImage;
-    if (_groupImagePath != normalizedGroupImage) {
-      _groupImagePath = normalizedGroupImage;
-      if (normalizedGroupImage == null) {
-        await _prefs?.remove(_kGroupImagePathV1);
-      } else {
-        await _prefs?.setString(_kGroupImagePathV1, normalizedGroupImage);
-      }
-      changed = true;
-    }
-
-    if (changed) notifyListeners();
-    await _repairGroupImageReferenceIfNeeded(group);
   }
 
   /// Fire-and-forget: sync a single field to Firestore.
@@ -315,75 +276,18 @@ class AppState extends ChangeNotifier {
     return (now.month >= 8 ? now.year : now.year - 1).toString();
   }
 
-  int? _cassandraMatchdayCursor;
-
-  /// Giornata “corrente” secondo Cassandra (ignorando recuperi di round vecchi).
-  /// Persistita in SharedPreferences.
-  int get cassandraMatchdayCursor => _cassandraMatchdayCursor ??=
-      (_prefs?.getInt(_kCassandraMatchdayCursorV1) ??
-      _kCassandraDefaultMatchdayCursor);
-
-  Future<void> setCassandraMatchdayCursor(int dayNumber) async {
-    if (dayNumber <= 0) return;
-    _cassandraMatchdayCursor = dayNumber;
-    await _prefs?.setInt(_kCassandraMatchdayCursorV1, dayNumber);
-
-    _uiMatchdayNumber = null;
-    notifyListeners();
-  }
-
-  Future<void> bumpCassandraMatchdayCursor() async {
-    await setCassandraMatchdayCursor(cassandraMatchdayCursor + 1);
-  }
-
-  void ensureFinalizedMatchdaysLoaded() {
-    if (_finalizedMatchdaysLoaded) return;
-    _finalizedMatchdaysLoaded = true;
-
-    final raw = _prefs?.getString(_kFinalizedMatchdaysV1);
-    if (raw == null || raw.trim().isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        for (final e in decoded) {
-          final n = int.tryParse(e.toString());
-          if (n != null && n > 0) _finalizedMatchdays.add(n);
-        }
-      }
-    } catch (_) {
-      // ignore corrupt storage
-    }
-  }
-
-  bool isMatchdayFinalized(int matchdayNumber) {
-    ensureFinalizedMatchdaysLoaded();
-    return _finalizedMatchdays.contains(matchdayNumber);
-  }
-
-  Future<bool> markMatchdayFinalized(int matchdayNumber) async {
-    if (matchdayNumber <= 0) return false;
-    ensureFinalizedMatchdaysLoaded();
-    if (_finalizedMatchdays.contains(matchdayNumber)) return false;
-
-    _finalizedMatchdays.add(matchdayNumber);
-    final list = _finalizedMatchdays.toList()..sort();
-    await _prefs?.setString(_kFinalizedMatchdaysV1, jsonEncode(list));
-    notifyListeners();
-    return true;
-  }
-
   /// Finalizza una matchday quando `finalDone` (e valida >= 6):
   /// - salva snapshot matches
   /// - salva matches/outcomes nello storico (per leaderboard stabile)
   ///
   /// Idempotente: se già finalizzata non fa nulla.
+  /// Cross-cutting: coordina MatchdayState e PredictionState.
   Future<bool> maybeFinalizeMatchday({
     required int matchdayNumber,
     required List<PredictionMatch> matches,
     required Map<String, MatchOutcome> outcomesByMatchId,
   }) async {
-    final didMark = await markMatchdayFinalized(matchdayNumber);
+    final didMark = await matchdayState.markMatchdayFinalized(matchdayNumber);
     if (!didMark) return false;
 
     ensureMatchdayMatchesLoaded();
@@ -395,7 +299,7 @@ class AppState extends ChangeNotifier {
       matches: matches,
     );
 
-    saveMatchesHistory(matchdayNumber: matchdayNumber, matches: matches);
+    await saveMatchesHistory(matchdayNumber: matchdayNumber, matches: matches);
 
     saveOutcomesHistory(
       dayNumber: matchdayNumber,
@@ -403,72 +307,6 @@ class AppState extends ChangeNotifier {
     );
 
     return true;
-  }
-
-  int? get lastAutoBumpFromMatchday =>
-      _prefs?.getInt(_kCassandraMatchdayLastAutoBumpFromV1);
-
-  Future<bool> maybeAutoBumpCassandraMatchdayCursor({
-    required int fromMatchday,
-  }) async {
-    final prefs = _prefs;
-    if (prefs == null) return false;
-
-    final last = prefs.getInt(_kCassandraMatchdayLastAutoBumpFromV1) ?? -1;
-    if (last == fromMatchday) return false;
-
-    await prefs.setInt(_kCassandraMatchdayLastAutoBumpFromV1, fromMatchday);
-    await setCassandraMatchdayCursor(fromMatchday + 1);
-    return true;
-  }
-
-  void ensureOriginKickoffsLoaded() {
-    if (_originKickoffsLoaded) return;
-    _originKickoffsLoaded = true;
-    final raw = _prefs?.getString(_kOriginKickoffsByMatchIdV1);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        _originKickoffIsoByMatchId = {
-          for (final e in decoded.entries) e.key.toString(): e.value.toString(),
-        };
-      }
-    } catch (_) {
-      // ignore: keep empty
-    }
-  }
-
-  void registerOriginKickoff({
-    required String matchId,
-    required DateTime kickoff,
-  }) {
-    ensureOriginKickoffsLoaded();
-    _originKickoffIsoByMatchId.putIfAbsent(
-      matchId,
-      () => kickoff.toUtc().toIso8601String(),
-    );
-  }
-
-  DateTime originKickoffFor({
-    required String matchId,
-    required DateTime fallbackKickoff,
-  }) {
-    ensureOriginKickoffsLoaded();
-    final iso = _originKickoffIsoByMatchId[matchId];
-    if (iso == null) return fallbackKickoff;
-    final parsed = DateTime.tryParse(iso);
-    return parsed?.toLocal() ?? fallbackKickoff;
-  }
-
-  Future<void> persistOriginKickoffs() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
-    ensureOriginKickoffsLoaded();
-    await prefs.setString(
-      _kOriginKickoffsByMatchIdV1,
-      jsonEncode(_originKickoffIsoByMatchId),
-    );
   }
 
   UserProfile _profile;
@@ -484,17 +322,16 @@ class AppState extends ChangeNotifier {
 
   int _demoSeed;
 
-  // ===== GRUPPO =====
-  String? _groupName;
-  String? _groupInviteCode;
-  String? _groupImagePath;
-  bool _groupAdminApproval = false;
+  // ===== GRUPPO (delegated to GroupState) =====
 
-  String? get groupName => _groupName;
-  String? get groupInviteCode => _groupInviteCode;
-  String? get groupImagePath => _groupImagePath;
-  bool get groupAdminApproval => _groupAdminApproval;
-  bool get hasGroup => activeGroupId != null || _groupName != null;
+  String? get groupName => groupState.groupName;
+  String? get groupInviteCode => groupState.groupInviteCode;
+  String? get groupImagePath => groupState.groupImagePath;
+  bool get groupAdminApproval => groupState.groupAdminApproval;
+  bool get hasGroup => groupState.hasGroup;
+  String? get activeGroupId => groupState.activeGroupId;
+
+  void setActiveGroupId(String? id) => groupState.setActiveGroupId(id);
 
   Future<void> updateGroupImagePath(String? path) async {
     final cleaned = (path ?? '').trim();
@@ -504,12 +341,7 @@ class AppState extends ChangeNotifier {
         : await _portableImageReference(nextRaw);
     final next = nextPortable ?? nextRaw;
 
-    _groupImagePath = next;
-    if (next != null) {
-      await _prefs?.setString(_kGroupImagePathV1, next);
-    } else {
-      await _prefs?.remove(_kGroupImagePathV1);
-    }
+    await groupState.updateGroupImagePath(next);
 
     final fs = _firestoreService;
     final groupId = activeGroupId;
@@ -520,324 +352,68 @@ class AppState extends ChangeNotifier {
         // ignore: best-effort sync
       }
     }
-
-    notifyListeners();
   }
 
-  Future<void> updateGroupAdminApproval(bool value) async {
-    _groupAdminApproval = value;
-    await _prefs?.setBool(_kGroupAdminApprovalV1, value);
-    notifyListeners();
-  }
+  Future<void> updateGroupAdminApproval(bool value) =>
+      groupState.updateGroupAdminApproval(value);
 
-  void _deleteGroupImageFile() {
-    final path = _groupImagePath;
-    if (path == null) return;
-    final lower = path.toLowerCase();
-    if (lower.startsWith('http://') ||
-        lower.startsWith('https://') ||
-        lower.startsWith('data:image/')) {
-      return;
-    }
-    try {
-      final file = File(path);
-      if (file.existsSync()) file.deleteSync();
-    } catch (_) {
-      // ignore: best-effort cleanup
-    }
-  }
+  Future<String?> createGroup(String name) => groupState.createGroup(
+    name: name,
+    uid: _profile.id,
+    isAuthenticated: isAuthenticated,
+    profile: _profile,
+    avatarSeed: currentUserAvatarSeed,
+    firestoreService: _firestoreService,
+  );
 
-  Future<String?> createGroup(String name) async {
-    final cleaned = name.trim();
-    if (cleaned.isEmpty) return 'Invalid name';
-
-    // Genera codice invito CASS-XXXX (con check unicità su Firestore)
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final rng = Random.secure();
-    final fs = _firestoreService;
-    final uid = _profile.id;
-
-    // Dev mode: backend non configurato → crea solo locale.
-    if (fs == null) {
-      final suffix = List.generate(
-        4,
-        (_) => chars[rng.nextInt(chars.length)],
-      ).join();
-      final code = 'CASS-$suffix';
-      _groupName = cleaned;
-      _groupInviteCode = code;
-      await _prefs?.setString(_kGroupNameV1, cleaned);
-      await _prefs?.setString(_kGroupInviteCodeV1, code);
-      notifyListeners();
-      return null;
-    }
-
-    if (!isAuthenticated || uid.isEmpty) {
-      return 'Not authenticated';
-    }
-
-    String? code;
-    for (var i = 0; i < 30; i++) {
-      final suffix = List.generate(
-        4,
-        (_) => chars[rng.nextInt(chars.length)],
-      ).join();
-      final candidate = 'CASS-$suffix';
-      try {
-        final taken = await fs.isInviteCodeTaken(candidate);
-        if (!taken) {
-          code = candidate;
-          break;
-        }
-      } catch (_) {
-        return 'Permission denied';
-      }
-    }
-    if (code == null) return 'Invite code generation failed';
-
-    try {
-      final groupId = await fs.createGroup(
-        name: cleaned,
-        adminUid: uid,
-        inviteCode: code,
-      );
-      // Aggiungi admin come primo membro
-      await fs.joinGroup(
-        groupId: groupId,
-        uid: uid,
-        displayName: _profile.displayName,
-        teamName: _profile.teamName,
+  Future<String?> joinGroupByInviteCode(String code) =>
+      groupState.joinGroupByInviteCode(
+        code: code,
+        uid: _profile.id,
+        isAuthenticated: isAuthenticated,
+        profile: _profile,
         avatarSeed: currentUserAvatarSeed,
-        favoriteTeam: _profile.favoriteTeam,
-        photoUrl: _profile.photoUrl,
+        firestoreService: _firestoreService,
       );
 
-      _groupName = cleaned;
-      _groupInviteCode = code;
-      await _prefs?.setString(_kGroupNameV1, cleaned);
-      await _prefs?.setString(_kGroupInviteCodeV1, code);
+  Future<void> leaveFirestoreGroup(String groupId) =>
+      groupState.leaveFirestoreGroup(
+        groupId: groupId,
+        uid: _profile.id,
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
-      if (!_firestoreGroupIds.contains(groupId)) {
-        _firestoreGroupIds = [..._firestoreGroupIds, groupId];
-      }
-      _activeGroupId = groupId;
+  Future<String?> deleteActiveGroupIfAdmin() =>
+      groupState.deleteActiveGroupIfAdmin(
+        uid: _profile.id,
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
-      notifyListeners();
-      return null;
-    } catch (_) {
-      return 'Create group failed';
-    }
-  }
-
-  /// Gruppo Firestore attivo (primo per default)
-  String? _activeGroupId;
-  String? get activeGroupId =>
-      _activeGroupId ??
-      (_firestoreGroupIds.isNotEmpty ? _firestoreGroupIds.first : null);
-
-  void setActiveGroupId(String? id) {
-    _activeGroupId = id;
-    notifyListeners();
-  }
-
-  /// Join a Firestore group by invite code. Returns error string or null on success.
-  Future<String?> joinGroupByInviteCode(String code) async {
-    final fs = _firestoreService;
-    if (fs == null) return 'Backend unavailable';
-    if (!isAuthenticated) return 'Not authenticated';
-
-    final group = await fs.getGroupByInviteCode(code.trim().toUpperCase());
-    if (group == null) return 'Invalid code';
-
-    final uid = _profile.id;
-
-    // Check se già membro
-    if (_firestoreGroupIds.contains(group.id)) return 'Already a member';
-
-    await fs.joinGroup(
-      groupId: group.id,
-      uid: uid,
-      displayName: _profile.displayName,
-      teamName: _profile.teamName,
-      avatarSeed: currentUserAvatarSeed,
-      favoriteTeam: _profile.favoriteTeam,
-      photoUrl: _profile.photoUrl,
-    );
-
-    _firestoreGroupIds = [..._firestoreGroupIds, group.id];
-    _activeGroupId = group.id;
-
-    // Salva anche localmente per compatibilità
-    _groupName = group.name;
-    _groupInviteCode = group.inviteCode;
-    await _prefs?.setString(_kGroupNameV1, group.name);
-    await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
-
-    notifyListeners();
-    return null;
-  }
-
-  /// Leave a Firestore group.
-  Future<void> leaveFirestoreGroup(String groupId) async {
-    final fs = _firestoreService;
-    if (fs == null || !isAuthenticated) return;
-
-    final uid = _profile.id;
-    await fs.leaveGroup(groupId: groupId, uid: uid);
-
-    _firestoreGroupIds = _firestoreGroupIds
-        .where((id) => id != groupId)
-        .toList();
-    if (_activeGroupId == groupId) {
-      _activeGroupId = _firestoreGroupIds.isNotEmpty
-          ? _firestoreGroupIds.first
-          : null;
-    }
-
-    // Se non ha più gruppi, pulisci anche locale
-    if (_firestoreGroupIds.isEmpty) {
-      _groupName = null;
-      _groupInviteCode = null;
-      _deleteGroupImageFile();
-      _groupImagePath = null;
-      await _prefs?.remove(_kGroupNameV1);
-      await _prefs?.remove(_kGroupInviteCodeV1);
-      await _prefs?.remove(_kGroupImagePathV1);
-    }
-
-    notifyListeners();
-  }
-
-  Future<String?> deleteActiveGroupIfAdmin() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (groupId == null) return 'No group';
-
-    if (fs == null) {
-      _groupName = null;
-      _groupInviteCode = null;
-      _deleteGroupImageFile();
-      _groupImagePath = null;
-      _groupAdminApproval = false;
-      _activeGroupId = null;
-      _firestoreGroupIds = [];
-      await _prefs?.remove(_kGroupNameV1);
-      await _prefs?.remove(_kGroupInviteCodeV1);
-      await _prefs?.remove(_kGroupImagePathV1);
-      await _prefs?.remove(_kGroupAdminApprovalV1);
-      notifyListeners();
-      return null;
-    }
-
-    if (!isAuthenticated || _profile.id.isEmpty) return 'Not authenticated';
-
-    GroupDocument? group;
-    try {
-      group = await fs.getGroup(groupId);
-    } catch (_) {
-      return 'Delete group failed';
-    }
-
-    if (group == null) {
-      _firestoreGroupIds = _firestoreGroupIds
-          .where((id) => id != groupId)
-          .toList();
-      _activeGroupId = _firestoreGroupIds.isNotEmpty
-          ? _firestoreGroupIds.first
-          : null;
-      if (_activeGroupId == null) {
-        _groupName = null;
-        _groupInviteCode = null;
-        _deleteGroupImageFile();
-        _groupImagePath = null;
-        _groupAdminApproval = false;
-        await _prefs?.remove(_kGroupNameV1);
-        await _prefs?.remove(_kGroupInviteCodeV1);
-        await _prefs?.remove(_kGroupImagePathV1);
-        await _prefs?.remove(_kGroupAdminApprovalV1);
-      }
-      notifyListeners();
-      return null;
-    }
-
-    if (group.adminUid != _profile.id) return 'Not admin';
-
-    try {
-      await fs.deleteGroupAsAdmin(groupId: groupId, adminUid: _profile.id);
-    } catch (_) {
-      return 'Delete group failed';
-    }
-
-    _firestoreGroupIds = _firestoreGroupIds
-        .where((id) => id != groupId)
-        .toList();
-    _activeGroupId = _firestoreGroupIds.isNotEmpty
-        ? _firestoreGroupIds.first
-        : null;
-
-    _deleteGroupImageFile();
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-
-    if (_activeGroupId == null) {
-      _groupName = null;
-      _groupInviteCode = null;
-      await _prefs?.remove(_kGroupNameV1);
-      await _prefs?.remove(_kGroupInviteCodeV1);
-      await _prefs?.remove(_kGroupImagePathV1);
-      await _prefs?.remove(_kGroupAdminApprovalV1);
-    } else {
-      final next = await fs.getGroup(_activeGroupId!);
-      if (next != null) {
-        _groupName = next.name;
-        _groupInviteCode = next.inviteCode;
-        await _prefs?.setString(_kGroupNameV1, next.name);
-        await _prefs?.setString(_kGroupInviteCodeV1, next.inviteCode);
-        await _prefs?.remove(_kGroupImagePathV1);
-        await _prefs?.setBool(_kGroupAdminApprovalV1, false);
-      } else {
-        _groupName = null;
-        _groupInviteCode = null;
-        _activeGroupId = null;
-        _firestoreGroupIds = [];
-        await _prefs?.remove(_kGroupNameV1);
-        await _prefs?.remove(_kGroupInviteCodeV1);
-        await _prefs?.remove(_kGroupImagePathV1);
-        await _prefs?.remove(_kGroupAdminApprovalV1);
-      }
-    }
-
-    notifyListeners();
-    return null;
-  }
-
-  Future<void> updateGroupName(String name) async {
-    final cleaned = name.trim();
-    if (cleaned.isEmpty) return;
-    if (cleaned == _groupName) return;
-
-    _groupName = cleaned;
-    await _prefs?.setString(_kGroupNameV1, cleaned);
-    notifyListeners();
-  }
-
-  // ===== MATCHDAY FINALIZATION (finalDone) =====
-  bool _finalizedMatchdaysLoaded = false;
-  final Set<int> _finalizedMatchdays = <int>{};
-
-  bool _originKickoffsLoaded = false;
-  Map<String, String> _originKickoffIsoByMatchId = {};
+  Future<void> updateGroupName(String name) => groupState.updateGroupName(name);
 
   AppState._(
     this._prefs, {
     required UserProfile profile,
     required CassandraLanguage language,
     required PredictionVisibility defaultVisibility,
+    required GroupState groupStateInstance,
+    required PredictionState predictionStateInstance,
+    required MatchdayState matchdayStateInstance,
     int demoSeed = 0,
   }) : _profile = profile,
        _language = language,
        _defaultVisibility = defaultVisibility,
-       _demoSeed = demoSeed;
+       _demoSeed = demoSeed {
+    groupState = groupStateInstance;
+    predictionState = predictionStateInstance;
+    matchdayState = matchdayStateInstance;
+    // Propaga notifiche da sub-states -> AppState listeners.
+    groupState.addListener(notifyListeners);
+    predictionState.addListener(notifyListeners);
+    matchdayState.addListener(notifyListeners);
+  }
 
   /// --- getters usati dal resto dell'app ---
   UserProfile get profile => _profile;
@@ -1013,10 +589,9 @@ class AppState extends ChangeNotifier {
     );
     final demoSeed = prefs.getInt(_kDemoSeedV1) ?? 0;
 
-    final groupName = prefs.getString(_kGroupNameV1);
-    final groupInviteCode = prefs.getString(_kGroupInviteCodeV1);
-    final groupImagePath = prefs.getString(_kGroupImagePathV1);
-    final groupAdminApproval = prefs.getBool(_kGroupAdminApprovalV1) ?? false;
+    final groupStateInstance = GroupState.fromPrefs(prefs);
+    final predictionStateInstance = PredictionState.fromPrefs(prefs);
+    final matchdayStateInstance = MatchdayState.fromPrefs(prefs);
     final rememberMeEnabled = prefs.getBool(_kRememberMeEnabled) ?? false;
     final rememberedUid = (prefs.getString(_kRememberedUid) ?? '').trim();
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
@@ -1035,12 +610,11 @@ class AppState extends ChangeNotifier {
         profile: profile,
         language: language,
         defaultVisibility: visibility,
+        groupStateInstance: groupStateInstance,
+        predictionStateInstance: predictionStateInstance,
+        matchdayStateInstance: matchdayStateInstance,
         demoSeed: demoSeed,
       )
-      .._groupName = groupName
-      .._groupInviteCode = groupInviteCode
-      .._groupImagePath = groupImagePath
-      .._groupAdminApproval = groupAdminApproval
       .._rememberMeEnabled = rememberMeEnabled
       .._rememberedUid = rememberedUid.isEmpty ? null : rememberedUid
       .._rememberedHandle = rememberedHandle.isEmpty ? null : rememberedHandle
@@ -1066,6 +640,9 @@ class AppState extends ChangeNotifier {
       profile: profile ?? _defaultProfile,
       language: language,
       defaultVisibility: defaultVisibility,
+      groupStateInstance: GroupState.inMemory(),
+      predictionStateInstance: PredictionState.inMemory(),
+      matchdayStateInstance: MatchdayState.inMemory(),
       demoSeed: 0,
     );
   }
@@ -1254,54 +831,11 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
-    _prefs?.remove(_kGroupNameV1);
-    _prefs?.remove(_kGroupInviteCodeV1);
-    _prefs?.remove(_kGroupImagePathV1);
-    _prefs?.remove(_kGroupAdminApprovalV1);
-    _prefs?.remove(
-      _scopedHistoryKey(
-        _kCurrentUserPicksByMatchday,
-        uid: uid,
-        seasonKey: currentSeasonKey,
-      ),
-    );
-    _prefs?.remove(
-      _scopedHistoryKey(
-        _kPredictionOutcomesByMatchday,
-        uid: uid,
-        seasonKey: currentSeasonKey,
-      ),
-    );
-    _prefs?.remove(
-      _scopedHistoryKey(
-        _kMatchdayMatchesByDayV1,
-        uid: uid,
-        seasonKey: currentSeasonKey,
-      ),
-    );
-    _prefs?.remove(
-      _scopedHistoryKey(
-        _kFirestoreMigrationV1Done,
-        uid: uid,
-        seasonKey: currentSeasonKey,
-      ),
-    );
-    // Backward-compat cleanup for older global keys.
-    _prefs?.remove(_kCurrentUserPicksByMatchday);
-    _prefs?.remove(_kPredictionOutcomesByMatchday);
-    _prefs?.remove(_kMatchdayMatchesByDayV1);
-    _prefs?.remove(_kFirestoreMigrationV1Done);
-
-    _deleteGroupImageFile();
 
     _profile = _defaultProfile;
     _currentUserProfileSetupCompleted = false;
-    _groupName = null;
-    _groupInviteCode = null;
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-    _firestoreGroupIds = [];
-    _activeGroupId = null;
+    await groupState.clearAll();
+    predictionState.clearAllHistory();
     notifyListeners();
   }
 
@@ -1324,19 +858,8 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
-    _prefs?.remove(_kGroupNameV1);
-    _prefs?.remove(_kGroupInviteCodeV1);
-    _prefs?.remove(_kGroupImagePathV1);
-    _prefs?.remove(_kGroupAdminApprovalV1);
 
-    _deleteGroupImageFile();
-
-    _groupName = null;
-    _groupInviteCode = null;
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-    _firestoreGroupIds = [];
-    _activeGroupId = null;
+    await groupState.clearAll();
 
     await resetAll();
     notifyListeners();
@@ -1349,13 +872,8 @@ class AppState extends ChangeNotifier {
     _profile = _defaultProfile;
     _language = CassandraLanguage.system;
     _defaultVisibility = PredictionVisibility.friends;
-    _groupName = null;
-    _groupInviteCode = null;
-    _deleteGroupImageFile();
-    _groupImagePath = null;
-    _groupAdminApproval = false;
-    _firestoreGroupIds = [];
-    _activeGroupId = null;
+    await groupState.clearAll();
+    predictionState.clearAllHistory();
     _rememberMeEnabled = false;
     _currentUserProfileSetupCompleted = false;
     _rememberedUid = null;
@@ -1375,10 +893,6 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kLanguage);
     await _prefs.remove(_kDefaultVisibility);
 
-    await _prefs.remove(_kGroupNameV1);
-    await _prefs.remove(_kGroupInviteCodeV1);
-    await _prefs.remove(_kGroupImagePathV1);
-    await _prefs.remove(_kGroupAdminApprovalV1);
     await _prefs.remove(_kRememberMeEnabled);
     await _prefs.remove(_kRememberedUid);
     await _prefs.remove(_kRememberedHandle);
@@ -1419,351 +933,8 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kFirestoreMigrationV1Done);
   }
 
-  // ===== Runtime cache (NON persistita) =====
-  // Usata per condividere le fixture reali tra pagine (Pronostici, Gruppo, ecc.)
-  // senza rifare fetch e senza scriverle su storage.
-
-  List<PredictionMatch>? _cachedPredictionMatches;
-  bool _cachedPredictionMatchesAreReal = false;
-  DateTime? _cachedPredictionMatchesUpdatedAt;
-
-  // Quote reali (runtime cache per evitare ri-fetch ad ogni apertura)
-  Map<int, ApiFootballFixtureOdds>? _cachedRealOdds;
-  List<ApiFootballStanding> _cachedSeasonStandings =
-      const <ApiFootballStanding>[];
-  DateTime? _cachedSeasonStandingsUpdatedAt;
-  String _cachedSeasonStandingsSignature = '';
-
-  Map<int, ApiFootballFixtureOdds>? get cachedRealOdds => _cachedRealOdds;
-  List<ApiFootballStanding> get cachedSeasonStandings => _cachedSeasonStandings;
-  DateTime? get cachedSeasonStandingsUpdatedAt =>
-      _cachedSeasonStandingsUpdatedAt;
-
-  void setCachedRealOdds(Map<int, ApiFootballFixtureOdds> odds) {
-    _cachedRealOdds = Map.unmodifiable(odds);
-  }
-
-  String _standingsSignature(List<ApiFootballStanding> standings) {
-    if (standings.isEmpty) return '';
-    return standings
-        .map((s) => '${s.rank}:${s.teamName}:${s.points}:${s.form ?? ''}')
-        .join('|');
-  }
-
-  void setCachedSeasonStandings(
-    List<ApiFootballStanding> standings, {
-    DateTime? updatedAt,
-  }) {
-    final sig = _standingsSignature(standings);
-    if (updatedAt == null && _cachedSeasonStandingsSignature == sig) {
-      return;
-    }
-
-    final ts = updatedAt ?? DateTime.now();
-    if (_cachedSeasonStandingsSignature == sig &&
-        _cachedSeasonStandingsUpdatedAt == ts) {
-      return;
-    }
-
-    _cachedSeasonStandings = List<ApiFootballStanding>.unmodifiable(standings);
-    _cachedSeasonStandingsUpdatedAt = ts;
-    _cachedSeasonStandingsSignature = sig;
-    notifyListeners();
-  }
-
-  List<PredictionMatch>? get cachedPredictionMatches =>
-      _cachedPredictionMatches;
-  bool get cachedPredictionMatchesAreReal => _cachedPredictionMatchesAreReal;
-  DateTime? get cachedPredictionMatchesUpdatedAt =>
-      _cachedPredictionMatchesUpdatedAt;
-
-  // ===== MatchdayProgress (runtime, non persistito) =====
-  final Map<int, MatchdayProgress> _matchdayProgressByDay = {};
-
-  int? _uiMatchdayNumber;
-  int? _autoAdvancedFromMatchday;
-  int? _autoFinalizedFromMatchday;
-  int get uiMatchdayNumber => _uiMatchdayNumber ?? cassandraMatchdayCursor;
-
-  void setUiMatchdayNumber(int? matchdayNumber) {
-    _uiMatchdayNumber = matchdayNumber;
-    notifyListeners();
-  }
-
-  MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
-      _matchdayProgressByDay[matchdayNumber];
-
-  void setMatchdayProgress({
-    required int matchdayNumber,
-    required MatchdayProgress progress,
-    bool allowAutoAdvance = true,
-  }) {
-    _matchdayProgressByDay[matchdayNumber] = progress;
-
-    _uiMatchdayNumber = matchdayNumber;
-
-    // AUTO-ADVANCE: primaryDone
-    if (allowAutoAdvance &&
-        progress.primaryDone &&
-        progress.isValidMatchday &&
-        matchdayNumber == cassandraMatchdayCursor &&
-        _autoAdvancedFromMatchday != matchdayNumber) {
-      _autoAdvancedFromMatchday = matchdayNumber;
-      Future.microtask(() async {
-        try {
-          await setCassandraMatchdayCursor(matchdayNumber + 1);
-        } catch (_) {}
-      });
-    }
-
-    // AUTO-FINALIZE: finalDone
-    if (progress.finalDone &&
-        progress.isValidMatchday &&
-        _autoFinalizedFromMatchday != matchdayNumber) {
-      _autoFinalizedFromMatchday = matchdayNumber;
-      Future.microtask(() async {
-        try {} catch (_) {}
-        isMatchdayFinalized(matchdayNumber);
-      });
-    }
-
-    notifyListeners();
-  }
-
-  void clearMatchdayProgress(int matchdayNumber) {
-    if (_matchdayProgressByDay.remove(matchdayNumber) != null) {
-      if (_uiMatchdayNumber == matchdayNumber) _uiMatchdayNumber = null;
-      notifyListeners();
-    }
-  }
-
-  void setCachedPredictionMatches(
-    List<PredictionMatch> matches, {
-    required bool isReal,
-    DateTime? updatedAt,
-  }) {
-    _cachedPredictionMatches = List.unmodifiable(matches);
-    cachedPredictionOutcomesByMatchId = {};
-    _cachedPredictionMatchesAreReal = isReal;
-    _cachedPredictionMatchesUpdatedAt = updatedAt ?? DateTime.now();
-    notifyListeners();
-  }
-
-  void clearCachedPredictionMatches() {
-    _cachedPredictionMatches = null;
-    cachedPredictionOutcomesByMatchId = {};
-    _cachedPredictionMatchesAreReal = false;
-    _cachedPredictionMatchesUpdatedAt = null;
-    notifyListeners();
-  }
-
-  void clearCachedPredictionOutcomes() {
-    cachedPredictionOutcomesByMatchId = {};
-    notifyListeners();
-  }
-
-  void clearAllPredictionCache() {
-    _cachedPredictionMatches = null;
-    _cachedPredictionMatchesAreReal = false;
-    _cachedPredictionMatchesUpdatedAt = null;
-    cachedPredictionOutcomesByMatchId = {};
-    _cachedSeasonStandings = const <ApiFootballStanding>[];
-    _cachedSeasonStandingsUpdatedAt = null;
-    _cachedSeasonStandingsSignature = '';
-    notifyListeners();
-  }
-
-  void setCachedPredictionOutcomesByMatchId(
-    Map<String, MatchOutcome> outcomes,
-  ) {
-    cachedPredictionOutcomesByMatchId = Map.unmodifiable(outcomes);
-    notifyListeners();
-  }
-
-  // ===== MATCHDAY RECENT (runtime, non persistito) =====
-  // Serve per mostrare "pronostici passati" corretti anche quando il cursor
-  // viene fast-forwardato (es. 20 -> 21) e per gestire recuperi (matchday parziale).
-  final Map<int, List<PredictionMatch>> _recentMatchesByMatchday = {};
-  final Map<int, Map<String, MatchOutcome>> _recentOutcomesByMatchday = {};
-
-  Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
-      _recentMatchesByMatchday;
-  Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
-      _recentOutcomesByMatchday;
-
-  void _pruneRecentMatchdayData({int maxEntries = 10}) {
-    final allDays = <int>{
-      ..._recentMatchesByMatchday.keys,
-      ..._recentOutcomesByMatchday.keys,
-    }.toList()..sort((a, b) => b.compareTo(a));
-    if (allDays.length <= maxEntries) return;
-
-    for (final day in allDays.skip(maxEntries)) {
-      _recentMatchesByMatchday.remove(day);
-      _recentOutcomesByMatchday.remove(day);
-    }
-  }
-
-  void setRecentMatchdayDataBulk({
-    required Map<int, List<PredictionMatch>> matchesByMatchday,
-    required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
-    bool replace = false,
-  }) {
-    if (replace) {
-      _recentMatchesByMatchday.clear();
-      _recentOutcomesByMatchday.clear();
-    }
-
-    for (final e in matchesByMatchday.entries) {
-      _recentMatchesByMatchday[e.key] = List<PredictionMatch>.unmodifiable(
-        e.value,
-      );
-    }
-    for (final e in outcomesByMatchday.entries) {
-      _recentOutcomesByMatchday[e.key] = Map<String, MatchOutcome>.unmodifiable(
-        e.value,
-      );
-    }
-    _pruneRecentMatchdayData();
-
-    notifyListeners();
-  }
-
-  // ===== Pronostici utente (persistiti) =====
-  static const String _kCurrentUserPicksByMatchIdV1 =
-      'cassandra.current_user_picks_by_match_id_v1';
-  bool _currentUserPicksLoaded = false;
-  Map<String, PickOption> currentUserPicksByMatchId =
-      const <String, PickOption>{};
-
-  void ensureCurrentUserPicksLoaded() {
-    if (_currentUserPicksLoaded) return;
-    _currentUserPicksLoaded = true;
-
-    final raw = _prefs?.getString(_kCurrentUserPicksByMatchIdV1);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      final map = <String, PickOption>{};
-      for (final entry in decoded.entries) {
-        final k = entry.key;
-        final v = entry.value;
-        if (k is! String || v is! String) continue;
-
-        try {
-          final pick = PickOption.values.byName(v);
-          if (pick != PickOption.none) {
-            map[k] = pick;
-          }
-        } catch (_) {
-          // ignore valori sconosciuti
-        }
-      }
-
-      currentUserPicksByMatchId = Map.unmodifiable(map);
-    } catch (_) {
-      // ignore JSON rotto
-    }
-  }
-
-  // ===== PICKS STORICO (per matchday) =====
-  bool _currentUserPicksHistoryLoaded = false;
   bool _hydratingCurrentUserHistoryFromFirestore = false;
   String? _hydratedCurrentUserHistoryKey;
-  final Map<int, Map<String, PickOption>> _currentUserPicksByMatchday = {};
-
-  Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
-      _currentUserPicksByMatchday;
-
-  bool hasSavedPicksForMatchday(int dayNumber) {
-    final m = _currentUserPicksByMatchday[dayNumber];
-    return m != null && m.isNotEmpty;
-  }
-
-  Map<String, PickOption> currentUserPicksForMatchday(int dayNumber) {
-    return _currentUserPicksByMatchday[dayNumber] ?? const {};
-  }
-
-  void ensureCurrentUserPicksHistoryLoaded() {
-    if (_currentUserPicksHistoryLoaded) return;
-    _currentUserPicksHistoryLoaded = true;
-
-    final raw = _prefs?.getString(_kCurrentUserPicksByMatchdayScoped);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      for (final entry in decoded.entries) {
-        final day = int.tryParse(entry.key.toString());
-        if (day == null) continue;
-
-        final v = entry.value;
-        if (v is! Map) continue;
-
-        final picks = <String, PickOption>{};
-        for (final e2 in v.entries) {
-          final matchId = e2.key.toString();
-          final s = e2.value;
-          if (s is! String) continue;
-          try {
-            picks[matchId] = PickOption.values.byName(s);
-          } catch (_) {
-            // ignore unknown
-          }
-        }
-        if (picks.isNotEmpty) _currentUserPicksByMatchday[day] = picks;
-      }
-    } catch (_) {
-      // ignore corrupted prefs
-    }
-  }
-
-  void saveCurrentUserPicksHistory({
-    required int dayNumber,
-    required Map<String, PickOption> picksByMatchId,
-  }) {
-    ensureCurrentUserPicksHistoryLoaded();
-
-    // salva snapshot (copia)
-    _currentUserPicksByMatchday[dayNumber] = Map<String, PickOption>.from(
-      picksByMatchId,
-    );
-
-    _persistCurrentUserPicksHistoryToPrefs();
-
-    notifyListeners();
-  }
-
-  void _persistCurrentUserPicksHistoryToPrefs() {
-    final out = <String, Object?>{};
-    for (final e in _currentUserPicksByMatchday.entries) {
-      out[e.key.toString()] = {
-        for (final p in e.value.entries) p.key: p.value.name,
-      };
-    }
-
-    try {
-      _prefs?.setString(_kCurrentUserPicksByMatchdayScoped, jsonEncode(out));
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  void clearCurrentUserPicksHistory() {
-    _currentUserPicksByMatchday.clear();
-    try {
-      _prefs?.remove(_kCurrentUserPicksByMatchdayScoped);
-    } catch (_) {
-      // ignore
-    }
-
-    notifyListeners();
-  }
 
   /// Fire-and-forget: upload picks per questa giornata su Firestore.
   void submitPicksToFirestore({
@@ -1792,38 +963,11 @@ class AppState extends ChangeNotifier {
   // ===== FIRESTORE GROUP LEADERBOARD =====
 
   /// Fetch group members from Firestore for active group.
-  /// Returns list of GroupMember (domain model).
-  Future<List<GroupMember>> fetchFirestoreGroupMembers() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return [];
-
-    final docs = await fs.getGroupMembers(groupId);
-    final missingPhotoUids = docs
-        .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
-        .map((d) => d.uid)
-        .where((uid) => uid.trim().isNotEmpty)
-        .toList(growable: false);
-    final userPhotoUrls = missingPhotoUids.isEmpty
-        ? const <String, String>{}
-        : await fs.getUserPhotoUrls(missingPhotoUids);
-    return docs.map((d) {
-      final directPhoto = (d.photoUrl ?? '').trim();
-      final fallbackPhoto = (userPhotoUrls[d.uid] ?? '').trim();
-      final fallbackPortable =
-          fallbackPhoto.isNotEmpty && _looksLikePortableImageRef(fallbackPhoto)
-          ? fallbackPhoto
-          : null;
-      return GroupMember(
-        id: d.uid,
-        displayName: d.displayName,
-        teamName: d.teamName,
-        avatarSeed: d.avatarSeed,
-        favoriteTeam: d.favoriteTeam,
-        photoUrl: directPhoto.isNotEmpty ? directPhoto : fallbackPortable,
+  Future<List<GroupMember>> fetchFirestoreGroupMembers() =>
+      groupState.fetchFirestoreGroupMembers(
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
       );
-    }).toList();
-  }
 
   /// Fetch picks from Firestore for a list of UIDs + matchday.
   /// Returns map: uid -> picksByMatchId.
@@ -1882,12 +1026,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Fetch active group metadata from Firestore.
-  Future<GroupDocument?> fetchActiveGroupDocument() async {
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs == null || !isAuthenticated || groupId == null) return null;
-    return fs.getGroup(groupId);
-  }
+  Future<GroupDocument?> fetchActiveGroupDocument() =>
+      groupState.fetchActiveGroupDocument(
+        isAuthenticated: isAuthenticated,
+        firestoreService: _firestoreService,
+      );
 
   /// Fetch all season picks for a user from Firestore.
   /// Returns list of PicksDocument for the current season.
@@ -1956,27 +1099,26 @@ class AppState extends ChangeNotifier {
         seasonKey: currentSeasonKey,
       );
 
-      ensureCurrentUserPicksHistoryLoaded();
-      ensureOutcomesHistoryLoaded();
-      await ensureMatchdayMatchesLoaded();
+      predictionState.ensureCurrentUserPicksHistoryLoaded();
+      predictionState.ensureOutcomesHistoryLoaded();
+      await predictionState.ensureMatchdayMatchesLoaded();
 
       var picksChanged = false;
       final dayNumbers = <int>{};
       for (final doc in picksDocs) {
         if (doc.dayNumber <= 0 || doc.picksByMatchId.isEmpty) continue;
         dayNumbers.add(doc.dayNumber);
-        final existing = _currentUserPicksByMatchday[doc.dayNumber];
+        final existing =
+            predictionState.currentUserPicksByMatchday[doc.dayNumber];
         if (existing == null ||
             existing.length != doc.picksByMatchId.length ||
             existing.entries.any((e) => doc.picksByMatchId[e.key] != e.value)) {
-          _currentUserPicksByMatchday[doc.dayNumber] =
-              Map<String, PickOption>.from(doc.picksByMatchId);
+          predictionState.saveCurrentUserPicksHistory(
+            dayNumber: doc.dayNumber,
+            picksByMatchId: doc.picksByMatchId,
+          );
           picksChanged = true;
         }
-      }
-
-      if (picksChanged) {
-        _persistCurrentUserPicksHistoryToPrefs();
       }
 
       final recentMatches = <int, List<PredictionMatch>>{};
@@ -1989,46 +1131,27 @@ class AppState extends ChangeNotifier {
         );
         if (md == null || md.matches.isEmpty) continue;
 
-        _matchesByMatchday[day] = List<PredictionMatch>.unmodifiable(
-          md.matches,
+        await predictionState.saveMatchesHistory(
+          matchdayNumber: day,
+          matches: md.matches,
         );
-        _matchdayMatchesByDay[day] = List<PredictionMatch>.of(md.matches);
+        await predictionState.saveMatchdayMatchesSnapshot(
+          matchdayNumber: day,
+          matches: md.matches,
+        );
         recentMatches[day] = md.matches;
 
         if (md.outcomesByMatchId.isNotEmpty) {
-          _outcomesByMatchday[day] = Map<String, MatchOutcome>.from(
-            md.outcomesByMatchId,
+          predictionState.saveOutcomesHistory(
+            dayNumber: day,
+            outcomesByMatchId: md.outcomesByMatchId,
           );
           recentOutcomes[day] = md.outcomesByMatchId;
         }
       }
 
       if (recentMatches.isNotEmpty || recentOutcomes.isNotEmpty) {
-        final prefs = _prefs;
-        if (prefs != null) {
-          final encoded = <String, dynamic>{
-            for (final e in _matchdayMatchesByDay.entries)
-              e.key.toString(): e.value
-                  .map(_predictionMatchToSnapshot)
-                  .toList(),
-          };
-          await prefs.setString(
-            _kMatchdayMatchesByDayScoped,
-            jsonEncode(encoded),
-          );
-          final out = <String, Object?>{};
-          for (final e in _outcomesByMatchday.entries) {
-            out[e.key.toString()] = {
-              for (final o in e.value.entries) o.key: o.value.name,
-            };
-          }
-          await prefs.setString(
-            _kPredictionOutcomesByMatchdayScoped,
-            jsonEncode(out),
-          );
-        }
-
-        setRecentMatchdayDataBulk(
+        predictionState.setRecentMatchdayDataBulk(
           matchesByMatchday: recentMatches,
           outcomesByMatchday: recentOutcomes,
         );
@@ -2062,11 +1185,11 @@ class AppState extends ChangeNotifier {
       _syncProfileToFirestore();
 
       // 2. Migrate picks
-      ensureCurrentUserPicksHistoryLoaded();
-      ensureOutcomesHistoryLoaded();
+      predictionState.ensureCurrentUserPicksHistoryLoaded();
+      predictionState.ensureOutcomesHistoryLoaded();
 
       final season = currentSeasonKey;
-      for (final entry in _currentUserPicksByMatchday.entries) {
+      for (final entry in predictionState.currentUserPicksByMatchday.entries) {
         final dayNumber = entry.key;
         final picks = entry.value;
         if (picks.isEmpty) continue;
@@ -2082,13 +1205,13 @@ class AppState extends ChangeNotifier {
       }
 
       // 3. Migrate matchday data (matches + outcomes)
-      ensureMatchdayMatchesLoaded();
-      for (final entry in _matchdayMatchesByDay.entries) {
+      await predictionState.ensureMatchdayMatchesLoaded();
+      for (final entry in predictionState.matchdayMatchesByDay.entries) {
         final dayNumber = entry.key;
         final matches = entry.value;
         if (matches.isEmpty) continue;
 
-        final outcomes = _outcomesByMatchday[dayNumber] ?? {};
+        final outcomes = predictionState.outcomesByMatchday[dayNumber] ?? {};
         await fs.saveMatchdayData(
           seasonKey: season,
           dayNumber: dayNumber,
@@ -2103,284 +1226,234 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ===== OUTCOMES STORICO (per matchday) =====
-  bool _outcomesHistoryLoaded = false;
-  final Map<int, Map<String, MatchOutcome>> _outcomesByMatchday = {};
+  // ===== MATCHDAY STATE FORWARDING =====
+  // Forwarding getters/methods per compatibilità con codice esistente.
+  // La logica è ora in MatchdayState.
 
-  // Snapshot match per giornata (storico stabile)
-  Map<int, List<PredictionMatch>> _matchdayMatchesByDay = {};
+  // --- Cursor ---
+  int get cassandraMatchdayCursor => matchdayState.cassandraMatchdayCursor;
+  Future<void> setCassandraMatchdayCursor(int dayNumber) =>
+      matchdayState.setCassandraMatchdayCursor(dayNumber);
+  Future<void> bumpCassandraMatchdayCursor() =>
+      matchdayState.bumpCassandraMatchdayCursor();
 
+  // --- Finalization ---
+  void ensureFinalizedMatchdaysLoaded() =>
+      matchdayState.ensureFinalizedMatchdaysLoaded();
+  bool isMatchdayFinalized(int matchdayNumber) =>
+      matchdayState.isMatchdayFinalized(matchdayNumber);
+  Future<bool> markMatchdayFinalized(int matchdayNumber) =>
+      matchdayState.markMatchdayFinalized(matchdayNumber);
+
+  // --- Auto-bump ---
+  int? get lastAutoBumpFromMatchday => matchdayState.lastAutoBumpFromMatchday;
+  Future<bool> maybeAutoBumpCassandraMatchdayCursor({
+    required int fromMatchday,
+  }) => matchdayState.maybeAutoBumpCassandraMatchdayCursor(
+    fromMatchday: fromMatchday,
+  );
+
+  // --- Origin kickoffs ---
+  void ensureOriginKickoffsLoaded() =>
+      matchdayState.ensureOriginKickoffsLoaded();
+  void registerOriginKickoff({
+    required String matchId,
+    required DateTime kickoff,
+  }) => matchdayState.registerOriginKickoff(matchId: matchId, kickoff: kickoff);
+  DateTime originKickoffFor({
+    required String matchId,
+    required DateTime fallbackKickoff,
+  }) => matchdayState.originKickoffFor(
+    matchId: matchId,
+    fallbackKickoff: fallbackKickoff,
+  );
+  Future<void> persistOriginKickoffs() => matchdayState.persistOriginKickoffs();
+
+  // --- Progress (runtime) ---
+  int get uiMatchdayNumber => matchdayState.uiMatchdayNumber;
+  void setUiMatchdayNumber(int? matchdayNumber) =>
+      matchdayState.setUiMatchdayNumber(matchdayNumber);
+  MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
+      matchdayState.matchdayProgressFor(matchdayNumber);
+  void setMatchdayProgress({
+    required int matchdayNumber,
+    required MatchdayProgress progress,
+    bool allowAutoAdvance = true,
+  }) => matchdayState.setMatchdayProgress(
+    matchdayNumber: matchdayNumber,
+    progress: progress,
+    allowAutoAdvance: allowAutoAdvance,
+  );
+  void clearMatchdayProgress(int matchdayNumber) =>
+      matchdayState.clearMatchdayProgress(matchdayNumber);
+
+  // ===== PREDICTION STATE FORWARDING =====
+  // Forwarding getters/methods per compatibilità con codice esistente.
+  // La logica è ora in PredictionState.
+  //
+  // Questo blocco sostituisce ~700 righe di codice inline.
+  // Vedi prediction_state.dart per l'implementazione.
+
+  // --- Current user picks ---
+  Map<String, PickOption> get currentUserPicksByMatchId =>
+      predictionState.currentUserPicksByMatchId;
+  void ensureCurrentUserPicksLoaded() =>
+      predictionState.ensureCurrentUserPicksLoaded();
+  void setCurrentUserPick(String matchId, PickOption pick) =>
+      predictionState.setCurrentUserPick(matchId, pick);
+  void clearCurrentUserPicks() => predictionState.clearCurrentUserPicks();
+
+  // --- Picks history ---
+  Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
+      predictionState.currentUserPicksByMatchday;
+  bool hasSavedPicksForMatchday(int dayNumber) =>
+      predictionState.hasSavedPicksForMatchday(dayNumber);
+  Map<String, PickOption> currentUserPicksForMatchday(int dayNumber) =>
+      predictionState.currentUserPicksForMatchday(dayNumber);
+  void ensureCurrentUserPicksHistoryLoaded() =>
+      predictionState.ensureCurrentUserPicksHistoryLoaded();
+  void saveCurrentUserPicksHistory({
+    required int dayNumber,
+    required Map<String, PickOption> picksByMatchId,
+  }) => predictionState.saveCurrentUserPicksHistory(
+    dayNumber: dayNumber,
+    picksByMatchId: picksByMatchId,
+  );
+  void clearCurrentUserPicksHistory() =>
+      predictionState.clearCurrentUserPicksHistory();
+  Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) =>
+      predictionState.picksForCurrentUserForMatchday(matchdayNumber);
+
+  // --- Outcomes history ---
   Map<int, Map<String, MatchOutcome>> get outcomesByMatchday =>
-      _outcomesByMatchday;
-
-  bool hasSavedOutcomesForMatchday(int dayNumber) {
-    final m = _outcomesByMatchday[dayNumber];
-    return m != null && m.isNotEmpty;
-  }
-
-  Map<String, MatchOutcome> outcomesForMatchday(int dayNumber) {
-    return _outcomesByMatchday[dayNumber] ?? const {};
-  }
-
-  void ensureOutcomesHistoryLoaded() {
-    if (_outcomesHistoryLoaded) return;
-    _outcomesHistoryLoaded = true;
-
-    final raw = _prefs?.getString(_kPredictionOutcomesByMatchdayScoped);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      for (final entry in decoded.entries) {
-        final day = int.tryParse(entry.key.toString());
-        if (day == null) continue;
-
-        final v = entry.value;
-        if (v is! Map) continue;
-
-        final outcomes = <String, MatchOutcome>{};
-        for (final e2 in v.entries) {
-          final matchId = e2.key.toString();
-          final s = e2.value;
-          if (s is! String) continue;
-          try {
-            outcomes[matchId] = MatchOutcome.values.byName(s);
-          } catch (_) {
-            // ignore unknown
-          }
-        }
-        if (outcomes.isNotEmpty) _outcomesByMatchday[day] = outcomes;
-      }
-    } catch (_) {
-      // ignore corrupted prefs
-    }
-  }
-
+      predictionState.outcomesByMatchday;
+  bool hasSavedOutcomesForMatchday(int dayNumber) =>
+      predictionState.hasSavedOutcomesForMatchday(dayNumber);
+  Map<String, MatchOutcome> outcomesForMatchday(int dayNumber) =>
+      predictionState.outcomesForMatchday(dayNumber);
+  void ensureOutcomesHistoryLoaded() =>
+      predictionState.ensureOutcomesHistoryLoaded();
   void saveOutcomesHistory({
     required int dayNumber,
     required Map<String, MatchOutcome> outcomesByMatchId,
-  }) {
-    ensureOutcomesHistoryLoaded();
-    _outcomesByMatchday[dayNumber] = Map<String, MatchOutcome>.from(
-      outcomesByMatchId,
-    );
+  }) => predictionState.saveOutcomesHistory(
+    dayNumber: dayNumber,
+    outcomesByMatchId: outcomesByMatchId,
+  );
+  void clearOutcomesHistory() => predictionState.clearOutcomesHistory();
 
-    final out = <String, Object?>{};
-    for (final e in _outcomesByMatchday.entries) {
-      out[e.key.toString()] = {
-        for (final o in e.value.entries) o.key: o.value.name,
-      };
-    }
-
-    try {
-      _prefs?.setString(_kPredictionOutcomesByMatchdayScoped, jsonEncode(out));
-    } catch (_) {
-      // ignore
-    }
-
-    notifyListeners();
-  }
-
-  void clearOutcomesHistory() {
-    _outcomesByMatchday.clear();
-    try {
-      _prefs?.remove(_kPredictionOutcomesByMatchdayScoped);
-    } catch (_) {
-      // ignore
-    }
-    notifyListeners();
-  }
-
-  // ===== MATCHES STORICO (per matchday) =====
-  // Nota: per ora lo teniamo SOLO in-memory.
-  // Per persisterlo su storage serve aggiungere serializzazione JSON a PredictionMatch (+ odds).
-  final Map<int, List<PredictionMatch>> _matchesByMatchday = {};
-
-  Map<int, List<PredictionMatch>> get matchesByMatchday => _matchesByMatchday;
-
+  // --- Matches history ---
+  Map<int, List<PredictionMatch>> get matchesByMatchday =>
+      predictionState.matchesByMatchday;
   List<PredictionMatch>? matchesForMatchday(int matchdayNumber) =>
-      _matchesByMatchday[matchdayNumber];
-
-  void ensureMatchesHistoryLoaded() {
-    // no-op (in-memory only)
-  }
-
+      predictionState.matchesForMatchday(matchdayNumber);
+  void ensureMatchesHistoryLoaded() =>
+      predictionState.ensureMatchesHistoryLoaded();
   Future<void> saveMatchesHistory({
     required int matchdayNumber,
     required List<PredictionMatch> matches,
-  }) async {
-    _matchesByMatchday[matchdayNumber] = List.unmodifiable(matches);
-    notifyListeners();
-  }
+  }) => predictionState.saveMatchesHistory(
+    matchdayNumber: matchdayNumber,
+    matches: matches,
+  );
+  Future<void> clearMatchesHistory() => predictionState.clearMatchesHistory();
 
-  Future<void> clearMatchesHistory() async {
-    _matchesByMatchday.clear();
-    notifyListeners();
-  }
+  // --- Matchday matches snapshots ---
+  Map<int, List<PredictionMatch>> get matchdayMatchesByDay =>
+      predictionState.matchdayMatchesByDay;
+  Future<void> ensureMatchdayMatchesLoaded() =>
+      predictionState.ensureMatchdayMatchesLoaded();
+  bool hasSavedMatchesForMatchday(int matchdayNumber) =>
+      predictionState.hasSavedMatchesForMatchday(matchdayNumber);
+  List<PredictionMatch>? savedMatchesForMatchday(int matchdayNumber) =>
+      predictionState.savedMatchesForMatchday(matchdayNumber);
+  Future<void> saveMatchdayMatchesSnapshot({
+    required int matchdayNumber,
+    required List<PredictionMatch> matches,
+  }) => predictionState.saveMatchdayMatchesSnapshot(
+    matchdayNumber: matchdayNumber,
+    matches: matches,
+  );
 
-  void setCurrentUserPick(String matchId, PickOption pick) {
-    ensureCurrentUserPicksLoaded();
-
-    final next = Map<String, PickOption>.of(currentUserPicksByMatchId);
-    if (pick == PickOption.none) {
-      next.remove(matchId);
-    } else {
-      next[matchId] = pick;
-    }
-
-    currentUserPicksByMatchId = Map.unmodifiable(next);
-    notifyListeners();
-
-    unawaited(_persistCurrentUserPicks());
-  }
-
-  void clearCurrentUserPicks() {
-    _currentUserPicksLoaded = true;
-    currentUserPicksByMatchId = const <String, PickOption>{};
-    notifyListeners();
-
-    final prefs = _prefs;
-    if (prefs == null) return;
-    unawaited(prefs.remove(_kCurrentUserPicksByMatchIdV1));
-  }
-
-  Future<void> _persistCurrentUserPicks() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
-
-    final map = <String, String>{
-      for (final e in currentUserPicksByMatchId.entries) e.key: e.value.name,
-    };
-
-    await prefs.setString(_kCurrentUserPicksByMatchIdV1, jsonEncode(map));
-  }
-
-  // ===== Picks membri simulati (persistiti in locale) =====
-  static const String _kMemberPicksByMemberIdV1 =
-      'cassandra.member_picks_by_member_id_v1';
-
-  bool _memberPicksLoaded = false;
-
-  /// Map: memberId -> (matchId -> pick)
-  Map<String, Map<String, PickOption>> memberPicksByMemberId =
-      const <String, Map<String, PickOption>>{};
-
-  void ensureMemberPicksLoaded() {
-    if (_memberPicksLoaded) return;
-    _memberPicksLoaded = true;
-
-    final raw = _prefs?.getString(_kMemberPicksByMemberIdV1);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      final outer = <String, Map<String, PickOption>>{};
-
-      for (final outerEntry in decoded.entries) {
-        final memberId = outerEntry.key;
-        final v = outerEntry.value;
-
-        if (memberId is! String || v is! Map) continue;
-
-        final inner = <String, PickOption>{};
-
-        for (final innerEntry in v.entries) {
-          final matchId = innerEntry.key;
-          final pickName = innerEntry.value;
-
-          if (matchId is! String || pickName is! String) continue;
-
-          try {
-            final pick = PickOption.values.byName(pickName);
-            if (pick != PickOption.none) {
-              inner[matchId] = pick;
-            }
-          } catch (_) {
-            // ignore valori sconosciuti
-          }
-        }
-
-        if (inner.isNotEmpty) {
-          outer[memberId] = Map.unmodifiable(inner);
-        }
-      }
-
-      memberPicksByMemberId = Map.unmodifiable(outer);
-    } catch (_) {
-      // ignore JSON rotto
-    }
-  }
-
+  // --- Member picks ---
+  Map<String, Map<String, PickOption>> get memberPicksByMemberId =>
+      predictionState.memberPicksByMemberId;
+  void ensureMemberPicksLoaded() => predictionState.ensureMemberPicksLoaded();
   void setMemberPicksBulk(
     Map<String, Map<String, PickOption>> picksByMemberId, {
     bool replace = false,
-  }) {
-    ensureMemberPicksLoaded();
+  }) => predictionState.setMemberPicksBulk(picksByMemberId, replace: replace);
+  void clearMemberPicks({String? memberId}) =>
+      predictionState.clearMemberPicks(memberId: memberId);
 
-    final next = <String, Map<String, PickOption>>{
-      if (!replace) ...memberPicksByMemberId,
-    };
+  // --- Runtime cache ---
+  Map<String, MatchOutcome> get cachedPredictionOutcomesByMatchId =>
+      predictionState.cachedPredictionOutcomesByMatchId;
+  List<PredictionMatch>? get cachedPredictionMatches =>
+      predictionState.cachedPredictionMatches;
+  bool get cachedPredictionMatchesAreReal =>
+      predictionState.cachedPredictionMatchesAreReal;
+  DateTime? get cachedPredictionMatchesUpdatedAt =>
+      predictionState.cachedPredictionMatchesUpdatedAt;
+  Map<int, ApiFootballFixtureOdds>? get cachedRealOdds =>
+      predictionState.cachedRealOdds;
+  List<ApiFootballStanding> get cachedSeasonStandings =>
+      predictionState.cachedSeasonStandings;
+  DateTime? get cachedSeasonStandingsUpdatedAt =>
+      predictionState.cachedSeasonStandingsUpdatedAt;
+  Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId =>
+      predictionState.effectivePredictionOutcomesByMatchId;
 
-    for (final entry in picksByMemberId.entries) {
-      final memberId = entry.key;
-      final picks = entry.value;
+  void setCachedRealOdds(Map<int, ApiFootballFixtureOdds> odds) =>
+      predictionState.setCachedRealOdds(odds);
+  void setCachedPredictionMatches(
+    List<PredictionMatch> matches, {
+    required bool isReal,
+    DateTime? updatedAt,
+  }) => predictionState.setCachedPredictionMatches(
+    matches,
+    isReal: isReal,
+    updatedAt: updatedAt,
+  );
+  void clearCachedPredictionMatches() =>
+      predictionState.clearCachedPredictionMatches();
+  void clearCachedPredictionOutcomes() =>
+      predictionState.clearCachedPredictionOutcomes();
+  void setCachedPredictionOutcomesByMatchId(
+    Map<String, MatchOutcome> outcomes,
+  ) => predictionState.setCachedPredictionOutcomesByMatchId(outcomes);
+  void setCachedSeasonStandings(
+    List<ApiFootballStanding> standings, {
+    DateTime? updatedAt,
+  }) =>
+      predictionState.setCachedSeasonStandings(standings, updatedAt: updatedAt);
+  void clearAllPredictionCache() => predictionState.clearAllPredictionCache();
 
-      if (picks.isEmpty) {
-        next.remove(memberId);
-      } else {
-        next[memberId] = Map.unmodifiable(Map<String, PickOption>.of(picks));
-      }
-    }
+  // --- Recent matchday data ---
+  Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
+      predictionState.recentMatchesByMatchday;
+  Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
+      predictionState.recentOutcomesByMatchday;
+  void setRecentMatchdayDataBulk({
+    required Map<int, List<PredictionMatch>> matchesByMatchday,
+    required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
+    bool replace = false,
+  }) => predictionState.setRecentMatchdayDataBulk(
+    matchesByMatchday: matchesByMatchday,
+    outcomesByMatchday: outcomesByMatchday,
+    replace: replace,
+  );
 
-    memberPicksByMemberId = Map.unmodifiable(next);
+  // --- Clear all / Demo ---
+  void clearAllHistory() => predictionState.clearAllHistory();
+
+  Future<void> bumpDemoSeed() async {
+    _demoSeed = _demoSeed + 1;
+    await _prefs?.setInt(_kDemoSeedV1, _demoSeed);
     notifyListeners();
-
-    unawaited(_persistMemberPicks());
   }
 
-  void clearMemberPicks({String? memberId}) {
-    ensureMemberPicksLoaded();
-
-    if (memberId == null) {
-      memberPicksByMemberId = const <String, Map<String, PickOption>>{};
-    } else {
-      final next = Map<String, Map<String, PickOption>>.of(
-        memberPicksByMemberId,
-      );
-      next.remove(memberId);
-      memberPicksByMemberId = Map.unmodifiable(next);
-    }
-
-    notifyListeners();
-
-    final prefs = _prefs;
-    if (prefs == null) return;
-
-    if (memberId == null) {
-      unawaited(prefs.remove(_kMemberPicksByMemberIdV1));
-    } else {
-      unawaited(_persistMemberPicks());
-    }
-  }
-
-  Future<void> _persistMemberPicks() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
-
-    final outer = <String, Map<String, String>>{
-      for (final outerEntry in memberPicksByMemberId.entries)
-        outerEntry.key: {
-          for (final innerEntry in outerEntry.value.entries)
-            innerEntry.key: innerEntry.value.name,
-        },
-    };
-
-    await prefs.setString(_kMemberPicksByMemberIdV1, jsonEncode(outer));
-  }
+  // ===== PORTABLE IMAGE UTILITIES =====
 
   Future<String?> _portableImageReference(String source) async {
     final trimmed = source.trim();
@@ -2484,191 +1557,5 @@ class AppState extends ChangeNotifier {
     }
 
     await updateGroupImagePath(converted);
-  }
-
-  Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId =>
-      cachedPredictionOutcomesByMatchId;
-
-  Future<void> bumpDemoSeed() async {
-    _demoSeed = _demoSeed + 1;
-    await _prefs?.setInt(_kDemoSeedV1, _demoSeed);
-    notifyListeners();
-  }
-
-  void clearAllHistory() {
-    ensureCurrentUserPicksLoaded();
-    ensureCurrentUserPicksHistoryLoaded();
-    ensureOutcomesHistoryLoaded();
-    ensureMemberPicksLoaded();
-
-    currentUserPicksByMatchId = const <String, PickOption>{};
-    _currentUserPicksByMatchday.clear();
-    _outcomesByMatchday.clear();
-    memberPicksByMemberId = const <String, Map<String, PickOption>>{};
-
-    _prefs?.remove(_kCurrentUserPicksByMatchIdV1);
-    _prefs?.remove(_kCurrentUserPicksByMatchdayScoped);
-    _prefs?.remove(_kPredictionOutcomesByMatchdayScoped);
-    _prefs?.remove(_kMatchdayMatchesByDayScoped);
-    _prefs?.remove(_kCurrentUserPicksByMatchday);
-    _prefs?.remove(_kPredictionOutcomesByMatchday);
-    _prefs?.remove(_kMatchdayMatchesByDayV1);
-    _prefs?.remove(_kMemberPicksByMemberIdV1);
-
-    notifyListeners();
-  }
-
-  /// Ritorna i pick dell'utente per una giornata (se abbiamo uno snapshot salvato).
-  /// Fallback: pick correnti (giornata live).
-  Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) {
-    try {
-      // Accesso "robusto": se il campo/getter non esiste, non rompiamo la build.
-      final dynamic self = this;
-      final byMatchday =
-          self.currentUserPicksByMatchday as Map<int, Map<String, PickOption>>;
-      final saved = byMatchday[matchdayNumber];
-      if (saved != null) return saved;
-    } catch (_) {}
-    return currentUserPicksByMatchId;
-  }
-
-  static const String _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
-
-  Future<void> ensureMatchdayMatchesLoaded() async {
-    if (_matchdayMatchesByDay.isNotEmpty) return;
-
-    final prefs = _prefs!;
-    final raw = prefs.getString(_kMatchdayMatchesByDayScoped);
-    if (raw == null || raw.isEmpty) return;
-
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    final map = <int, List<PredictionMatch>>{};
-
-    for (final e in decoded.entries) {
-      final day = int.tryParse(e.key);
-      if (day == null) continue;
-      final list = (e.value as List).cast<Map<String, dynamic>>();
-      map[day] = list.map(_predictionMatchFromSnapshot).toList();
-    }
-
-    _matchdayMatchesByDay = map;
-  }
-
-  bool hasSavedMatchesForMatchday(int matchdayNumber) {
-    return _matchdayMatchesByDay.containsKey(matchdayNumber) &&
-        _matchdayMatchesByDay[matchdayNumber]!.isNotEmpty;
-  }
-
-  List<PredictionMatch>? savedMatchesForMatchday(int matchdayNumber) {
-    final v = _matchdayMatchesByDay[matchdayNumber];
-    if (v == null || v.isEmpty) return null;
-    return v;
-  }
-
-  Future<void> saveMatchdayMatchesSnapshot({
-    required int matchdayNumber,
-    required List<PredictionMatch> matches,
-  }) async {
-    await ensureMatchdayMatchesLoaded();
-
-    _matchdayMatchesByDay[matchdayNumber] = List<PredictionMatch>.of(matches);
-
-    final encoded = <String, dynamic>{
-      for (final e in _matchdayMatchesByDay.entries)
-        e.key.toString(): e.value.map(_predictionMatchToSnapshot).toList(),
-    };
-
-    final prefs = _prefs!;
-    await prefs.setString(_kMatchdayMatchesByDayScoped, jsonEncode(encoded));
-    notifyListeners();
-  }
-
-  Map<String, dynamic> _predictionMatchToSnapshot(PredictionMatch m) {
-    return {
-      'id': m.id,
-      'kickoff': m.kickoff.toIso8601String(),
-      'home': normalizeSerieATeamName(m.homeTeam),
-      'away': normalizeSerieATeamName(m.awayTeam),
-      if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
-      if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
-      if (m.homeGoals != null) 'homeGoals': m.homeGoals,
-      if (m.awayGoals != null) 'awayGoals': m.awayGoals,
-      if (m.statusShort != null && m.statusShort!.isNotEmpty)
-        'statusShort': m.statusShort,
-      if (m.liveEvents.isNotEmpty)
-        'events': m.liveEvents
-            .map(
-              (e) => {
-                'minute': e.minute,
-                if (e.extraMinute != null) 'extraMinute': e.extraMinute,
-                'type': e.type,
-                if (e.detail != null && e.detail!.isNotEmpty)
-                  'detail': e.detail,
-                if (e.teamName != null && e.teamName!.isNotEmpty)
-                  'teamName': e.teamName,
-                if (e.playerName != null && e.playerName!.isNotEmpty)
-                  'playerName': e.playerName,
-                if (e.assistName != null && e.assistName!.isNotEmpty)
-                  'assistName': e.assistName,
-              },
-            )
-            .toList(),
-      'odds': {
-        'home': m.odds.home,
-        'draw': m.odds.draw,
-        'away': m.odds.away,
-        'homeDraw': m.odds.homeDraw,
-        'drawAway': m.odds.drawAway,
-        'homeAway': m.odds.homeAway,
-      },
-    };
-  }
-
-  PredictionMatch _predictionMatchFromSnapshot(Map<String, dynamic> j) {
-    final odds = j['odds'] as Map<String, dynamic>;
-    final rawStatus = j['statusShort']?.toString().trim();
-    final rawEvents = (j['events'] as List<dynamic>? ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
-    return PredictionMatch(
-      id: j['id'] as String,
-      kickoff: DateTime.parse(j['kickoff'] as String).toLocal(),
-      homeTeam: normalizeSerieATeamName(j['home'] as String),
-      awayTeam: normalizeSerieATeamName(j['away'] as String),
-      homeTeamLogo: j['homeLogo'] as String?,
-      awayTeamLogo: j['awayLogo'] as String?,
-      homeGoals: _asNullableInt(j['homeGoals']),
-      awayGoals: _asNullableInt(j['awayGoals']),
-      statusShort: (rawStatus == null || rawStatus.isEmpty) ? null : rawStatus,
-      liveEvents: rawEvents
-          .map((e) {
-            return MatchLiveEvent(
-              minute: _asNullableInt(e['minute']) ?? 0,
-              extraMinute: _asNullableInt(e['extraMinute']),
-              type: e['type']?.toString() ?? 'unknown',
-              detail: e['detail']?.toString(),
-              teamName: e['teamName']?.toString(),
-              playerName: e['playerName']?.toString(),
-              assistName: e['assistName']?.toString(),
-            );
-          })
-          .toList(growable: false),
-      odds: Odds(
-        home: (odds['home'] as num).toDouble(),
-        draw: (odds['draw'] as num).toDouble(),
-        away: (odds['away'] as num).toDouble(),
-        homeDraw: (odds['homeDraw'] as num).toDouble(),
-        drawAway: (odds['drawAway'] as num).toDouble(),
-        homeAway: (odds['homeAway'] as num).toDouble(),
-      ),
-    );
-  }
-
-  int? _asNullableInt(Object? raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString());
   }
 }
