@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
 import 'group_state.dart';
+import 'prediction_state.dart';
 import 'user_profile.dart';
 import '../../features/group/models/group_member.dart';
 import '../../features/scoring/models/match_outcome.dart';
@@ -22,7 +23,6 @@ import '../../features/predictions/models/pick_option.dart';
 import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
-import '../../domain/serie_a/team_name_normalizer.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
@@ -35,14 +35,11 @@ class AppState extends ChangeNotifier {
     return '@$body';
   }
 
-  Map<String, MatchOutcome> cachedPredictionOutcomesByMatchId = {};
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = 'profile.teamName';
   static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
-  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
   static const _kCassandraMatchdayCursorV1 = 'cassandra.matchday.cursor.v1';
   static const int _kCassandraDefaultMatchdayCursor = 20;
-  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
   static const _kDemoSeedV1 = 'demo_seed.v1';
   static const _kFinalizedMatchdaysV1 = 'matchday.finalized.v1';
   static const _kCassandraMatchdayLastAutoBumpFromV1 =
@@ -172,6 +169,9 @@ class AppState extends ChangeNotifier {
 
   // ===== GROUP STATE (delegated) =====
   late final GroupState groupState;
+
+  // ===== PREDICTION STATE (delegated) =====
+  late final PredictionState predictionState;
 
   // Forwarding getters per compatibilità con codice esistente.
   List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
@@ -493,14 +493,17 @@ class AppState extends ChangeNotifier {
     required CassandraLanguage language,
     required PredictionVisibility defaultVisibility,
     required GroupState groupStateInstance,
+    required PredictionState predictionStateInstance,
     int demoSeed = 0,
   }) : _profile = profile,
        _language = language,
        _defaultVisibility = defaultVisibility,
        _demoSeed = demoSeed {
     groupState = groupStateInstance;
-    // Propaga notifiche da GroupState -> AppState listeners.
+    predictionState = predictionStateInstance;
+    // Propaga notifiche da sub-states -> AppState listeners.
     groupState.addListener(notifyListeners);
+    predictionState.addListener(notifyListeners);
   }
 
   /// --- getters usati dal resto dell'app ---
@@ -678,6 +681,7 @@ class AppState extends ChangeNotifier {
     final demoSeed = prefs.getInt(_kDemoSeedV1) ?? 0;
 
     final groupStateInstance = GroupState.fromPrefs(prefs);
+    final predictionStateInstance = PredictionState.fromPrefs(prefs);
     final rememberMeEnabled = prefs.getBool(_kRememberMeEnabled) ?? false;
     final rememberedUid = (prefs.getString(_kRememberedUid) ?? '').trim();
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
@@ -697,6 +701,7 @@ class AppState extends ChangeNotifier {
         language: language,
         defaultVisibility: visibility,
         groupStateInstance: groupStateInstance,
+        predictionStateInstance: predictionStateInstance,
         demoSeed: demoSeed,
       )
       .._rememberMeEnabled = rememberMeEnabled
@@ -725,6 +730,7 @@ class AppState extends ChangeNotifier {
       language: language,
       defaultVisibility: defaultVisibility,
       groupStateInstance: GroupState.inMemory(),
+      predictionStateInstance: PredictionState.inMemory(),
       demoSeed: 0,
     );
   }
@@ -915,6 +921,7 @@ class AppState extends ChangeNotifier {
     _profile = _defaultProfile;
     _currentUserProfileSetupCompleted = false;
     await groupState.clearAll();
+    predictionState.clearAllHistory();
     notifyListeners();
   }
 
@@ -949,6 +956,7 @@ class AppState extends ChangeNotifier {
     _language = CassandraLanguage.system;
     _defaultVisibility = PredictionVisibility.friends;
     await groupState.clearAll();
+    predictionState.clearAllHistory();
     _rememberMeEnabled = false;
     _currentUserProfileSetupCompleted = false;
     _rememberedUid = null;
@@ -974,64 +982,6 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kRememberedPhotoUrl);
     await _prefs.remove(_kRememberedProvider);
   }
-
-  // ===== Runtime cache (NON persistita) =====
-  // Usata per condividere le fixture reali tra pagine (Pronostici, Gruppo, ecc.)
-  // senza rifare fetch e senza scriverle su storage.
-
-  List<PredictionMatch>? _cachedPredictionMatches;
-  bool _cachedPredictionMatchesAreReal = false;
-  DateTime? _cachedPredictionMatchesUpdatedAt;
-
-  // Quote reali (runtime cache per evitare ri-fetch ad ogni apertura)
-  Map<int, ApiFootballFixtureOdds>? _cachedRealOdds;
-  List<ApiFootballStanding> _cachedSeasonStandings =
-      const <ApiFootballStanding>[];
-  DateTime? _cachedSeasonStandingsUpdatedAt;
-  String _cachedSeasonStandingsSignature = '';
-
-  Map<int, ApiFootballFixtureOdds>? get cachedRealOdds => _cachedRealOdds;
-  List<ApiFootballStanding> get cachedSeasonStandings => _cachedSeasonStandings;
-  DateTime? get cachedSeasonStandingsUpdatedAt =>
-      _cachedSeasonStandingsUpdatedAt;
-
-  void setCachedRealOdds(Map<int, ApiFootballFixtureOdds> odds) {
-    _cachedRealOdds = Map.unmodifiable(odds);
-  }
-
-  String _standingsSignature(List<ApiFootballStanding> standings) {
-    if (standings.isEmpty) return '';
-    return standings
-        .map((s) => '${s.rank}:${s.teamName}:${s.points}:${s.form ?? ''}')
-        .join('|');
-  }
-
-  void setCachedSeasonStandings(
-    List<ApiFootballStanding> standings, {
-    DateTime? updatedAt,
-  }) {
-    final sig = _standingsSignature(standings);
-    if (updatedAt == null && _cachedSeasonStandingsSignature == sig) {
-      return;
-    }
-
-    final ts = updatedAt ?? DateTime.now();
-    if (_cachedSeasonStandingsSignature == sig &&
-        _cachedSeasonStandingsUpdatedAt == ts) {
-      return;
-    }
-
-    _cachedSeasonStandings = List<ApiFootballStanding>.unmodifiable(standings);
-    _cachedSeasonStandingsUpdatedAt = ts;
-    _cachedSeasonStandingsSignature = sig;
-    notifyListeners();
-  }
-
-  List<PredictionMatch>? get cachedPredictionMatches =>
-      _cachedPredictionMatches;
-  bool get cachedPredictionMatchesAreReal => _cachedPredictionMatchesAreReal;
-  DateTime? get cachedPredictionMatchesUpdatedAt =>
-      _cachedPredictionMatchesUpdatedAt;
 
   // ===== MatchdayProgress (runtime, non persistito) =====
   final Map<int, MatchdayProgress> _matchdayProgressByDay = {};
@@ -1093,233 +1043,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void setCachedPredictionMatches(
-    List<PredictionMatch> matches, {
-    required bool isReal,
-    DateTime? updatedAt,
-  }) {
-    _cachedPredictionMatches = List.unmodifiable(matches);
-    cachedPredictionOutcomesByMatchId = {};
-    _cachedPredictionMatchesAreReal = isReal;
-    _cachedPredictionMatchesUpdatedAt = updatedAt ?? DateTime.now();
-    notifyListeners();
-  }
-
-  void clearCachedPredictionMatches() {
-    _cachedPredictionMatches = null;
-    cachedPredictionOutcomesByMatchId = {};
-    _cachedPredictionMatchesAreReal = false;
-    _cachedPredictionMatchesUpdatedAt = null;
-    notifyListeners();
-  }
-
-  void clearCachedPredictionOutcomes() {
-    cachedPredictionOutcomesByMatchId = {};
-    notifyListeners();
-  }
-
-  void clearAllPredictionCache() {
-    _cachedPredictionMatches = null;
-    _cachedPredictionMatchesAreReal = false;
-    _cachedPredictionMatchesUpdatedAt = null;
-    cachedPredictionOutcomesByMatchId = {};
-    _cachedSeasonStandings = const <ApiFootballStanding>[];
-    _cachedSeasonStandingsUpdatedAt = null;
-    _cachedSeasonStandingsSignature = '';
-    notifyListeners();
-  }
-
-  void setCachedPredictionOutcomesByMatchId(
-    Map<String, MatchOutcome> outcomes,
-  ) {
-    cachedPredictionOutcomesByMatchId = Map.unmodifiable(outcomes);
-    notifyListeners();
-  }
-
-  // ===== MATCHDAY RECENT (runtime, non persistito) =====
-  // Serve per mostrare "pronostici passati" corretti anche quando il cursor
-  // viene fast-forwardato (es. 20 -> 21) e per gestire recuperi (matchday parziale).
-  final Map<int, List<PredictionMatch>> _recentMatchesByMatchday = {};
-  final Map<int, Map<String, MatchOutcome>> _recentOutcomesByMatchday = {};
-
-  Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
-      _recentMatchesByMatchday;
-  Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
-      _recentOutcomesByMatchday;
-
-  void _pruneRecentMatchdayData({int maxEntries = 10}) {
-    final allDays = <int>{
-      ..._recentMatchesByMatchday.keys,
-      ..._recentOutcomesByMatchday.keys,
-    }.toList()..sort((a, b) => b.compareTo(a));
-    if (allDays.length <= maxEntries) return;
-
-    for (final day in allDays.skip(maxEntries)) {
-      _recentMatchesByMatchday.remove(day);
-      _recentOutcomesByMatchday.remove(day);
-    }
-  }
-
-  void setRecentMatchdayDataBulk({
-    required Map<int, List<PredictionMatch>> matchesByMatchday,
-    required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
-    bool replace = false,
-  }) {
-    if (replace) {
-      _recentMatchesByMatchday.clear();
-      _recentOutcomesByMatchday.clear();
-    }
-
-    for (final e in matchesByMatchday.entries) {
-      _recentMatchesByMatchday[e.key] = List<PredictionMatch>.unmodifiable(
-        e.value,
-      );
-    }
-    for (final e in outcomesByMatchday.entries) {
-      _recentOutcomesByMatchday[e.key] = Map<String, MatchOutcome>.unmodifiable(
-        e.value,
-      );
-    }
-    _pruneRecentMatchdayData();
-
-    notifyListeners();
-  }
-
-  // ===== Pronostici utente (persistiti) =====
-  static const String _kCurrentUserPicksByMatchIdV1 =
-      'cassandra.current_user_picks_by_match_id_v1';
-  bool _currentUserPicksLoaded = false;
-  Map<String, PickOption> currentUserPicksByMatchId =
-      const <String, PickOption>{};
-
-  void ensureCurrentUserPicksLoaded() {
-    if (_currentUserPicksLoaded) return;
-    _currentUserPicksLoaded = true;
-
-    final raw = _prefs?.getString(_kCurrentUserPicksByMatchIdV1);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      final map = <String, PickOption>{};
-      for (final entry in decoded.entries) {
-        final k = entry.key;
-        final v = entry.value;
-        if (k is! String || v is! String) continue;
-
-        try {
-          final pick = PickOption.values.byName(v);
-          if (pick != PickOption.none) {
-            map[k] = pick;
-          }
-        } catch (_) {
-          // ignore valori sconosciuti
-        }
-      }
-
-      currentUserPicksByMatchId = Map.unmodifiable(map);
-    } catch (_) {
-      // ignore JSON rotto
-    }
-  }
-
-  // ===== PICKS STORICO (per matchday) =====
-  bool _currentUserPicksHistoryLoaded = false;
   bool _hydratingCurrentUserHistoryFromFirestore = false;
   String? _hydratedCurrentUserHistoryKey;
-  final Map<int, Map<String, PickOption>> _currentUserPicksByMatchday = {};
-
-  Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
-      _currentUserPicksByMatchday;
-
-  bool hasSavedPicksForMatchday(int dayNumber) {
-    final m = _currentUserPicksByMatchday[dayNumber];
-    return m != null && m.isNotEmpty;
-  }
-
-  Map<String, PickOption> currentUserPicksForMatchday(int dayNumber) {
-    return _currentUserPicksByMatchday[dayNumber] ?? const {};
-  }
-
-  void ensureCurrentUserPicksHistoryLoaded() {
-    if (_currentUserPicksHistoryLoaded) return;
-    _currentUserPicksHistoryLoaded = true;
-
-    final raw = _prefs?.getString(_kCurrentUserPicksByMatchday);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      for (final entry in decoded.entries) {
-        final day = int.tryParse(entry.key.toString());
-        if (day == null) continue;
-
-        final v = entry.value;
-        if (v is! Map) continue;
-
-        final picks = <String, PickOption>{};
-        for (final e2 in v.entries) {
-          final matchId = e2.key.toString();
-          final s = e2.value;
-          if (s is! String) continue;
-          try {
-            picks[matchId] = PickOption.values.byName(s);
-          } catch (_) {
-            // ignore unknown
-          }
-        }
-        if (picks.isNotEmpty) _currentUserPicksByMatchday[day] = picks;
-      }
-    } catch (_) {
-      // ignore corrupted prefs
-    }
-  }
-
-  void saveCurrentUserPicksHistory({
-    required int dayNumber,
-    required Map<String, PickOption> picksByMatchId,
-  }) {
-    ensureCurrentUserPicksHistoryLoaded();
-
-    // salva snapshot (copia)
-    _currentUserPicksByMatchday[dayNumber] = Map<String, PickOption>.from(
-      picksByMatchId,
-    );
-
-    _persistCurrentUserPicksHistoryToPrefs();
-
-    notifyListeners();
-  }
-
-  void _persistCurrentUserPicksHistoryToPrefs() {
-    final out = <String, Object?>{};
-    for (final e in _currentUserPicksByMatchday.entries) {
-      out[e.key.toString()] = {
-        for (final p in e.value.entries) p.key: p.value.name,
-      };
-    }
-
-    try {
-      _prefs?.setString(_kCurrentUserPicksByMatchday, jsonEncode(out));
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  void clearCurrentUserPicksHistory() {
-    _currentUserPicksByMatchday.clear();
-    try {
-      _prefs?.remove(_kCurrentUserPicksByMatchday);
-    } catch (_) {
-      // ignore
-    }
-
-    notifyListeners();
-  }
 
   /// Fire-and-forget: upload picks per questa giornata su Firestore.
   void submitPicksToFirestore({
@@ -1443,27 +1168,26 @@ class AppState extends ChangeNotifier {
         seasonKey: currentSeasonKey,
       );
 
-      ensureCurrentUserPicksHistoryLoaded();
-      ensureOutcomesHistoryLoaded();
-      await ensureMatchdayMatchesLoaded();
+      predictionState.ensureCurrentUserPicksHistoryLoaded();
+      predictionState.ensureOutcomesHistoryLoaded();
+      await predictionState.ensureMatchdayMatchesLoaded();
 
       var picksChanged = false;
       final dayNumbers = <int>{};
       for (final doc in picksDocs) {
         if (doc.dayNumber <= 0 || doc.picksByMatchId.isEmpty) continue;
         dayNumbers.add(doc.dayNumber);
-        final existing = _currentUserPicksByMatchday[doc.dayNumber];
+        final existing =
+            predictionState.currentUserPicksByMatchday[doc.dayNumber];
         if (existing == null ||
             existing.length != doc.picksByMatchId.length ||
             existing.entries.any((e) => doc.picksByMatchId[e.key] != e.value)) {
-          _currentUserPicksByMatchday[doc.dayNumber] =
-              Map<String, PickOption>.from(doc.picksByMatchId);
+          predictionState.saveCurrentUserPicksHistory(
+            dayNumber: doc.dayNumber,
+            picksByMatchId: doc.picksByMatchId,
+          );
           picksChanged = true;
         }
-      }
-
-      if (picksChanged) {
-        _persistCurrentUserPicksHistoryToPrefs();
       }
 
       final recentMatches = <int, List<PredictionMatch>>{};
@@ -1476,43 +1200,27 @@ class AppState extends ChangeNotifier {
         );
         if (md == null || md.matches.isEmpty) continue;
 
-        _matchesByMatchday[day] = List<PredictionMatch>.unmodifiable(
-          md.matches,
+        await predictionState.saveMatchesHistory(
+          matchdayNumber: day,
+          matches: md.matches,
         );
-        _matchdayMatchesByDay[day] = List<PredictionMatch>.of(md.matches);
+        await predictionState.saveMatchdayMatchesSnapshot(
+          matchdayNumber: day,
+          matches: md.matches,
+        );
         recentMatches[day] = md.matches;
 
         if (md.outcomesByMatchId.isNotEmpty) {
-          _outcomesByMatchday[day] = Map<String, MatchOutcome>.from(
-            md.outcomesByMatchId,
+          predictionState.saveOutcomesHistory(
+            dayNumber: day,
+            outcomesByMatchId: md.outcomesByMatchId,
           );
           recentOutcomes[day] = md.outcomesByMatchId;
         }
       }
 
       if (recentMatches.isNotEmpty || recentOutcomes.isNotEmpty) {
-        final prefs = _prefs;
-        if (prefs != null) {
-          final encoded = <String, dynamic>{
-            for (final e in _matchdayMatchesByDay.entries)
-              e.key.toString(): e.value
-                  .map(_predictionMatchToSnapshot)
-                  .toList(),
-          };
-          await prefs.setString(_kMatchdayMatchesByDayV1, jsonEncode(encoded));
-          final out = <String, Object?>{};
-          for (final e in _outcomesByMatchday.entries) {
-            out[e.key.toString()] = {
-              for (final o in e.value.entries) o.key: o.value.name,
-            };
-          }
-          await prefs.setString(
-            _kPredictionOutcomesByMatchday,
-            jsonEncode(out),
-          );
-        }
-
-        setRecentMatchdayDataBulk(
+        predictionState.setRecentMatchdayDataBulk(
           matchesByMatchday: recentMatches,
           outcomesByMatchday: recentOutcomes,
         );
@@ -1547,20 +1255,21 @@ class AppState extends ChangeNotifier {
       _syncProfileToFirestore();
 
       // 2. Migrate picks
-      ensureCurrentUserPicksHistoryLoaded();
-      ensureOutcomesHistoryLoaded();
+      predictionState.ensureCurrentUserPicksHistoryLoaded();
+      predictionState.ensureOutcomesHistoryLoaded();
 
       final season = currentSeasonKey;
-      for (final entry in _currentUserPicksByMatchday.entries) {
+      for (final entry
+          in predictionState.currentUserPicksByMatchday.entries) {
         final dayNumber = entry.key;
         final picks = entry.value;
         if (picks.isEmpty) continue;
 
         // Compute score if outcomes available
         DayScoreBreakdown? score;
-        final outcomes = _outcomesByMatchday[dayNumber];
-        final matches =
-            _matchesByMatchday[dayNumber] ?? _matchdayMatchesByDay[dayNumber];
+        final outcomes = predictionState.outcomesByMatchday[dayNumber];
+        final matches = predictionState.matchesForMatchday(dayNumber) ??
+            predictionState.savedMatchesForMatchday(dayNumber);
         if (outcomes != null && matches != null && matches.isNotEmpty) {
           score = CassandraScoringEngine.computeDayScore(
             matches: matches,
@@ -1580,13 +1289,14 @@ class AppState extends ChangeNotifier {
       }
 
       // 3. Migrate matchday data (matches + outcomes)
-      ensureMatchdayMatchesLoaded();
-      for (final entry in _matchdayMatchesByDay.entries) {
+      await predictionState.ensureMatchdayMatchesLoaded();
+      for (final entry in predictionState.matchdayMatchesByDay.entries) {
         final dayNumber = entry.key;
         final matches = entry.value;
         if (matches.isEmpty) continue;
 
-        final outcomes = _outcomesByMatchday[dayNumber] ?? {};
+        final outcomes =
+            predictionState.outcomesByMatchday[dayNumber] ?? {};
         await fs.saveMatchdayData(
           seasonKey: season,
           dayNumber: dayNumber,
@@ -1601,464 +1311,171 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ===== OUTCOMES STORICO (per matchday) =====
-  bool _outcomesHistoryLoaded = false;
-  final Map<int, Map<String, MatchOutcome>> _outcomesByMatchday = {};
+  // ===== PREDICTION STATE FORWARDING =====
+  // Forwarding getters/methods per compatibilità con codice esistente.
+  // La logica è ora in PredictionState.
+  //
+  // Questo blocco sostituisce ~700 righe di codice inline.
+  // Vedi prediction_state.dart per l'implementazione.
 
-  // Snapshot match per giornata (storico stabile)
-  Map<int, List<PredictionMatch>> _matchdayMatchesByDay = {};
+  // --- Current user picks ---
+  Map<String, PickOption> get currentUserPicksByMatchId =>
+      predictionState.currentUserPicksByMatchId;
+  void ensureCurrentUserPicksLoaded() =>
+      predictionState.ensureCurrentUserPicksLoaded();
+  void setCurrentUserPick(String matchId, PickOption pick) =>
+      predictionState.setCurrentUserPick(matchId, pick);
+  void clearCurrentUserPicks() => predictionState.clearCurrentUserPicks();
 
+  // --- Picks history ---
+  Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
+      predictionState.currentUserPicksByMatchday;
+  bool hasSavedPicksForMatchday(int dayNumber) =>
+      predictionState.hasSavedPicksForMatchday(dayNumber);
+  Map<String, PickOption> currentUserPicksForMatchday(int dayNumber) =>
+      predictionState.currentUserPicksForMatchday(dayNumber);
+  void ensureCurrentUserPicksHistoryLoaded() =>
+      predictionState.ensureCurrentUserPicksHistoryLoaded();
+  void saveCurrentUserPicksHistory({
+    required int dayNumber,
+    required Map<String, PickOption> picksByMatchId,
+  }) => predictionState.saveCurrentUserPicksHistory(
+    dayNumber: dayNumber,
+    picksByMatchId: picksByMatchId,
+  );
+  void clearCurrentUserPicksHistory() =>
+      predictionState.clearCurrentUserPicksHistory();
+  Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) =>
+      predictionState.picksForCurrentUserForMatchday(matchdayNumber);
+
+  // --- Outcomes history ---
   Map<int, Map<String, MatchOutcome>> get outcomesByMatchday =>
-      _outcomesByMatchday;
-
-  bool hasSavedOutcomesForMatchday(int dayNumber) {
-    final m = _outcomesByMatchday[dayNumber];
-    return m != null && m.isNotEmpty;
-  }
-
-  Map<String, MatchOutcome> outcomesForMatchday(int dayNumber) {
-    return _outcomesByMatchday[dayNumber] ?? const {};
-  }
-
-  void ensureOutcomesHistoryLoaded() {
-    if (_outcomesHistoryLoaded) return;
-    _outcomesHistoryLoaded = true;
-
-    final raw = _prefs?.getString(_kPredictionOutcomesByMatchday);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      for (final entry in decoded.entries) {
-        final day = int.tryParse(entry.key.toString());
-        if (day == null) continue;
-
-        final v = entry.value;
-        if (v is! Map) continue;
-
-        final outcomes = <String, MatchOutcome>{};
-        for (final e2 in v.entries) {
-          final matchId = e2.key.toString();
-          final s = e2.value;
-          if (s is! String) continue;
-          try {
-            outcomes[matchId] = MatchOutcome.values.byName(s);
-          } catch (_) {
-            // ignore unknown
-          }
-        }
-        if (outcomes.isNotEmpty) _outcomesByMatchday[day] = outcomes;
-      }
-    } catch (_) {
-      // ignore corrupted prefs
-    }
-  }
-
+      predictionState.outcomesByMatchday;
+  bool hasSavedOutcomesForMatchday(int dayNumber) =>
+      predictionState.hasSavedOutcomesForMatchday(dayNumber);
+  Map<String, MatchOutcome> outcomesForMatchday(int dayNumber) =>
+      predictionState.outcomesForMatchday(dayNumber);
+  void ensureOutcomesHistoryLoaded() =>
+      predictionState.ensureOutcomesHistoryLoaded();
   void saveOutcomesHistory({
     required int dayNumber,
     required Map<String, MatchOutcome> outcomesByMatchId,
-  }) {
-    ensureOutcomesHistoryLoaded();
-    _outcomesByMatchday[dayNumber] = Map<String, MatchOutcome>.from(
-      outcomesByMatchId,
-    );
+  }) => predictionState.saveOutcomesHistory(
+    dayNumber: dayNumber,
+    outcomesByMatchId: outcomesByMatchId,
+  );
+  void clearOutcomesHistory() => predictionState.clearOutcomesHistory();
 
-    final out = <String, Object?>{};
-    for (final e in _outcomesByMatchday.entries) {
-      out[e.key.toString()] = {
-        for (final o in e.value.entries) o.key: o.value.name,
-      };
-    }
-
-    try {
-      _prefs?.setString(_kPredictionOutcomesByMatchday, jsonEncode(out));
-    } catch (_) {
-      // ignore
-    }
-
-    notifyListeners();
-  }
-
-  void clearOutcomesHistory() {
-    _outcomesByMatchday.clear();
-    try {
-      _prefs?.remove(_kPredictionOutcomesByMatchday);
-    } catch (_) {
-      // ignore
-    }
-    notifyListeners();
-  }
-
-  // ===== MATCHES STORICO (per matchday) =====
-  // Nota: per ora lo teniamo SOLO in-memory.
-  // Per persisterlo su storage serve aggiungere serializzazione JSON a PredictionMatch (+ odds).
-  final Map<int, List<PredictionMatch>> _matchesByMatchday = {};
-
-  Map<int, List<PredictionMatch>> get matchesByMatchday => _matchesByMatchday;
-
+  // --- Matches history ---
+  Map<int, List<PredictionMatch>> get matchesByMatchday =>
+      predictionState.matchesByMatchday;
   List<PredictionMatch>? matchesForMatchday(int matchdayNumber) =>
-      _matchesByMatchday[matchdayNumber];
-
-  void ensureMatchesHistoryLoaded() {
-    // no-op (in-memory only)
-  }
-
+      predictionState.matchesForMatchday(matchdayNumber);
+  void ensureMatchesHistoryLoaded() =>
+      predictionState.ensureMatchesHistoryLoaded();
   Future<void> saveMatchesHistory({
     required int matchdayNumber,
     required List<PredictionMatch> matches,
-  }) async {
-    _matchesByMatchday[matchdayNumber] = List.unmodifiable(matches);
-    notifyListeners();
-  }
+  }) => predictionState.saveMatchesHistory(
+    matchdayNumber: matchdayNumber,
+    matches: matches,
+  );
+  Future<void> clearMatchesHistory() => predictionState.clearMatchesHistory();
 
-  Future<void> clearMatchesHistory() async {
-    _matchesByMatchday.clear();
-    notifyListeners();
-  }
+  // --- Matchday matches snapshots ---
+  Map<int, List<PredictionMatch>> get matchdayMatchesByDay =>
+      predictionState.matchdayMatchesByDay;
+  Future<void> ensureMatchdayMatchesLoaded() =>
+      predictionState.ensureMatchdayMatchesLoaded();
+  bool hasSavedMatchesForMatchday(int matchdayNumber) =>
+      predictionState.hasSavedMatchesForMatchday(matchdayNumber);
+  List<PredictionMatch>? savedMatchesForMatchday(int matchdayNumber) =>
+      predictionState.savedMatchesForMatchday(matchdayNumber);
+  Future<void> saveMatchdayMatchesSnapshot({
+    required int matchdayNumber,
+    required List<PredictionMatch> matches,
+  }) => predictionState.saveMatchdayMatchesSnapshot(
+    matchdayNumber: matchdayNumber,
+    matches: matches,
+  );
 
-  void setCurrentUserPick(String matchId, PickOption pick) {
-    ensureCurrentUserPicksLoaded();
-
-    final next = Map<String, PickOption>.of(currentUserPicksByMatchId);
-    if (pick == PickOption.none) {
-      next.remove(matchId);
-    } else {
-      next[matchId] = pick;
-    }
-
-    currentUserPicksByMatchId = Map.unmodifiable(next);
-    notifyListeners();
-
-    unawaited(_persistCurrentUserPicks());
-  }
-
-  void clearCurrentUserPicks() {
-    _currentUserPicksLoaded = true;
-    currentUserPicksByMatchId = const <String, PickOption>{};
-    notifyListeners();
-
-    final prefs = _prefs;
-    if (prefs == null) return;
-    unawaited(prefs.remove(_kCurrentUserPicksByMatchIdV1));
-  }
-
-  Future<void> _persistCurrentUserPicks() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
-
-    final map = <String, String>{
-      for (final e in currentUserPicksByMatchId.entries) e.key: e.value.name,
-    };
-
-    await prefs.setString(_kCurrentUserPicksByMatchIdV1, jsonEncode(map));
-  }
-
-  // ===== Picks membri simulati (persistiti in locale) =====
-  static const String _kMemberPicksByMemberIdV1 =
-      'cassandra.member_picks_by_member_id_v1';
-
-  bool _memberPicksLoaded = false;
-
-  /// Map: memberId -> (matchId -> pick)
-  Map<String, Map<String, PickOption>> memberPicksByMemberId =
-      const <String, Map<String, PickOption>>{};
-
-  void ensureMemberPicksLoaded() {
-    if (_memberPicksLoaded) return;
-    _memberPicksLoaded = true;
-
-    final raw = _prefs?.getString(_kMemberPicksByMemberIdV1);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-
-      final outer = <String, Map<String, PickOption>>{};
-
-      for (final outerEntry in decoded.entries) {
-        final memberId = outerEntry.key;
-        final v = outerEntry.value;
-
-        if (memberId is! String || v is! Map) continue;
-
-        final inner = <String, PickOption>{};
-
-        for (final innerEntry in v.entries) {
-          final matchId = innerEntry.key;
-          final pickName = innerEntry.value;
-
-          if (matchId is! String || pickName is! String) continue;
-
-          try {
-            final pick = PickOption.values.byName(pickName);
-            if (pick != PickOption.none) {
-              inner[matchId] = pick;
-            }
-          } catch (_) {
-            // ignore valori sconosciuti
-          }
-        }
-
-        if (inner.isNotEmpty) {
-          outer[memberId] = Map.unmodifiable(inner);
-        }
-      }
-
-      memberPicksByMemberId = Map.unmodifiable(outer);
-    } catch (_) {
-      // ignore JSON rotto
-    }
-  }
-
+  // --- Member picks ---
+  Map<String, Map<String, PickOption>> get memberPicksByMemberId =>
+      predictionState.memberPicksByMemberId;
+  void ensureMemberPicksLoaded() => predictionState.ensureMemberPicksLoaded();
   void setMemberPicksBulk(
     Map<String, Map<String, PickOption>> picksByMemberId, {
     bool replace = false,
-  }) {
-    ensureMemberPicksLoaded();
+  }) => predictionState.setMemberPicksBulk(picksByMemberId, replace: replace);
+  void clearMemberPicks({String? memberId}) =>
+      predictionState.clearMemberPicks(memberId: memberId);
 
-    final next = <String, Map<String, PickOption>>{
-      if (!replace) ...memberPicksByMemberId,
-    };
-
-    for (final entry in picksByMemberId.entries) {
-      final memberId = entry.key;
-      final picks = entry.value;
-
-      if (picks.isEmpty) {
-        next.remove(memberId);
-      } else {
-        next[memberId] = Map.unmodifiable(Map<String, PickOption>.of(picks));
-      }
-    }
-
-    memberPicksByMemberId = Map.unmodifiable(next);
-    notifyListeners();
-
-    unawaited(_persistMemberPicks());
-  }
-
-  void clearMemberPicks({String? memberId}) {
-    ensureMemberPicksLoaded();
-
-    if (memberId == null) {
-      memberPicksByMemberId = const <String, Map<String, PickOption>>{};
-    } else {
-      final next = Map<String, Map<String, PickOption>>.of(
-        memberPicksByMemberId,
-      );
-      next.remove(memberId);
-      memberPicksByMemberId = Map.unmodifiable(next);
-    }
-
-    notifyListeners();
-
-    final prefs = _prefs;
-    if (prefs == null) return;
-
-    if (memberId == null) {
-      unawaited(prefs.remove(_kMemberPicksByMemberIdV1));
-    } else {
-      unawaited(_persistMemberPicks());
-    }
-  }
-
-  Future<void> _persistMemberPicks() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
-
-    final outer = <String, Map<String, String>>{
-      for (final outerEntry in memberPicksByMemberId.entries)
-        outerEntry.key: {
-          for (final innerEntry in outerEntry.value.entries)
-            innerEntry.key: innerEntry.value.name,
-        },
-    };
-
-    await prefs.setString(_kMemberPicksByMemberIdV1, jsonEncode(outer));
-  }
-
+  // --- Runtime cache ---
+  Map<String, MatchOutcome> get cachedPredictionOutcomesByMatchId =>
+      predictionState.cachedPredictionOutcomesByMatchId;
+  List<PredictionMatch>? get cachedPredictionMatches =>
+      predictionState.cachedPredictionMatches;
+  bool get cachedPredictionMatchesAreReal =>
+      predictionState.cachedPredictionMatchesAreReal;
+  DateTime? get cachedPredictionMatchesUpdatedAt =>
+      predictionState.cachedPredictionMatchesUpdatedAt;
+  Map<int, ApiFootballFixtureOdds>? get cachedRealOdds =>
+      predictionState.cachedRealOdds;
+  List<ApiFootballStanding> get cachedSeasonStandings =>
+      predictionState.cachedSeasonStandings;
+  DateTime? get cachedSeasonStandingsUpdatedAt =>
+      predictionState.cachedSeasonStandingsUpdatedAt;
   Map<String, MatchOutcome> get effectivePredictionOutcomesByMatchId =>
-      cachedPredictionOutcomesByMatchId;
+      predictionState.effectivePredictionOutcomesByMatchId;
+
+  void setCachedRealOdds(Map<int, ApiFootballFixtureOdds> odds) =>
+      predictionState.setCachedRealOdds(odds);
+  void setCachedPredictionMatches(
+    List<PredictionMatch> matches, {
+    required bool isReal,
+    DateTime? updatedAt,
+  }) => predictionState.setCachedPredictionMatches(
+    matches,
+    isReal: isReal,
+    updatedAt: updatedAt,
+  );
+  void clearCachedPredictionMatches() =>
+      predictionState.clearCachedPredictionMatches();
+  void clearCachedPredictionOutcomes() =>
+      predictionState.clearCachedPredictionOutcomes();
+  void setCachedPredictionOutcomesByMatchId(
+    Map<String, MatchOutcome> outcomes,
+  ) => predictionState.setCachedPredictionOutcomesByMatchId(outcomes);
+  void setCachedSeasonStandings(
+    List<ApiFootballStanding> standings, {
+    DateTime? updatedAt,
+  }) => predictionState.setCachedSeasonStandings(
+    standings,
+    updatedAt: updatedAt,
+  );
+  void clearAllPredictionCache() => predictionState.clearAllPredictionCache();
+
+  // --- Recent matchday data ---
+  Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
+      predictionState.recentMatchesByMatchday;
+  Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
+      predictionState.recentOutcomesByMatchday;
+  void setRecentMatchdayDataBulk({
+    required Map<int, List<PredictionMatch>> matchesByMatchday,
+    required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
+    bool replace = false,
+  }) => predictionState.setRecentMatchdayDataBulk(
+    matchesByMatchday: matchesByMatchday,
+    outcomesByMatchday: outcomesByMatchday,
+    replace: replace,
+  );
+
+  // --- Clear all / Demo ---
+  void clearAllHistory() => predictionState.clearAllHistory();
 
   Future<void> bumpDemoSeed() async {
     _demoSeed = _demoSeed + 1;
     await _prefs?.setInt(_kDemoSeedV1, _demoSeed);
     notifyListeners();
-  }
-
-  void clearAllHistory() {
-    ensureCurrentUserPicksLoaded();
-    ensureCurrentUserPicksHistoryLoaded();
-    ensureOutcomesHistoryLoaded();
-    ensureMemberPicksLoaded();
-
-    currentUserPicksByMatchId = const <String, PickOption>{};
-    _currentUserPicksByMatchday.clear();
-    _outcomesByMatchday.clear();
-    memberPicksByMemberId = const <String, Map<String, PickOption>>{};
-
-    _prefs?.remove(_kCurrentUserPicksByMatchIdV1);
-    _prefs?.remove(_kCurrentUserPicksByMatchday);
-    _prefs?.remove(_kPredictionOutcomesByMatchday);
-    _prefs?.remove(_kMemberPicksByMemberIdV1);
-
-    notifyListeners();
-  }
-
-  /// Ritorna i pick dell'utente per una giornata (se abbiamo uno snapshot salvato).
-  /// Fallback: pick correnti (giornata live).
-  Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) {
-    try {
-      // Accesso "robusto": se il campo/getter non esiste, non rompiamo la build.
-      final dynamic self = this;
-      final byMatchday =
-          self.currentUserPicksByMatchday as Map<int, Map<String, PickOption>>;
-      final saved = byMatchday[matchdayNumber];
-      if (saved != null) return saved;
-    } catch (_) {}
-    return currentUserPicksByMatchId;
-  }
-
-  static const String _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
-
-  Future<void> ensureMatchdayMatchesLoaded() async {
-    if (_matchdayMatchesByDay.isNotEmpty) return;
-
-    final prefs = _prefs!;
-    final raw = prefs.getString(_kMatchdayMatchesByDayV1);
-    if (raw == null || raw.isEmpty) return;
-
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    final map = <int, List<PredictionMatch>>{};
-
-    for (final e in decoded.entries) {
-      final day = int.tryParse(e.key);
-      if (day == null) continue;
-      final list = (e.value as List).cast<Map<String, dynamic>>();
-      map[day] = list.map(_predictionMatchFromSnapshot).toList();
-    }
-
-    _matchdayMatchesByDay = map;
-  }
-
-  bool hasSavedMatchesForMatchday(int matchdayNumber) {
-    return _matchdayMatchesByDay.containsKey(matchdayNumber) &&
-        _matchdayMatchesByDay[matchdayNumber]!.isNotEmpty;
-  }
-
-  List<PredictionMatch>? savedMatchesForMatchday(int matchdayNumber) {
-    final v = _matchdayMatchesByDay[matchdayNumber];
-    if (v == null || v.isEmpty) return null;
-    return v;
-  }
-
-  Future<void> saveMatchdayMatchesSnapshot({
-    required int matchdayNumber,
-    required List<PredictionMatch> matches,
-  }) async {
-    await ensureMatchdayMatchesLoaded();
-
-    _matchdayMatchesByDay[matchdayNumber] = List<PredictionMatch>.of(matches);
-
-    final encoded = <String, dynamic>{
-      for (final e in _matchdayMatchesByDay.entries)
-        e.key.toString(): e.value.map(_predictionMatchToSnapshot).toList(),
-    };
-
-    final prefs = _prefs!;
-    await prefs.setString(_kMatchdayMatchesByDayV1, jsonEncode(encoded));
-    notifyListeners();
-  }
-
-  Map<String, dynamic> _predictionMatchToSnapshot(PredictionMatch m) {
-    return {
-      'id': m.id,
-      'kickoff': m.kickoff.toIso8601String(),
-      'home': normalizeSerieATeamName(m.homeTeam),
-      'away': normalizeSerieATeamName(m.awayTeam),
-      if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
-      if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
-      if (m.homeGoals != null) 'homeGoals': m.homeGoals,
-      if (m.awayGoals != null) 'awayGoals': m.awayGoals,
-      if (m.statusShort != null && m.statusShort!.isNotEmpty)
-        'statusShort': m.statusShort,
-      if (m.liveEvents.isNotEmpty)
-        'events': m.liveEvents
-            .map(
-              (e) => {
-                'minute': e.minute,
-                if (e.extraMinute != null) 'extraMinute': e.extraMinute,
-                'type': e.type,
-                if (e.detail != null && e.detail!.isNotEmpty)
-                  'detail': e.detail,
-                if (e.teamName != null && e.teamName!.isNotEmpty)
-                  'teamName': e.teamName,
-                if (e.playerName != null && e.playerName!.isNotEmpty)
-                  'playerName': e.playerName,
-                if (e.assistName != null && e.assistName!.isNotEmpty)
-                  'assistName': e.assistName,
-              },
-            )
-            .toList(),
-      'odds': {
-        'home': m.odds.home,
-        'draw': m.odds.draw,
-        'away': m.odds.away,
-        'homeDraw': m.odds.homeDraw,
-        'drawAway': m.odds.drawAway,
-        'homeAway': m.odds.homeAway,
-      },
-    };
-  }
-
-  PredictionMatch _predictionMatchFromSnapshot(Map<String, dynamic> j) {
-    final odds = j['odds'] as Map<String, dynamic>;
-    final rawStatus = j['statusShort']?.toString().trim();
-    final rawEvents = (j['events'] as List<dynamic>? ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
-    return PredictionMatch(
-      id: j['id'] as String,
-      kickoff: DateTime.parse(j['kickoff'] as String).toLocal(),
-      homeTeam: normalizeSerieATeamName(j['home'] as String),
-      awayTeam: normalizeSerieATeamName(j['away'] as String),
-      homeTeamLogo: j['homeLogo'] as String?,
-      awayTeamLogo: j['awayLogo'] as String?,
-      homeGoals: _asNullableInt(j['homeGoals']),
-      awayGoals: _asNullableInt(j['awayGoals']),
-      statusShort: (rawStatus == null || rawStatus.isEmpty) ? null : rawStatus,
-      liveEvents: rawEvents
-          .map((e) {
-            return MatchLiveEvent(
-              minute: _asNullableInt(e['minute']) ?? 0,
-              extraMinute: _asNullableInt(e['extraMinute']),
-              type: e['type']?.toString() ?? 'unknown',
-              detail: e['detail']?.toString(),
-              teamName: e['teamName']?.toString(),
-              playerName: e['playerName']?.toString(),
-              assistName: e['assistName']?.toString(),
-            );
-          })
-          .toList(growable: false),
-      odds: Odds(
-        home: (odds['home'] as num).toDouble(),
-        draw: (odds['draw'] as num).toDouble(),
-        away: (odds['away'] as num).toDouble(),
-        homeDraw: (odds['homeDraw'] as num).toDouble(),
-        drawAway: (odds['drawAway'] as num).toDouble(),
-        homeAway: (odds['homeAway'] as num).toDouble(),
-      ),
-    );
-  }
-
-  int? _asNullableInt(Object? raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString());
   }
 }
