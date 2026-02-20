@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
@@ -63,6 +65,8 @@ class _PredictionsPageState extends State<PredictionsPage>
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
   bool _didLoadFixtures = false;
+  Timer? _lockRefreshTimer;
+  DateTime? _lockRefreshTarget;
   List<ApiFootballStanding>? _standings;
   final Map<String, PickOption> _picks = {};
   int _segment = 0; // 0 = futuri, 1 = passati
@@ -82,6 +86,8 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (kDebugMode) {
       debugPrint('[predictions] dispose ${identityHashCode(this)}');
     }
+    _lockRefreshTimer?.cancel();
+    _lockRefreshTimer = null;
     super.dispose();
   }
 
@@ -122,6 +128,31 @@ class _PredictionsPageState extends State<PredictionsPage>
   DateTime? get _lockTime =>
       _firstKickoff?.subtract(const Duration(minutes: 30));
   bool get _locked => _lockTime != null && DateTime.now().isAfter(_lockTime!);
+
+  void _scheduleLockRefreshIfNeeded() {
+    final lockTime = _lockTime;
+    if (lockTime == null) {
+      _lockRefreshTimer?.cancel();
+      _lockRefreshTimer = null;
+      _lockRefreshTarget = null;
+      return;
+    }
+
+    if (_lockRefreshTarget == lockTime && _lockRefreshTimer != null) return;
+
+    _lockRefreshTimer?.cancel();
+    _lockRefreshTarget = lockTime;
+    final now = DateTime.now();
+    final delay = lockTime.difference(now);
+    if (delay <= Duration.zero) return;
+
+    _lockRefreshTimer = Timer(delay + const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      setState(() {});
+      _lockRefreshTimer = null;
+      _lockRefreshTarget = null;
+    });
+  }
 
   String _capitalize(String value) {
     if (value.isEmpty) return value;
@@ -607,6 +638,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    _scheduleLockRefreshIfNeeded();
 
     final appState = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;

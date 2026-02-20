@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -10,6 +10,8 @@ import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/firestore/models/chat_message_document.dart';
 import '../../services/firestore/firestore_service.dart';
+
+String _encodeImageBase64(Uint8List bytes) => base64Encode(bytes);
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -21,6 +23,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage>
     with AutomaticKeepAliveClientMixin<ChatPage> {
   static const _maxImageBytes = 380000;
+  static const _maxTextChars = 500;
 
   final _inputController = TextEditingController();
   final _inputFocusNode = FocusNode();
@@ -49,6 +52,12 @@ class _ChatPageState extends State<ChatPage>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMessagesBindingFromScope();
+  }
+
+  @override
   void dispose() {
     _messagesSub?.cancel();
     _messagesSub = null;
@@ -58,11 +67,25 @@ class _ChatPageState extends State<ChatPage>
     super.dispose();
   }
 
+  void _syncMessagesBindingFromScope() {
+    final app = CassandraScope.of(context);
+    final fs = app.firestoreService;
+    final groupId = app.activeGroupId;
+    if (fs != null && groupId != null) {
+      _bindMessagesStream(fs, groupId);
+    } else {
+      _unbindMessagesStream();
+    }
+  }
+
   Future<void> _sendText() async {
     final app = CassandraScope.of(context);
     final fs = app.firestoreService;
     final groupId = app.activeGroupId;
-    final text = _inputController.text.trim();
+    final trimmed = _inputController.text.trim();
+    final text = trimmed.length > _maxTextChars
+        ? trimmed.substring(0, _maxTextChars)
+        : trimmed;
     if (fs == null || groupId == null || text.isEmpty || _sending) return;
 
     _pendingScrollToBottom = true;
@@ -106,7 +129,7 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    final imageBase64 = base64Encode(bytes);
+    final imageBase64 = await compute(_encodeImageBase64, bytes);
     _pendingScrollToBottom = true;
     setState(() => _sending = true);
     try {
@@ -219,11 +242,8 @@ class _ChatPageState extends State<ChatPage>
 
   String _signatureFor(List<GroupChatMessageDocument> messages) {
     if (messages.isEmpty) return 'empty';
-    final first = messages.first;
-    final last = messages.last;
-    return '${messages.length}|${first.id}|${last.id}|'
-        '${first.createdAt.millisecondsSinceEpoch}|'
-        '${last.createdAt.millisecondsSinceEpoch}';
+    final ids = messages.map((m) => m.id).join(',');
+    return '${messages.length}|$ids';
   }
 
   String _formatTime(DateTime dateTime) {
@@ -239,11 +259,6 @@ class _ChatPageState extends State<ChatPage>
     final l10n = AppLocalizations.of(context)!;
     final fs = app.firestoreService;
     final groupId = app.activeGroupId;
-    if (fs != null && groupId != null) {
-      _bindMessagesStream(fs, groupId);
-    } else {
-      _unbindMessagesStream();
-    }
 
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
     if (keyboardVisible && !_keyboardVisible) {

@@ -28,12 +28,22 @@ import '../../services/api_football/models/api_football_standing.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart';
 
 class AppState extends ChangeNotifier {
+  static const Duration _kProfileSyncDebounce = Duration(milliseconds: 450);
+  static const Duration _kHistoryHydrationTimeout = Duration(seconds: 12);
+  static const int _kHistoryHydrationAttempts = 2;
+  static const int _kMaxDisplayNameLength = 40;
+  static const int _kMaxHandleLength = 24;
+  static const int _kMaxFavoriteTeamLength = 40;
+
   static String _normalizeHandle(String raw, {String fallback = '@cassandra'}) {
     final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
     if (compact.isEmpty || compact == '@') return fallback;
     final body = compact.startsWith('@') ? compact.substring(1) : compact;
     if (body.isEmpty) return fallback;
-    return '@$body';
+    final limited = body.length > _kMaxHandleLength
+        ? body.substring(0, _kMaxHandleLength)
+        : body;
+    return '@$limited';
   }
 
   // Chiavi "nuove" (più pulite)
@@ -174,7 +184,14 @@ class AppState extends ChangeNotifier {
 
     if ((remoteGroupIds?.isNotEmpty ?? false) &&
         (groupState.groupName == null || groupState.groupInviteCode == null)) {
-      unawaited(refreshActiveGroupMetadataFromFirestore().catchError((_) {}));
+      unawaited(
+        refreshActiveGroupMetadataFromFirestore().catchError((
+          Object e,
+          StackTrace st,
+        ) {
+          _recordBackendError(e, st);
+        }),
+      );
     }
   }
 
@@ -190,37 +207,83 @@ class AppState extends ChangeNotifier {
   // Forwarding getters per compatibilità con codice esistente.
   List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
 
-  /// Fire-and-forget: sync full user profile to Firestore.
+  Timer? _profileSyncDebounceTimer;
+  bool _profileSyncInFlight = false;
+  bool _profileSyncPending = false;
+  String? _lastBackendSyncError;
+  DateTime? _lastBackendSyncErrorAt;
+
+  String? get lastBackendSyncError => _lastBackendSyncError;
+  DateTime? get lastBackendSyncErrorAt => _lastBackendSyncErrorAt;
+
+  void _recordBackendError(Object error, [StackTrace? st]) {
+    final message = error.toString();
+    _lastBackendSyncError = message;
+    _lastBackendSyncErrorAt = DateTime.now();
+    if (kDebugMode) {
+      debugPrint('[backend-sync] $message');
+      if (st != null) debugPrint('$st');
+    }
+    notifyListeners();
+  }
+
+  /// Fire-and-forget (debounced): sync full user profile to Firestore.
   void _syncProfileToFirestore() {
+    _profileSyncPending = true;
+    _profileSyncDebounceTimer?.cancel();
+    _profileSyncDebounceTimer = Timer(_kProfileSyncDebounce, () {
+      unawaited(_flushProfileSyncToFirestore());
+    });
+  }
+
+  Future<void> _flushProfileSyncToFirestore() async {
     final fs = _firestoreService;
-    if (fs == null || !isAuthenticated) return;
+    if (fs == null || !isAuthenticated) {
+      _profileSyncPending = false;
+      return;
+    }
     final uid = _profile.id;
-    if (uid.isEmpty) return;
-    unawaited(
-      fs
-          .setUserProfile(
-            uid: uid,
-            profile: _profile,
-            language: _language,
-            defaultVisibility: _defaultVisibility,
-            avatarSeed: currentUserAvatarSeed,
-          )
-          .catchError((_) {}),
-    );
-    if (groupState.firestoreGroupIds.isNotEmpty) {
-      unawaited(
-        fs
-            .updateGroupMemberProfileInGroups(
-              uid: uid,
-              groupIds: groupState.firestoreGroupIds,
-              displayName: _profile.displayName,
-              teamName: _profile.teamName,
-              avatarSeed: currentUserAvatarSeed,
-              favoriteTeam: _profile.favoriteTeam,
-              photoUrl: _profile.photoUrl,
-            )
-            .catchError((_) {}),
+    if (uid.isEmpty) {
+      _profileSyncPending = false;
+      return;
+    }
+
+    if (_profileSyncInFlight) return;
+    _profileSyncInFlight = true;
+    _profileSyncPending = false;
+    try {
+      await fs.setUserProfile(
+        uid: uid,
+        profile: _profile,
+        language: _language,
+        defaultVisibility: _defaultVisibility,
+        avatarSeed: currentUserAvatarSeed,
       );
+
+      if (groupState.firestoreGroupIds.isNotEmpty) {
+        await fs.updateGroupMemberProfileInGroups(
+          uid: uid,
+          groupIds: groupState.firestoreGroupIds,
+          displayName: _profile.displayName,
+          teamName: _profile.teamName,
+          avatarSeed: currentUserAvatarSeed,
+          favoriteTeam: _profile.favoriteTeam,
+          photoUrl: _profile.photoUrl,
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[profile-sync] failed: $e');
+        debugPrint('$st');
+      }
+    } finally {
+      _profileSyncInFlight = false;
+      if (_profileSyncPending) {
+        _profileSyncDebounceTimer?.cancel();
+        _profileSyncDebounceTimer = Timer(_kProfileSyncDebounce, () {
+          unawaited(_flushProfileSyncToFirestore());
+        });
+      }
     }
   }
 
@@ -265,7 +328,11 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated) return;
     final uid = _profile.id;
     if (uid.isEmpty) return;
-    unawaited(fs.updateUserField(uid, fields).catchError((_) {}));
+    unawaited(
+      fs.updateUserField(uid, fields).catchError((Object e, StackTrace st) {
+        _recordBackendError(e, st);
+      }),
+    );
   }
 
   bool get isAuthenticated => _authService?.isSignedIn ?? false;
@@ -662,7 +729,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateDisplayName(String value) async {
-    final cleaned = value.trim();
+    var cleaned = value.trim();
+    if (cleaned.length > _kMaxDisplayNameLength) {
+      cleaned = cleaned.substring(0, _kMaxDisplayNameLength);
+    }
     if (cleaned.isEmpty) return;
     if (cleaned == _profile.displayName) return;
 
@@ -699,7 +769,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateFavoriteTeam(String value) async {
-    final cleaned = value.trim();
+    var cleaned = value.trim();
+    if (cleaned.length > _kMaxFavoriteTeamLength) {
+      cleaned = cleaned.substring(0, _kMaxFavoriteTeamLength);
+    }
     final stored = cleaned.isEmpty ? null : cleaned;
 
     if (stored == _profile.favoriteTeam) return;
@@ -800,13 +873,15 @@ class AppState extends ChangeNotifier {
     }
 
     _syncProfileToFirestore();
-    unawaited(hydrateCurrentUserHistoryFromFirestore().catchError((_) {}));
+    _triggerHistoryHydrationWithRetry();
     final token = _devicePushToken;
     if (token != null && token.trim().isNotEmpty) {
       unawaited(
         _firestoreService
             ?.addUserFcmToken(uid: user.uid, token: token)
-            .catchError((_) {}),
+            .catchError((Object e, StackTrace st) {
+              _recordBackendError(e, st);
+            }),
       );
     }
     notifyListeners();
@@ -935,6 +1010,36 @@ class AppState extends ChangeNotifier {
 
   bool _hydratingCurrentUserHistoryFromFirestore = false;
   String? _hydratedCurrentUserHistoryKey;
+  String? _lastHistoryHydrationError;
+  DateTime? _lastHistoryHydrationAttemptAt;
+
+  bool get isHydratingCurrentUserHistoryFromFirestore =>
+      _hydratingCurrentUserHistoryFromFirestore;
+  String? get lastHistoryHydrationError => _lastHistoryHydrationError;
+  DateTime? get lastHistoryHydrationAttemptAt => _lastHistoryHydrationAttemptAt;
+
+  void _triggerHistoryHydrationWithRetry() {
+    unawaited(_hydrateCurrentUserHistoryWithRetry());
+  }
+
+  Future<void> _hydrateCurrentUserHistoryWithRetry() async {
+    for (var attempt = 1; attempt <= _kHistoryHydrationAttempts; attempt++) {
+      try {
+        await hydrateCurrentUserHistoryFromFirestore(
+          force: attempt > 1,
+          throwOnError: true,
+        ).timeout(_kHistoryHydrationTimeout);
+        return;
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[history-hydration] attempt $attempt failed: $e');
+          debugPrint('$st');
+        }
+        if (attempt >= _kHistoryHydrationAttempts) return;
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+    }
+  }
 
   /// Fire-and-forget: upload picks per questa giornata su Firestore.
   void submitPicksToFirestore({
@@ -956,7 +1061,9 @@ class AppState extends ChangeNotifier {
             groupId: activeGroupId,
             score: score,
           )
-          .catchError((_) {}),
+          .catchError((Object e, StackTrace st) {
+            _recordBackendError(e, st);
+          }),
     );
   }
 
@@ -1083,6 +1190,7 @@ class AppState extends ChangeNotifier {
   /// This avoids losing "past predictions" and day scores on new install/device.
   Future<void> hydrateCurrentUserHistoryFromFirestore({
     bool force = false,
+    bool throwOnError = false,
   }) async {
     final fs = _firestoreService;
     final uid = _profile.id.trim();
@@ -1093,10 +1201,12 @@ class AppState extends ChangeNotifier {
     if (!force && _hydratedCurrentUserHistoryKey == hydrationKey) return;
 
     _hydratingCurrentUserHistoryFromFirestore = true;
+    _lastHistoryHydrationAttemptAt = DateTime.now();
     try {
       final picksDocs = await fs.getPicksForUser(
         uid: uid,
         seasonKey: currentSeasonKey,
+        groupId: activeGroupId,
       );
 
       predictionState.ensureCurrentUserPicksHistoryLoaded();
@@ -1160,8 +1270,17 @@ class AppState extends ChangeNotifier {
       }
 
       _hydratedCurrentUserHistoryKey = hydrationKey;
-    } catch (_) {
-      // ignore: best-effort hydration
+      if (_lastHistoryHydrationError != null) {
+        _lastHistoryHydrationError = null;
+        notifyListeners();
+      }
+    } catch (e, st) {
+      _lastHistoryHydrationError = e.toString();
+      if (kDebugMode) {
+        debugPrint('[history-hydration] failed: $e');
+        debugPrint('$st');
+      }
+      if (throwOnError) rethrow;
     } finally {
       _hydratingCurrentUserHistoryFromFirestore = false;
     }

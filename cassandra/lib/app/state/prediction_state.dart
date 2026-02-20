@@ -200,7 +200,8 @@ class PredictionState extends ChangeNotifier {
   // ======================================================================
 
   bool _outcomesHistoryLoaded = false;
-  final Map<int, Map<String, MatchOutcome>> _outcomesByMatchday = {};
+  Map<int, Map<String, MatchOutcome>> _outcomesByMatchday =
+      const <int, Map<String, MatchOutcome>>{};
 
   Map<int, Map<String, MatchOutcome>> get outcomesByMatchday =>
       _outcomesByMatchday;
@@ -225,6 +226,7 @@ class PredictionState extends ChangeNotifier {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return;
 
+      final parsed = <int, Map<String, MatchOutcome>>{};
       for (final entry in decoded.entries) {
         final day = int.tryParse(entry.key.toString());
         if (day == null) continue;
@@ -240,8 +242,11 @@ class PredictionState extends ChangeNotifier {
             outcomes[matchId] = MatchOutcome.values.byName(s);
           } catch (_) {}
         }
-        if (outcomes.isNotEmpty) _outcomesByMatchday[day] = outcomes;
+        if (outcomes.isNotEmpty) {
+          parsed[day] = Map<String, MatchOutcome>.unmodifiable(outcomes);
+        }
       }
+      _outcomesByMatchday = Map.unmodifiable(parsed);
     } catch (_) {}
   }
 
@@ -250,9 +255,11 @@ class PredictionState extends ChangeNotifier {
     required Map<String, MatchOutcome> outcomesByMatchId,
   }) {
     ensureOutcomesHistoryLoaded();
-    _outcomesByMatchday[dayNumber] = Map<String, MatchOutcome>.from(
-      outcomesByMatchId,
+    final next = Map<int, Map<String, MatchOutcome>>.of(_outcomesByMatchday);
+    next[dayNumber] = Map<String, MatchOutcome>.unmodifiable(
+      Map<String, MatchOutcome>.from(outcomesByMatchId),
     );
+    _outcomesByMatchday = Map.unmodifiable(next);
 
     final out = <String, Object?>{};
     for (final e in _outcomesByMatchday.entries) {
@@ -267,7 +274,7 @@ class PredictionState extends ChangeNotifier {
   }
 
   void clearOutcomesHistory() {
-    _outcomesByMatchday.clear();
+    _outcomesByMatchday = const <int, Map<String, MatchOutcome>>{};
     try {
       _prefs?.remove(_kPredictionOutcomesByMatchday);
     } catch (_) {}
@@ -278,7 +285,8 @@ class PredictionState extends ChangeNotifier {
   // MATCHES HISTORY (per matchday, in-memory)
   // ======================================================================
 
-  final Map<int, List<PredictionMatch>> _matchesByMatchday = {};
+  Map<int, List<PredictionMatch>> _matchesByMatchday =
+      const <int, List<PredictionMatch>>{};
 
   Map<int, List<PredictionMatch>> get matchesByMatchday => _matchesByMatchday;
 
@@ -293,12 +301,14 @@ class PredictionState extends ChangeNotifier {
     required int matchdayNumber,
     required List<PredictionMatch> matches,
   }) async {
-    _matchesByMatchday[matchdayNumber] = List.unmodifiable(matches);
+    final next = Map<int, List<PredictionMatch>>.of(_matchesByMatchday);
+    next[matchdayNumber] = List<PredictionMatch>.unmodifiable(matches);
+    _matchesByMatchday = Map.unmodifiable(next);
     notifyListeners();
   }
 
   Future<void> clearMatchesHistory() async {
-    _matchesByMatchday.clear();
+    _matchesByMatchday = const <int, List<PredictionMatch>>{};
     notifyListeners();
   }
 
@@ -575,8 +585,10 @@ class PredictionState extends ChangeNotifier {
   // RECENT MATCHDAY DATA (runtime, non persistito)
   // ======================================================================
 
-  final Map<int, List<PredictionMatch>> _recentMatchesByMatchday = {};
-  final Map<int, Map<String, MatchOutcome>> _recentOutcomesByMatchday = {};
+  Map<int, List<PredictionMatch>> _recentMatchesByMatchday =
+      const <int, List<PredictionMatch>>{};
+  Map<int, Map<String, MatchOutcome>> _recentOutcomesByMatchday =
+      const <int, Map<String, MatchOutcome>>{};
 
   Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
       _recentMatchesByMatchday;
@@ -590,10 +602,15 @@ class PredictionState extends ChangeNotifier {
     }.toList()..sort((a, b) => b.compareTo(a));
     if (allDays.length <= maxEntries) return;
 
-    for (final day in allDays.skip(maxEntries)) {
-      _recentMatchesByMatchday.remove(day);
-      _recentOutcomesByMatchday.remove(day);
-    }
+    final keepDays = allDays.take(maxEntries).toSet();
+    _recentMatchesByMatchday = Map.unmodifiable({
+      for (final e in _recentMatchesByMatchday.entries)
+        if (keepDays.contains(e.key)) e.key: e.value,
+    });
+    _recentOutcomesByMatchday = Map.unmodifiable({
+      for (final e in _recentOutcomesByMatchday.entries)
+        if (keepDays.contains(e.key)) e.key: e.value,
+    });
   }
 
   void setRecentMatchdayDataBulk({
@@ -601,21 +618,26 @@ class PredictionState extends ChangeNotifier {
     required Map<int, Map<String, MatchOutcome>> outcomesByMatchday,
     bool replace = false,
   }) {
+    var nextMatches = replace
+        ? <int, List<PredictionMatch>>{}
+        : Map<int, List<PredictionMatch>>.of(_recentMatchesByMatchday);
+    var nextOutcomes = replace
+        ? <int, Map<String, MatchOutcome>>{}
+        : Map<int, Map<String, MatchOutcome>>.of(_recentOutcomesByMatchday);
+
     if (replace) {
-      _recentMatchesByMatchday.clear();
-      _recentOutcomesByMatchday.clear();
+      nextMatches = <int, List<PredictionMatch>>{};
+      nextOutcomes = <int, Map<String, MatchOutcome>>{};
     }
 
     for (final e in matchesByMatchday.entries) {
-      _recentMatchesByMatchday[e.key] = List<PredictionMatch>.unmodifiable(
-        e.value,
-      );
+      nextMatches[e.key] = List<PredictionMatch>.unmodifiable(e.value);
     }
     for (final e in outcomesByMatchday.entries) {
-      _recentOutcomesByMatchday[e.key] = Map<String, MatchOutcome>.unmodifiable(
-        e.value,
-      );
+      nextOutcomes[e.key] = Map<String, MatchOutcome>.unmodifiable(e.value);
     }
+    _recentMatchesByMatchday = Map.unmodifiable(nextMatches);
+    _recentOutcomesByMatchday = Map.unmodifiable(nextOutcomes);
     _pruneRecentMatchdayData();
     notifyListeners();
   }
@@ -632,7 +654,10 @@ class PredictionState extends ChangeNotifier {
 
     currentUserPicksByMatchId = const <String, PickOption>{};
     _currentUserPicksByMatchday.clear();
-    _outcomesByMatchday.clear();
+    _outcomesByMatchday = const <int, Map<String, MatchOutcome>>{};
+    _matchesByMatchday = const <int, List<PredictionMatch>>{};
+    _recentMatchesByMatchday = const <int, List<PredictionMatch>>{};
+    _recentOutcomesByMatchday = const <int, Map<String, MatchOutcome>>{};
     memberPicksByMemberId = const <String, Map<String, PickOption>>{};
 
     _prefs?.remove(_kCurrentUserPicksByMatchIdV1);

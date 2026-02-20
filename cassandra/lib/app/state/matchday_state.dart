@@ -229,8 +229,9 @@ class MatchdayState extends ChangeNotifier {
         _autoFinalizedFromMatchday != matchdayNumber) {
       _autoFinalizedFromMatchday = matchdayNumber;
       Future.microtask(() async {
-        try {} catch (_) {}
-        isMatchdayFinalized(matchdayNumber);
+        try {
+          await markMatchdayFinalized(matchdayNumber);
+        } catch (_) {}
       });
     }
 

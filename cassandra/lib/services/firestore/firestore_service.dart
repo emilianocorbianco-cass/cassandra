@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../app/state/app_settings.dart';
@@ -14,9 +16,25 @@ import 'models/picks_document.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db;
+  static const Duration _requestTimeout = Duration(seconds: 15);
 
   FirestoreService({FirebaseFirestore? firestore})
     : _db = firestore ?? FirebaseFirestore.instance;
+
+  Future<T> _withTimeout<T>(
+    Future<T> future, {
+    required String operation,
+  }) async {
+    try {
+      return await future.timeout(_requestTimeout);
+    } on TimeoutException catch (_) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'deadline-exceeded',
+        message: 'Request timeout during $operation',
+      );
+    }
+  }
 
   // ===== USER PROFILE =====
 
@@ -44,23 +62,35 @@ class FirestoreService {
       data['groupIds'] = groupIds;
     }
 
-    await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
+    await _withTimeout(
+      _db.collection('users').doc(uid).set(data, SetOptions(merge: true)),
+      operation: 'setUserProfile',
+    );
   }
 
   Future<Map<String, dynamic>?> getUserProfile(String uid) async {
-    final doc = await _db.collection('users').doc(uid).get();
+    final doc = await _withTimeout(
+      _db.collection('users').doc(uid).get(),
+      operation: 'getUserProfile',
+    );
     if (!doc.exists) return null;
     return doc.data();
   }
 
   Future<void> updateUserField(String uid, Map<String, dynamic> fields) async {
     fields['updatedAt'] = FieldValue.serverTimestamp();
-    await _db.collection('users').doc(uid).update(fields);
+    await _withTimeout(
+      _db.collection('users').doc(uid).update(fields),
+      operation: 'updateUserField',
+    );
   }
 
   Future<void> mergeUserField(String uid, Map<String, dynamic> fields) async {
     fields['updatedAt'] = FieldValue.serverTimestamp();
-    await _db.collection('users').doc(uid).set(fields, SetOptions(merge: true));
+    await _withTimeout(
+      _db.collection('users').doc(uid).set(fields, SetOptions(merge: true)),
+      operation: 'mergeUserField',
+    );
   }
 
   Future<void> addUserFcmToken({
@@ -69,10 +99,13 @@ class FirestoreService {
   }) async {
     final cleaned = token.trim();
     if (cleaned.isEmpty) return;
-    await _db.collection('users').doc(uid).set({
-      'fcmTokens': FieldValue.arrayUnion([cleaned]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await _withTimeout(
+      _db.collection('users').doc(uid).set({
+        'fcmTokens': FieldValue.arrayUnion([cleaned]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+      operation: 'addUserFcmToken',
+    );
   }
 
   Future<void> removeUserFcmToken({
@@ -81,10 +114,13 @@ class FirestoreService {
   }) async {
     final cleaned = token.trim();
     if (cleaned.isEmpty) return;
-    await _db.collection('users').doc(uid).set({
-      'fcmTokens': FieldValue.arrayRemove([cleaned]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await _withTimeout(
+      _db.collection('users').doc(uid).set({
+        'fcmTokens': FieldValue.arrayRemove([cleaned]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+      operation: 'removeUserFcmToken',
+    );
   }
 
   // ===== GROUPS =====
@@ -94,29 +130,38 @@ class FirestoreService {
     required String adminUid,
     required String inviteCode,
   }) async {
-    final docRef = await _db.collection('groups').add({
-      'name': name,
-      'inviteCode': inviteCode,
-      'adminUid': adminUid,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-      'memberCount': 0,
-    });
+    final docRef = await _withTimeout(
+      _db.collection('groups').add({
+        'name': name,
+        'inviteCode': inviteCode,
+        'adminUid': adminUid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'memberCount': 0,
+      }),
+      operation: 'createGroup',
+    );
     return docRef.id;
   }
 
   Future<GroupDocument?> getGroupByInviteCode(String code) async {
-    final snap = await _db
-        .collection('groups')
-        .where('inviteCode', isEqualTo: code)
-        .limit(1)
-        .get();
+    final snap = await _withTimeout(
+      _db
+          .collection('groups')
+          .where('inviteCode', isEqualTo: code)
+          .limit(1)
+          .get(),
+      operation: 'getGroupByInviteCode',
+    );
     if (snap.docs.isEmpty) return null;
     return GroupDocument.fromFirestore(snap.docs.first);
   }
 
   Future<GroupDocument?> getGroup(String groupId) async {
-    final doc = await _db.collection('groups').doc(groupId).get();
+    final doc = await _withTimeout(
+      _db.collection('groups').doc(groupId).get(),
+      operation: 'getGroup',
+    );
     if (!doc.exists) return null;
     return GroupDocument.fromFirestore(doc);
   }
@@ -126,10 +171,13 @@ class FirestoreService {
     required String? imageUrl,
   }) async {
     final cleaned = (imageUrl ?? '').trim();
-    await _db.collection('groups').doc(groupId).set({
-      'imageUrl': cleaned.isEmpty ? null : cleaned,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await _withTimeout(
+      _db.collection('groups').doc(groupId).set({
+        'imageUrl': cleaned.isEmpty ? null : cleaned,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+      operation: 'updateGroupImageUrl',
+    );
   }
 
   Future<void> joinGroup({
@@ -271,7 +319,10 @@ class FirestoreService {
     required String adminUid,
   }) async {
     final groupRef = _db.collection('groups').doc(groupId);
-    final groupSnap = await groupRef.get();
+    final groupSnap = await _withTimeout(
+      groupRef.get(),
+      operation: 'deleteGroupAsAdmin.groupGet',
+    );
     if (!groupSnap.exists) return;
 
     final data = groupSnap.data();
@@ -284,7 +335,10 @@ class FirestoreService {
       );
     }
 
-    final membersSnap = await groupRef.collection('members').get();
+    final membersSnap = await _withTimeout(
+      groupRef.collection('members').get(),
+      operation: 'deleteGroupAsAdmin.membersGet',
+    );
     final memberUids = membersSnap.docs
         .map((d) => d.id)
         .toList(growable: false);
@@ -306,15 +360,17 @@ class FirestoreService {
       await batch.commit();
     }
 
-    await groupRef.delete();
+    await _withTimeout(
+      groupRef.delete(),
+      operation: 'deleteGroupAsAdmin.delete',
+    );
   }
 
   Future<List<GroupMemberDocument>> getGroupMembers(String groupId) async {
-    final snap = await _db
-        .collection('groups')
-        .doc(groupId)
-        .collection('members')
-        .get();
+    final snap = await _withTimeout(
+      _db.collection('groups').doc(groupId).collection('members').get(),
+      operation: 'getGroupMembers',
+    );
     return snap.docs.map(GroupMemberDocument.fromFirestore).toList();
   }
 
@@ -342,7 +398,10 @@ class FirestoreService {
     final out = <String, String>{};
     for (final uid in clean) {
       try {
-        final doc = await _db.collection('users').doc(uid).get();
+        final doc = await _withTimeout(
+          _db.collection('users').doc(uid).get(),
+          operation: 'getUserPhotoUrls',
+        );
         if (!doc.exists) continue;
         final data = doc.data();
         final photo = (data?['photoUrl'] as String?)?.trim() ?? '';
@@ -357,19 +416,25 @@ class FirestoreService {
   }
 
   Future<bool> isInviteCodeTaken(String code) async {
-    final snap = await _db
-        .collection('groups')
-        .where('inviteCode', isEqualTo: code)
-        .limit(1)
-        .get();
+    final snap = await _withTimeout(
+      _db
+          .collection('groups')
+          .where('inviteCode', isEqualTo: code)
+          .limit(1)
+          .get(),
+      operation: 'isInviteCodeTaken',
+    );
     return snap.docs.isNotEmpty;
   }
 
   Future<List<String>> findGroupIdsForMember(String uid) async {
-    final snap = await _db
-        .collectionGroup('members')
-        .where(FieldPath.documentId, isEqualTo: uid)
-        .get();
+    final snap = await _withTimeout(
+      _db
+          .collectionGroup('members')
+          .where(FieldPath.documentId, isEqualTo: uid)
+          .get(),
+      operation: 'findGroupIdsForMember',
+    );
 
     final ids = <String>{};
     for (final doc in snap.docs) {
@@ -411,23 +476,63 @@ class FirestoreService {
     String? imageBase64,
   }) async {
     final expiresAt = DateTime.now().toUtc().add(const Duration(hours: 24));
-    await _db.collection('groups').doc(groupId).collection('chatMessages').add({
-      'senderUid': senderUid,
-      'senderDisplayName': senderDisplayName,
-      'senderTeamName': senderTeamName,
-      'type': type.name,
-      if (text != null && text.trim().isNotEmpty) 'text': text.trim(),
-      if (imageBase64 != null && imageBase64.trim().isNotEmpty)
-        'imageBase64': imageBase64.trim(),
-      'createdAt': FieldValue.serverTimestamp(),
-      'expiresAt': Timestamp.fromDate(expiresAt),
-    });
+    await _withTimeout(
+      _db.collection('groups').doc(groupId).collection('chatMessages').add({
+        'senderUid': senderUid,
+        'senderDisplayName': senderDisplayName,
+        'senderTeamName': senderTeamName,
+        'type': type.name,
+        if (text != null && text.trim().isNotEmpty) 'text': text.trim(),
+        if (imageBase64 != null && imageBase64.trim().isNotEmpty)
+          'imageBase64': imageBase64.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(expiresAt),
+      }),
+      operation: 'sendGroupChatMessage',
+    );
   }
 
   // ===== PICKS =====
 
-  String _picksDocId(String uid, String seasonKey, int dayNumber) =>
+  String _legacyPicksDocId(String uid, String seasonKey, int dayNumber) =>
       '${uid}_${seasonKey}_$dayNumber';
+
+  String _normalizedGroupId(String? groupId) {
+    final cleaned = (groupId ?? '').trim();
+    return cleaned.isEmpty ? '' : cleaned;
+  }
+
+  String _picksScopeKey(String? groupId) {
+    final normalized = _normalizedGroupId(groupId);
+    return normalized.isEmpty ? 'nogroup' : normalized;
+  }
+
+  String _picksDocId(
+    String uid,
+    String seasonKey,
+    int dayNumber, {
+    String? groupId,
+  }) => '${uid}_${seasonKey}_${dayNumber}_${_picksScopeKey(groupId)}';
+
+  String _picksDedupeKey(PicksDocument d) {
+    final scopedGroupId = d.groupId?.trim() ?? '';
+    return '${d.uid}|${d.seasonKey}|${d.dayNumber}|$scopedGroupId';
+  }
+
+  List<PicksDocument> _dedupePicksDocs(Iterable<PicksDocument> docs) {
+    final byKey = <String, PicksDocument>{};
+    for (final doc in docs) {
+      final key = _picksDedupeKey(doc);
+      final prev = byKey[key];
+      if (prev == null ||
+          doc.submittedAt.isAfter(prev.submittedAt) ||
+          (doc.submittedAt.isAtSameMomentAs(prev.submittedAt) &&
+              doc.docId.compareTo(prev.docId) > 0)) {
+        byKey[key] = doc;
+      }
+    }
+    return byKey.values.toList(growable: false);
+  }
 
   Future<void> savePicks({
     required String uid,
@@ -438,7 +543,13 @@ class FirestoreService {
     String? groupId,
     Object? score,
   }) async {
-    final docId = _picksDocId(uid, seasonKey, dayNumber);
+    final normalizedGroupId = _normalizedGroupId(groupId);
+    final docId = _picksDocId(
+      uid,
+      seasonKey,
+      dayNumber,
+      groupId: normalizedGroupId,
+    );
     if (score != null) {
       // Intentionally ignored: score is backend-authoritative.
     }
@@ -452,21 +563,66 @@ class FirestoreService {
       },
       'submittedAt': FieldValue.serverTimestamp(),
       'visibility': visibility,
-      if ((groupId ?? '').trim().isNotEmpty) 'groupId': groupId!.trim(),
+      if (normalizedGroupId.isNotEmpty) 'groupId': normalizedGroupId,
     };
     // score/scoredAt are backend-authoritative and must not be written by client.
-    await _db.collection('picks').doc(docId).set(data, SetOptions(merge: true));
+    final picksRef = _db.collection('picks').doc(docId);
+    await _withTimeout(
+      picksRef.set(data, SetOptions(merge: true)),
+      operation: 'savePicks.set',
+    );
+
+    // Backward compatibility: delete legacy unscoped doc only when it is safe.
+    final legacyDocId = _legacyPicksDocId(uid, seasonKey, dayNumber);
+    if (legacyDocId == docId) return;
+    final legacyRef = _db.collection('picks').doc(legacyDocId);
+    final legacy = await _withTimeout(
+      legacyRef.get(),
+      operation: 'savePicks.legacyGet',
+    );
+    if (!legacy.exists) return;
+
+    final legacyGroupId = (legacy.data()?['groupId'] as String?)?.trim() ?? '';
+    final legacyIsSameScope =
+        legacyGroupId.isEmpty || legacyGroupId == normalizedGroupId;
+    if (legacyIsSameScope) {
+      await _withTimeout(
+        legacyRef.delete(),
+        operation: 'savePicks.legacyDelete',
+      );
+    }
   }
 
   Future<PicksDocument?> getPicks({
     required String uid,
     required String seasonKey,
     required int dayNumber,
+    String? groupId,
   }) async {
-    final docId = _picksDocId(uid, seasonKey, dayNumber);
-    final doc = await _db.collection('picks').doc(docId).get();
-    if (!doc.exists) return null;
-    return PicksDocument.fromFirestore(doc);
+    final normalizedGroupId = _normalizedGroupId(groupId);
+    final docId = _picksDocId(
+      uid,
+      seasonKey,
+      dayNumber,
+      groupId: normalizedGroupId,
+    );
+    final doc = await _withTimeout(
+      _db.collection('picks').doc(docId).get(),
+      operation: 'getPicks.scoped',
+    );
+    if (doc.exists) {
+      return PicksDocument.fromFirestore(doc);
+    }
+
+    final legacyDoc = await _withTimeout(
+      _db
+          .collection('picks')
+          .doc(_legacyPicksDocId(uid, seasonKey, dayNumber))
+          .get(),
+      operation: 'getPicks.legacy',
+    );
+    if (!legacyDoc.exists) return null;
+    return PicksDocument.fromFirestore(legacyDoc);
   }
 
   Future<List<PicksDocument>> getPicksForMatchday({
@@ -492,10 +648,13 @@ class FirestoreService {
       if (scopedGroupId.isNotEmpty) {
         query = query.where('groupId', isEqualTo: scopedGroupId);
       }
-      final snap = await query.where('uid', whereIn: chunk).get();
+      final snap = await _withTimeout(
+        query.where('uid', whereIn: chunk).get(),
+        operation: 'getPicksForMatchday',
+      );
       results.addAll(snap.docs.map(PicksDocument.fromFirestore));
     }
-    return results;
+    return _dedupePicksDocs(results);
   }
 
   Stream<List<PicksDocument>> streamPicksForMatchday({
@@ -508,9 +667,8 @@ class FirestoreService {
         .where('dayNumber', isEqualTo: dayNumber)
         .snapshots()
         .map(
-          (snap) => snap.docs
-              .map(PicksDocument.fromFirestore)
-              .toList(growable: false),
+          (snap) =>
+              _dedupePicksDocs(snap.docs.map(PicksDocument.fromFirestore)),
         );
   }
 
@@ -527,8 +685,8 @@ class FirestoreService {
     if (scopedGroupId.isNotEmpty) {
       query = query.where('groupId', isEqualTo: scopedGroupId);
     }
-    final snap = await query.get();
-    return snap.docs.map(PicksDocument.fromFirestore).toList();
+    final snap = await _withTimeout(query.get(), operation: 'getPicksForUser');
+    return _dedupePicksDocs(snap.docs.map(PicksDocument.fromFirestore));
   }
 
   Future<List<PicksDocument>> getPicksForSeason({
@@ -542,8 +700,11 @@ class FirestoreService {
     if (scopedGroupId.isNotEmpty) {
       query = query.where('groupId', isEqualTo: scopedGroupId);
     }
-    final snap = await query.get();
-    return snap.docs.map(PicksDocument.fromFirestore).toList(growable: false);
+    final snap = await _withTimeout(
+      query.get(),
+      operation: 'getPicksForSeason',
+    );
+    return _dedupePicksDocs(snap.docs.map(PicksDocument.fromFirestore));
   }
 
   Stream<List<PicksDocument>> streamPicksForSeason({
@@ -558,8 +719,7 @@ class FirestoreService {
       query = query.where('groupId', isEqualTo: scopedGroupId);
     }
     return query.snapshots().map(
-      (snap) =>
-          snap.docs.map(PicksDocument.fromFirestore).toList(growable: false),
+      (snap) => _dedupePicksDocs(snap.docs.map(PicksDocument.fromFirestore)),
     );
   }
 
@@ -573,34 +733,40 @@ class FirestoreService {
     DateTime? lockTime,
     bool finalized = false,
   }) async {
-    await _db
-        .collection('seasons')
-        .doc(seasonKey)
-        .collection('matchdays')
-        .doc(dayNumber.toString())
-        .set({
-          'matches': matches
-              .map(FirestoreSerializers.predictionMatchToMap)
-              .toList(),
-          'outcomesByMatchId': {
-            for (final e in outcomesByMatchId.entries) e.key: e.value.name,
-          },
-          if (lockTime != null) 'lockTime': Timestamp.fromDate(lockTime),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'finalized': finalized,
-        }, SetOptions(merge: true));
+    await _withTimeout(
+      _db
+          .collection('seasons')
+          .doc(seasonKey)
+          .collection('matchdays')
+          .doc(dayNumber.toString())
+          .set({
+            'matches': matches
+                .map(FirestoreSerializers.predictionMatchToMap)
+                .toList(),
+            'outcomesByMatchId': {
+              for (final e in outcomesByMatchId.entries) e.key: e.value.name,
+            },
+            if (lockTime != null) 'lockTime': Timestamp.fromDate(lockTime),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'finalized': finalized,
+          }, SetOptions(merge: true)),
+      operation: 'saveMatchdayData',
+    );
   }
 
   Future<MatchdayDocument?> getMatchdayData({
     required String seasonKey,
     required int dayNumber,
   }) async {
-    final doc = await _db
-        .collection('seasons')
-        .doc(seasonKey)
-        .collection('matchdays')
-        .doc(dayNumber.toString())
-        .get();
+    final doc = await _withTimeout(
+      _db
+          .collection('seasons')
+          .doc(seasonKey)
+          .collection('matchdays')
+          .doc(dayNumber.toString())
+          .get(),
+      operation: 'getMatchdayData',
+    );
     if (!doc.exists) return null;
     return MatchdayDocument.fromFirestore(
       doc,
@@ -632,12 +798,15 @@ class FirestoreService {
   Future<List<ApiFootballStanding>> getSeasonStandings({
     required String seasonKey,
   }) async {
-    final doc = await _db
-        .collection('seasons')
-        .doc(seasonKey)
-        .collection('standings')
-        .doc('current')
-        .get();
+    final doc = await _withTimeout(
+      _db
+          .collection('seasons')
+          .doc(seasonKey)
+          .collection('standings')
+          .doc('current')
+          .get(),
+      operation: 'getSeasonStandings',
+    );
 
     if (!doc.exists) return const [];
     final data = doc.data();

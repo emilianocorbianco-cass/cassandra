@@ -43,6 +43,7 @@ class PicksDocument {
   final String uid;
   final String seasonKey;
   final int dayNumber;
+  final String? groupId;
   final Map<String, PickOption> picksByMatchId;
   final DateTime submittedAt;
   final String visibility;
@@ -53,6 +54,7 @@ class PicksDocument {
     required this.uid,
     required this.seasonKey,
     required this.dayNumber,
+    this.groupId,
     required this.picksByMatchId,
     required this.submittedAt,
     required this.visibility,
@@ -79,6 +81,9 @@ class PicksDocument {
       uid: d['uid'] as String? ?? '',
       seasonKey: d['seasonKey'] as String? ?? '',
       dayNumber: d['dayNumber'] as int? ?? 0,
+      groupId: (d['groupId'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (d['groupId'] as String?)!.trim(),
       picksByMatchId: picks,
       submittedAt: (d['submittedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       visibility: d['visibility'] as String? ?? 'friends',

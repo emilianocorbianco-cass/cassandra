@@ -42,7 +42,9 @@ class GroupChatMessageDocument {
       type: parsedType ?? GroupChatMessageType.text,
       text: (data['text'] as String?)?.trim(),
       imageBase64: (data['imageBase64'] as String?)?.trim(),
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt:
+          (data['createdAt'] as Timestamp?)?.toDate() ??
+          DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
 
