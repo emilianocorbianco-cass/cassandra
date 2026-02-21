@@ -125,7 +125,12 @@ class PredictionState extends ChangeNotifier {
   final Map<int, Map<String, PickOption>> _currentUserPicksByMatchday = {};
 
   Map<int, Map<String, PickOption>> get currentUserPicksByMatchday =>
-      _currentUserPicksByMatchday;
+      Map<int, Map<String, PickOption>>.unmodifiable(
+        _currentUserPicksByMatchday.map(
+          (day, picks) =>
+              MapEntry(day, Map<String, PickOption>.unmodifiable(picks)),
+        ),
+      );
 
   bool hasSavedPicksForMatchday(int dayNumber) {
     final m = _currentUserPicksByMatchday[dayNumber];
@@ -133,7 +138,9 @@ class PredictionState extends ChangeNotifier {
   }
 
   Map<String, PickOption> currentUserPicksForMatchday(int dayNumber) {
-    return _currentUserPicksByMatchday[dayNumber] ?? const {};
+    final saved = _currentUserPicksByMatchday[dayNumber];
+    if (saved == null) return const {};
+    return Map<String, PickOption>.unmodifiable(saved);
   }
 
   void ensureCurrentUserPicksHistoryLoaded() {
@@ -165,7 +172,9 @@ class PredictionState extends ChangeNotifier {
             // does not discard the whole matchday history entry.
           }
         }
-        if (picks.isNotEmpty) _currentUserPicksByMatchday[day] = picks;
+        if (picks.isNotEmpty) {
+          _currentUserPicksByMatchday[day] = Map.unmodifiable(picks);
+        }
       }
     } catch (e, st) {
       debugPrint('[picks] corrupt picks-history in storage: $e\n$st');
@@ -177,9 +186,10 @@ class PredictionState extends ChangeNotifier {
     required Map<String, PickOption> picksByMatchId,
   }) {
     ensureCurrentUserPicksHistoryLoaded();
-    _currentUserPicksByMatchday[dayNumber] = Map<String, PickOption>.from(
-      picksByMatchId,
-    );
+    _currentUserPicksByMatchday[dayNumber] =
+        Map<String, PickOption>.unmodifiable(
+          Map<String, PickOption>.from(picksByMatchId),
+        );
     _pruneOldestByDay(_currentUserPicksByMatchday);
     _persistCurrentUserPicksHistoryToPrefs();
     notifyListeners();
@@ -212,7 +222,7 @@ class PredictionState extends ChangeNotifier {
   /// Ritorna i pick per una giornata: storico se disponibile, altrimenti live.
   Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) {
     final saved = _currentUserPicksByMatchday[matchdayNumber];
-    if (saved != null) return saved;
+    if (saved != null) return Map<String, PickOption>.unmodifiable(saved);
     return currentUserPicksByMatchId;
   }
 
@@ -225,7 +235,12 @@ class PredictionState extends ChangeNotifier {
       const <int, Map<String, MatchOutcome>>{};
 
   Map<int, Map<String, MatchOutcome>> get outcomesByMatchday =>
-      _outcomesByMatchday;
+      Map<int, Map<String, MatchOutcome>>.unmodifiable(
+        _outcomesByMatchday.map(
+          (day, outcomes) =>
+              MapEntry(day, Map<String, MatchOutcome>.unmodifiable(outcomes)),
+        ),
+      );
 
   bool hasSavedOutcomesForMatchday(int dayNumber) {
     final m = _outcomesByMatchday[dayNumber];
@@ -233,7 +248,9 @@ class PredictionState extends ChangeNotifier {
   }
 
   Map<String, MatchOutcome> outcomesForMatchday(int dayNumber) {
-    return _outcomesByMatchday[dayNumber] ?? const {};
+    final saved = _outcomesByMatchday[dayNumber];
+    if (saved == null) return const {};
+    return Map<String, MatchOutcome>.unmodifiable(saved);
   }
 
   void ensureOutcomesHistoryLoaded() {
@@ -319,10 +336,18 @@ class PredictionState extends ChangeNotifier {
   Map<int, List<PredictionMatch>> _matchesByMatchday =
       const <int, List<PredictionMatch>>{};
 
-  Map<int, List<PredictionMatch>> get matchesByMatchday => _matchesByMatchday;
+  Map<int, List<PredictionMatch>> get matchesByMatchday =>
+      Map<int, List<PredictionMatch>>.unmodifiable(
+        _matchesByMatchday.map(
+          (day, matches) =>
+              MapEntry(day, List<PredictionMatch>.unmodifiable(matches)),
+        ),
+      );
 
   List<PredictionMatch>? matchesForMatchday(int matchdayNumber) =>
-      _matchesByMatchday[matchdayNumber];
+      _matchesByMatchday[matchdayNumber] == null
+      ? null
+      : List<PredictionMatch>.unmodifiable(_matchesByMatchday[matchdayNumber]!);
 
   void ensureMatchesHistoryLoaded() {
     // no-op (in-memory only)
@@ -351,7 +376,12 @@ class PredictionState extends ChangeNotifier {
   Map<int, List<PredictionMatch>> _matchdayMatchesByDay = {};
 
   Map<int, List<PredictionMatch>> get matchdayMatchesByDay =>
-      _matchdayMatchesByDay;
+      Map<int, List<PredictionMatch>>.unmodifiable(
+        _matchdayMatchesByDay.map(
+          (day, matches) =>
+              MapEntry(day, List<PredictionMatch>.unmodifiable(matches)),
+        ),
+      );
 
   Future<void> ensureMatchdayMatchesLoaded() async {
     if (_matchdayMatchesByDay.isNotEmpty) return;
@@ -383,7 +413,7 @@ class PredictionState extends ChangeNotifier {
   List<PredictionMatch>? savedMatchesForMatchday(int matchdayNumber) {
     final v = _matchdayMatchesByDay[matchdayNumber];
     if (v == null || v.isEmpty) return null;
-    return v;
+    return List<PredictionMatch>.unmodifiable(v);
   }
 
   Future<void> saveMatchdayMatchesSnapshot({
@@ -635,9 +665,19 @@ class PredictionState extends ChangeNotifier {
       const <int, Map<String, MatchOutcome>>{};
 
   Map<int, List<PredictionMatch>> get recentMatchesByMatchday =>
-      _recentMatchesByMatchday;
+      Map<int, List<PredictionMatch>>.unmodifiable(
+        _recentMatchesByMatchday.map(
+          (day, matches) =>
+              MapEntry(day, List<PredictionMatch>.unmodifiable(matches)),
+        ),
+      );
   Map<int, Map<String, MatchOutcome>> get recentOutcomesByMatchday =>
-      _recentOutcomesByMatchday;
+      Map<int, Map<String, MatchOutcome>>.unmodifiable(
+        _recentOutcomesByMatchday.map(
+          (day, outcomes) =>
+              MapEntry(day, Map<String, MatchOutcome>.unmodifiable(outcomes)),
+        ),
+      );
 
   void _pruneRecentMatchdayData({int maxEntries = 10}) {
     final allDays = <int>{
