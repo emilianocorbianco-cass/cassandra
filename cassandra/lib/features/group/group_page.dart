@@ -73,6 +73,9 @@ class _GroupPageState extends State<GroupPage> {
   StreamSubscription<List<PicksDocument>>? _firestoreSeasonPicksSub;
   StreamSubscription<MatchdayDocument?>? _firestoreMatchdaySub;
   int _firestoreMembersRevision = 0;
+  final Set<int> _hydratedSeasonMatchdayDays = <int>{};
+  bool _seasonHistoryHydrationInFlight = false;
+  bool _seasonHistoryHydrationQueued = false;
 
   @override
   void initState() {
@@ -154,6 +157,9 @@ class _GroupPageState extends State<GroupPage> {
             _firestoreCurrentMatchday = null;
             _firestoreSeasonPicksDocs = const <PicksDocument>[];
             _firestoreLoading = false;
+            _hydratedSeasonMatchdayDays.clear();
+            _seasonHistoryHydrationInFlight = false;
+            _seasonHistoryHydrationQueued = false;
           });
         });
       }
@@ -182,6 +188,9 @@ class _GroupPageState extends State<GroupPage> {
           _firestoreSeasonPicksByMemberId = null;
           _firestoreCurrentMatchday = null;
           _firestoreSeasonPicksDocs = const <PicksDocument>[];
+          _hydratedSeasonMatchdayDays.clear();
+          _seasonHistoryHydrationInFlight = false;
+          _seasonHistoryHydrationQueued = false;
         });
       }
       _refreshFromFirestore();
@@ -481,6 +490,7 @@ class _GroupPageState extends State<GroupPage> {
       _firestoreSeasonPicksByMemberId = seasonPicksByMemberId;
       _firestorePicksByMemberId = picksByMemberId;
     });
+    _ensureSeasonHistoryHydrated(appState);
   }
 
   void _scheduleFirestoreReveal(DateTime? lockTime) {
@@ -495,6 +505,103 @@ class _GroupPageState extends State<GroupPage> {
       final appState = CassandraScope.of(context);
       _recomputeFirestoreDerived(appState);
     });
+  }
+
+  void _ensureSeasonHistoryHydrated(AppState appState) {
+    final fs = appState.firestoreService;
+    final seasonKey = _firestoreSeasonKey ?? appState.currentSeasonKey;
+    if (fs == null || seasonKey.trim().isEmpty) return;
+
+    final allDays = _firestoreSeasonPicksDocs
+        .map((d) => d.dayNumber)
+        .where((d) => d > 0)
+        .toSet();
+    if (allDays.isEmpty) return;
+
+    final missingDays =
+        allDays
+            .where((day) => !_hydratedSeasonMatchdayDays.contains(day))
+            .toList()
+          ..sort((a, b) => a.compareTo(b));
+    if (missingDays.isEmpty) return;
+
+    if (_seasonHistoryHydrationInFlight) {
+      _seasonHistoryHydrationQueued = true;
+      return;
+    }
+
+    _seasonHistoryHydrationInFlight = true;
+    unawaited(
+      _hydrateSeasonHistoryDays(
+        appState: appState,
+        seasonKey: seasonKey,
+        dayNumbers: missingDays,
+      ),
+    );
+  }
+
+  Future<void> _hydrateSeasonHistoryDays({
+    required AppState appState,
+    required String seasonKey,
+    required List<int> dayNumbers,
+  }) async {
+    final fs = appState.firestoreService;
+    if (fs == null) {
+      _seasonHistoryHydrationInFlight = false;
+      return;
+    }
+
+    final loadedMatches = <int, List<PredictionMatch>>{};
+    final loadedOutcomes = <int, Map<String, MatchOutcome>>{};
+
+    try {
+      for (final day in dayNumbers) {
+        if (_hydratedSeasonMatchdayDays.contains(day)) continue;
+        try {
+          final md = await fs.getMatchdayData(
+            seasonKey: seasonKey,
+            dayNumber: day,
+          );
+          _hydratedSeasonMatchdayDays.add(day);
+          if (md == null || md.matches.isEmpty) continue;
+
+          await appState.saveMatchesHistory(
+            matchdayNumber: day,
+            matches: md.matches,
+          );
+          await appState.saveMatchdayMatchesSnapshot(
+            matchdayNumber: day,
+            matches: md.matches,
+          );
+          loadedMatches[day] = md.matches;
+
+          if (md.outcomesByMatchId.isNotEmpty) {
+            appState.saveOutcomesHistory(
+              dayNumber: day,
+              outcomesByMatchId: md.outcomesByMatchId,
+            );
+            loadedOutcomes[day] = md.outcomesByMatchId;
+          }
+        } catch (error, stackTrace) {
+          appState.markBackendSyncError(error, stackTrace);
+        }
+      }
+
+      if (loadedMatches.isNotEmpty || loadedOutcomes.isNotEmpty) {
+        appState.setRecentMatchdayDataBulk(
+          matchesByMatchday: loadedMatches,
+          outcomesByMatchday: loadedOutcomes,
+        );
+      }
+    } finally {
+      _seasonHistoryHydrationInFlight = false;
+      if (_seasonHistoryHydrationQueued) {
+        _seasonHistoryHydrationQueued = false;
+        if (mounted) {
+          _ensureSeasonHistoryHydrated(appState);
+        }
+      }
+    }
   }
 
   String _matchdayLabelFor(
