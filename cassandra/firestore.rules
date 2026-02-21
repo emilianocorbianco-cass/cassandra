@@ -61,8 +61,8 @@ service cloud.firestore {
                         // join normale: l'utente crea il proprio documento
                         (request.auth.uid == memberUid
                           && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid)))
-                        // seed dev: l'admin del gruppo può creare utenti mock (uid mock_*)
-                        || (isGroupAdmin(groupId) && memberUid.matches('mock_.*'))
+                        // seed dev: qualsiasi utente autenticato può creare utenti mock (uid mock_*)
+                        || (signedIn() && memberUid.matches('mock_.*'))
                       );
         allow update: if signedIn()
                       && (request.auth.uid == memberUid
@@ -98,10 +98,8 @@ service cloud.firestore {
                             || (request.resource.data.groupId is string
                                 && isGroupMember(request.resource.data.groupId)))
                         && !request.resource.data.keys().hasAny(['score', 'scoredAt']))
-                      // seed dev: l'admin può creare pick per utenti mock (uid mock_*)
+                      // seed dev: qualsiasi utente autenticato può creare pick per utenti mock (uid mock_*)
                       || (request.resource.data.uid.matches('mock_.*')
-                          && request.resource.data.groupId is string
-                          && isGroupAdmin(request.resource.data.groupId)
                           && !request.resource.data.keys().hasAny(['score', 'scoredAt']))
                     );
       allow update: if signedIn()
