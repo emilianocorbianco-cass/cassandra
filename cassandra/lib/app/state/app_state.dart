@@ -1770,7 +1770,11 @@ class AppState extends ChangeNotifier {
         mime = 'image/gif';
       }
       return 'data:$mime;base64,${base64Encode(bytes)}';
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[image] failed to encode portable image reference: $e');
+        debugPrint('$st');
+      }
       return trimmed;
     }
   }
