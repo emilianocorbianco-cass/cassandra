@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../app/state/app_state.dart';
 
@@ -21,8 +22,11 @@ class PushNotificationsService {
         if (token != null && token.trim().isNotEmpty) {
           return token.trim();
         }
-      } catch (_) {
-        // ignore
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[push] getToken attempt ${attempt + 1} failed: $e');
+          debugPrint('$st');
+        }
       }
 
       try {
@@ -33,8 +37,11 @@ class PushNotificationsService {
             return token.trim();
           }
         }
-      } catch (_) {
-        // ignore
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[push] getAPNSToken attempt ${attempt + 1} failed: $e');
+          debugPrint('$st');
+        }
       }
 
       if (attempt < 5) {
@@ -85,8 +92,12 @@ class PushNotificationsService {
       final token = await _resolveFcmTokenWithRetry();
       if (token == null || token.trim().isEmpty) return;
       await appState.setDevicePushToken(token);
-    } catch (_) {
-      // ignore: token sync is best effort
+    } catch (e, st) {
+      appState.markBackendSyncError(e, st);
+      if (kDebugMode) {
+        debugPrint('[push] token sync failed: $e');
+        debugPrint('$st');
+      }
     }
   }
 
