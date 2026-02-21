@@ -204,5 +204,36 @@ void main() {
       expect(result[51]!.home, 2.10);
       expect(calls, 2); // 1 call per fixture, no retries on 404
     });
+
+    test(
+      'returns empty map and makes no HTTP calls for empty fixture list',
+      () async {
+        var calls = 0;
+        final client = _client((_) async {
+          calls++;
+          return http.Response('{}', 200);
+        });
+        final svc = ApiFootballService(client);
+        final result = await svc.getOddsForFixtures([]);
+
+        expect(result, isEmpty);
+        expect(calls, 0);
+      },
+    );
+
+    test('skips fixture when response entry has no bookmakers key', () async {
+      // Response has a fixture item but 'bookmakers' key is absent.
+      final body = jsonEncode({
+        'response': [
+          {'id': 99},
+        ],
+        'errors': <String, dynamic>{},
+      });
+      final client = _client((_) async => http.Response(body, 200));
+      final svc = ApiFootballService(client);
+      final result = await svc.getOddsForFixtures([60]);
+
+      expect(result, isEmpty);
+    });
   });
 }

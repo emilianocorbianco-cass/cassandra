@@ -1002,5 +1002,58 @@ void main() {
         '@${'a' * UserProfile.kMaxHandleBodyLength}',
       );
     });
+
+    test(
+      'mergeFirestoreProfile does not overwrite existing custom teamName',
+      () {
+        // _testProfile has teamName '@testuser' which is non-empty, so remote
+        // teamName should be ignored (already customised by the user).
+        final state = AppState.inMemory(profile: _testProfile);
+        state.mergeFirestoreProfile({'teamName': '@remote'});
+        expect(state.profile.teamName, '@testuser');
+      },
+    );
+
+    test(
+      'mergeFirestoreProfile does not overwrite favoriteTeam when already set',
+      () {
+        // _testProfile has favoriteTeam 'Inter'; merge must not clobber it.
+        final state = AppState.inMemory(profile: _testProfile);
+        state.mergeFirestoreProfile({'favoriteTeam': 'Juventus'});
+        expect(state.profile.favoriteTeam, 'Inter');
+      },
+    );
+
+    test('mergeFirestoreProfile merges photoUrl when absent locally', () {
+      // _testProfile has no photoUrl — remote value should be adopted.
+      final state = AppState.inMemory(profile: _testProfile);
+      state.mergeFirestoreProfile({
+        'photoUrl': 'https://example.com/avatar.jpg',
+      });
+      expect(state.profile.photoUrl, 'https://example.com/avatar.jpg');
+    });
+
+    test('mergeFirestoreProfile with empty map does not crash or notify', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      var count = 0;
+      state.addListener(() => count++);
+      expect(() => state.mergeFirestoreProfile({}), returnsNormally);
+      expect(count, 0);
+      expect(state.profile.displayName, _testProfile.displayName);
+    });
+
+    test('mergeFirestoreProfile notifies only when data actually changes', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      var count = 0;
+      state.addListener(() => count++);
+
+      // Same displayName → no notification
+      state.mergeFirestoreProfile({'displayName': _testProfile.displayName});
+      expect(count, 0);
+
+      // Different displayName → notification
+      state.mergeFirestoreProfile({'displayName': 'New Name'});
+      expect(count, 1);
+    });
   });
 }

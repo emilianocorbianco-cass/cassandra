@@ -74,6 +74,30 @@ void main() {
       );
       expect(cache.toMap().containsKey('averageOddsPlayed'), isFalse);
     });
+
+    test('toMap includes averageOddsPlayed when zero', () {
+      const cache = PicksScoreCache(
+        baseTotal: 0,
+        bonusPoints: 0,
+        total: 0,
+        correctCount: 0,
+        averageOddsPlayed: 0.0,
+      );
+      expect(cache.toMap().containsKey('averageOddsPlayed'), isTrue);
+      expect(cache.toMap()['averageOddsPlayed'], 0.0);
+    });
+
+    test('fromMap preserves negative scores', () {
+      final cache = PicksScoreCache.fromMap({
+        'baseTotal': -5.5,
+        'bonusPoints': -2,
+        'total': -7.5,
+        'correctCount': 0,
+      });
+      expect(cache.baseTotal, -5.5);
+      expect(cache.bonusPoints, -2);
+      expect(cache.total, -7.5);
+    });
   });
 
   group('deduplicatePicks', () {
@@ -181,6 +205,65 @@ void main() {
       final result = deduplicatePicks(docs);
       expect(result.length, 1);
       expect(result.first.docId, 'z');
+    });
+
+    test('large batch with same key keeps doc with latest submittedAt', () {
+      final base = DateTime(2024, 1, 1);
+      final docs = [
+        for (var i = 0; i < 20; i++)
+          _doc(
+            docId: 'doc$i',
+            submittedAt: base.add(Duration(minutes: i)),
+          ),
+      ];
+      final result = deduplicatePicks(docs);
+      expect(result.length, 1);
+      expect(result.first.docId, 'doc19');
+    });
+
+    test('reverse insertion order yields the same winner', () {
+      final t = DateTime(2024, 1, 1);
+      // Insert in reverse chronological order — 'c' still wins (latest time)
+      final docs = [
+        _doc(docId: 'c', submittedAt: t.add(const Duration(hours: 2))),
+        _doc(docId: 'b', submittedAt: t.add(const Duration(hours: 1))),
+        _doc(docId: 'a', submittedAt: t),
+      ];
+      final result = deduplicatePicks(docs);
+      expect(result.length, 1);
+      expect(result.first.docId, 'c');
+    });
+
+    test('multiple groups are independently deduped', () {
+      final t = DateTime(2024);
+      final docs = [
+        _doc(docId: 'g1-old', groupId: 'g1', submittedAt: t),
+        _doc(
+          docId: 'g1-new',
+          groupId: 'g1',
+          submittedAt: t.add(const Duration(hours: 1)),
+        ),
+        _doc(docId: 'g2-only', groupId: 'g2', submittedAt: t),
+        _doc(docId: 'no-group', groupId: null, submittedAt: t),
+      ];
+      final result = deduplicatePicks(docs);
+      expect(result.length, 3);
+      final byGroup = {for (final d in result) d.groupId ?? '': d};
+      expect(byGroup['g1']!.docId, 'g1-new');
+      expect(byGroup['g2']!.docId, 'g2-only');
+      expect(byGroup['']!.docId, 'no-group');
+    });
+
+    test('same-timestamp tiebreak picks lexicographically highest docId', () {
+      final t = DateTime(2024);
+      final docs = [
+        _doc(docId: 'aaa', submittedAt: t),
+        _doc(docId: 'zzz', submittedAt: t),
+        _doc(docId: 'mmm', submittedAt: t),
+      ];
+      final result = deduplicatePicks(docs);
+      expect(result.length, 1);
+      expect(result.first.docId, 'zzz');
     });
   });
 }
