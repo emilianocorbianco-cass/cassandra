@@ -30,6 +30,7 @@ import '../config/storage_keys.dart';
 
 class AppState extends ChangeNotifier {
   static const Duration _kProfileSyncDebounce = Duration(milliseconds: 450);
+  static const Duration _kProfileSyncRetryDelay = Duration(seconds: 2);
   static const Duration _kHistoryHydrationTimeout = Duration(seconds: 12);
   static const int _kHistoryHydrationAttempts = 2;
   static const int _kMaxDisplayNameLength = 40;
@@ -235,8 +236,10 @@ class AppState extends ChangeNotifier {
   List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
 
   Timer? _profileSyncDebounceTimer;
-  bool _profileSyncInFlight = false;
-  bool _profileSyncPending = false;
+  bool _profileSyncDirty = false;
+  bool _profileSyncLoopRunning = false;
+  bool _profileSyncRetryScheduled = false;
+  String? _lastProfileSyncFingerprint;
   String? _lastBackendSyncError;
   DateTime? _lastBackendSyncErrorAt;
 
@@ -272,30 +275,75 @@ class AppState extends ChangeNotifier {
     _clearBackendError();
   }
 
-  /// Fire-and-forget (debounced): sync full user profile to Firestore.
-  void _syncProfileToFirestore() {
-    _profileSyncPending = true;
-    _profileSyncDebounceTimer?.cancel();
-    _profileSyncDebounceTimer = Timer(_kProfileSyncDebounce, () {
-      unawaited(_flushProfileSyncToFirestore());
-    });
+  String _profileSyncFingerprint() {
+    final sortedGroupIds = [...groupState.firestoreGroupIds]..sort();
+    return [
+      _profile.id.trim(),
+      _profile.displayName.trim(),
+      _profile.teamName.trim(),
+      _profile.favoriteTeam?.trim() ?? '',
+      _profile.email?.trim() ?? '',
+      _profile.photoUrl?.trim() ?? '',
+      _language.name,
+      _defaultVisibility.name,
+      '$currentUserAvatarSeed',
+      sortedGroupIds.join(','),
+    ].join('|');
   }
 
-  Future<void> _flushProfileSyncToFirestore() async {
+  void _scheduleProfileSyncStart(Duration delay) {
+    _profileSyncDebounceTimer?.cancel();
+    _profileSyncDebounceTimer = Timer(delay, _startProfileSyncLoopIfNeeded);
+  }
+
+  void _startProfileSyncLoopIfNeeded() {
+    if (_profileSyncLoopRunning || !_profileSyncDirty) return;
+    _profileSyncLoopRunning = true;
+    unawaited(_runProfileSyncLoop());
+  }
+
+  /// Fire-and-forget (debounced): sync full user profile to Firestore.
+  void _syncProfileToFirestore() {
+    _profileSyncDirty = true;
+    _scheduleProfileSyncStart(_kProfileSyncDebounce);
+  }
+
+  Future<void> _runProfileSyncLoop() async {
+    try {
+      while (_profileSyncDirty) {
+        _profileSyncDirty = false;
+        final shouldRetry = await _flushProfileSyncToFirestore();
+        if (shouldRetry) {
+          _profileSyncDirty = true;
+          _profileSyncRetryScheduled = true;
+          _scheduleProfileSyncStart(_kProfileSyncRetryDelay);
+          return;
+        }
+      }
+    } finally {
+      _profileSyncLoopRunning = false;
+      if (_profileSyncDirty && !_profileSyncRetryScheduled) {
+        _startProfileSyncLoopIfNeeded();
+      }
+    }
+  }
+
+  Future<bool> _flushProfileSyncToFirestore() async {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) {
-      _profileSyncPending = false;
-      return;
+      return false;
     }
     final uid = _profile.id;
     if (uid.isEmpty) {
-      _profileSyncPending = false;
-      return;
+      return false;
     }
 
-    if (_profileSyncInFlight) return;
-    _profileSyncInFlight = true;
-    _profileSyncPending = false;
+    final fingerprint = _profileSyncFingerprint();
+    if (_lastProfileSyncFingerprint == fingerprint) {
+      _clearBackendError();
+      return false;
+    }
+
     try {
       await fs.setUserProfile(
         uid: uid,
@@ -316,21 +364,18 @@ class AppState extends ChangeNotifier {
           photoUrl: _profile.photoUrl,
         );
       }
+      _lastProfileSyncFingerprint = fingerprint;
       _clearBackendError();
+      return false;
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[profile-sync] failed: $e');
         debugPrint('$st');
       }
       _recordBackendError(e, st);
+      return true;
     } finally {
-      _profileSyncInFlight = false;
-      if (_profileSyncPending) {
-        _profileSyncDebounceTimer?.cancel();
-        _profileSyncDebounceTimer = Timer(_kProfileSyncDebounce, () {
-          unawaited(_flushProfileSyncToFirestore());
-        });
-      }
+      _profileSyncRetryScheduled = false;
     }
   }
 
