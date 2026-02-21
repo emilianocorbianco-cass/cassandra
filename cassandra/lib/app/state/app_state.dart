@@ -31,11 +31,14 @@ import '../config/storage_keys.dart';
 class AppState extends ChangeNotifier {
   static const Duration _kProfileSyncDebounce = Duration(milliseconds: 450);
   static const Duration _kProfileSyncRetryDelay = Duration(seconds: 2);
-  static const Duration _kHistoryHydrationTimeout = Duration(seconds: 12);
+  static const Duration _kProfileSyncRetryMaxDelay = Duration(seconds: 12);
+  static const Duration _kHistoryHydrationTimeout = Duration(seconds: 25);
+  static const Duration _kHistoryHydrationRetryBaseDelay = Duration(seconds: 2);
+  static const Duration _kHistoryHydrationRetryMaxDelay = Duration(seconds: 12);
   static const Duration _kFirestoreWriteRetryBaseDelay = Duration(
     milliseconds: 400,
   );
-  static const int _kHistoryHydrationAttempts = 2;
+  static const int _kHistoryHydrationAttempts = 3;
   static const int _kFirestoreWriteAttempts = 3;
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = StorageKeys.profileTeamName;
@@ -231,9 +234,10 @@ class AppState extends ChangeNotifier {
   List<String> get firestoreGroupIds => groupState.firestoreGroupIds;
 
   Timer? _profileSyncDebounceTimer;
+  Timer? _profileSyncRetryTimer;
   bool _profileSyncDirty = false;
   bool _profileSyncLoopRunning = false;
-  bool _profileSyncRetryScheduled = false;
+  int _profileSyncRetryAttempt = 0;
   String? _lastProfileSyncFingerprint;
   String? _lastBackendSyncError;
   DateTime? _lastBackendSyncErrorAt;
@@ -291,6 +295,22 @@ class AppState extends ChangeNotifier {
     _profileSyncDebounceTimer = Timer(delay, _startProfileSyncLoopIfNeeded);
   }
 
+  Duration _profileSyncRetryBackoffForAttempt(int attempt) {
+    final multiplier = 1 << (attempt > 0 ? attempt - 1 : 0);
+    final delayMs = _kProfileSyncRetryDelay.inMilliseconds * multiplier;
+    final maxMs = _kProfileSyncRetryMaxDelay.inMilliseconds;
+    return Duration(milliseconds: delayMs > maxMs ? maxMs : delayMs);
+  }
+
+  void _scheduleProfileSyncRetry() {
+    _profileSyncRetryTimer?.cancel();
+    final delay = _profileSyncRetryBackoffForAttempt(_profileSyncRetryAttempt);
+    _profileSyncRetryTimer = Timer(delay, () {
+      _profileSyncRetryTimer = null;
+      _startProfileSyncLoopIfNeeded();
+    });
+  }
+
   void _startProfileSyncLoopIfNeeded() {
     if (_profileSyncLoopRunning || !_profileSyncDirty) return;
     _profileSyncLoopRunning = true;
@@ -300,6 +320,9 @@ class AppState extends ChangeNotifier {
   /// Fire-and-forget (debounced): sync full user profile to Firestore.
   void _syncProfileToFirestore() {
     _profileSyncDirty = true;
+    _profileSyncRetryAttempt = 0;
+    _profileSyncRetryTimer?.cancel();
+    _profileSyncRetryTimer = null;
     _scheduleProfileSyncStart(_kProfileSyncDebounce);
   }
 
@@ -310,14 +333,15 @@ class AppState extends ChangeNotifier {
         final shouldRetry = await _flushProfileSyncToFirestore();
         if (shouldRetry) {
           _profileSyncDirty = true;
-          _profileSyncRetryScheduled = true;
-          _scheduleProfileSyncStart(_kProfileSyncRetryDelay);
+          _profileSyncRetryAttempt += 1;
+          _scheduleProfileSyncRetry();
           return;
         }
+        _profileSyncRetryAttempt = 0;
       }
     } finally {
       _profileSyncLoopRunning = false;
-      if (_profileSyncDirty && !_profileSyncRetryScheduled) {
+      if (_profileSyncDirty && _profileSyncRetryTimer == null) {
         _startProfileSyncLoopIfNeeded();
       }
     }
@@ -369,8 +393,6 @@ class AppState extends ChangeNotifier {
       }
       _recordBackendError(e, st);
       return true;
-    } finally {
-      _profileSyncRetryScheduled = false;
     }
   }
 
@@ -378,6 +400,9 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _profileSyncDebounceTimer?.cancel();
     _profileSyncDebounceTimer = null;
+    _profileSyncRetryTimer?.cancel();
+    _profileSyncRetryTimer = null;
+    _profileSyncRetryAttempt = 0;
     groupState.removeListener(notifyListeners);
     predictionState.removeListener(notifyListeners);
     matchdayState.removeListener(notifyListeners);
@@ -1223,7 +1248,13 @@ class AppState extends ChangeNotifier {
           debugPrint('$st');
         }
         if (attempt >= _kHistoryHydrationAttempts) return;
-        await Future<void>.delayed(const Duration(seconds: 2));
+        final multiplier = 1 << (attempt - 1);
+        final backoffMs =
+            _kHistoryHydrationRetryBaseDelay.inMilliseconds * multiplier;
+        final maxMs = _kHistoryHydrationRetryMaxDelay.inMilliseconds;
+        await Future<void>.delayed(
+          Duration(milliseconds: backoffMs > maxMs ? maxMs : backoffMs),
+        );
       }
     }
   }
