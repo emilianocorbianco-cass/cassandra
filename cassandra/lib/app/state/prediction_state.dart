@@ -775,4 +775,25 @@ class PredictionState extends ChangeNotifier {
 
     notifyListeners();
   }
+
+  @override
+  void dispose() {
+    currentUserPicksByMatchId = const <String, PickOption>{};
+    _currentUserPicksByMatchday.clear();
+    _outcomesByMatchday = const <int, Map<String, MatchOutcome>>{};
+    _matchesByMatchday = const <int, List<PredictionMatch>>{};
+    _matchdayMatchesByDay.clear();
+    memberPicksByMemberId = const <String, Map<String, PickOption>>{};
+    _cachedPredictionMatches = null;
+    _cachedPredictionMatchesAreReal = false;
+    _cachedPredictionMatchesUpdatedAt = null;
+    cachedPredictionOutcomesByMatchId = const <String, MatchOutcome>{};
+    _cachedRealOdds = null;
+    _cachedSeasonStandings = const <ApiFootballStanding>[];
+    _cachedSeasonStandingsUpdatedAt = null;
+    _cachedSeasonStandingsSignature = '';
+    _recentMatchesByMatchday = const <int, List<PredictionMatch>>{};
+    _recentOutcomesByMatchday = const <int, Map<String, MatchOutcome>>{};
+    super.dispose();
+  }
 }

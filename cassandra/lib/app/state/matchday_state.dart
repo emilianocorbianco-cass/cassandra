@@ -276,4 +276,15 @@ class MatchdayState extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  @override
+  void dispose() {
+    _matchdayProgressByDay.clear();
+    _uiMatchdayNumber = null;
+    _autoAdvancedFromMatchday = null;
+    _autoFinalizedFromMatchday = null;
+    _originKickoffIsoByMatchId = const <String, String>{};
+    _finalizedMatchdays.clear();
+    super.dispose();
+  }
 }

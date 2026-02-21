@@ -586,4 +586,15 @@ class GroupState extends ChangeNotifier {
     }
     await prefs.setString(_kGroupActiveGroupIdV1, activeId);
   }
+
+  @override
+  void dispose() {
+    _groupName = null;
+    _groupInviteCode = null;
+    _groupImagePath = null;
+    _groupAdminApproval = false;
+    _firestoreGroupIds = const <String>[];
+    _activeGroupId = null;
+    super.dispose();
+  }
 }
