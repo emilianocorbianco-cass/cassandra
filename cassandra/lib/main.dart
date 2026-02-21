@@ -17,7 +17,9 @@ Future<void> main() async {
   // Non facciamo crashare l'app se manca .env: lo segnaleremo nella pagina diagnostica.
   try {
     await dotenv.load(fileName: ".env");
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('dotenv load failed: $e');
+  }
 
   // Firebase init (graceful: se manca config, auth disabilitato)
   bool firebaseReady = false;
@@ -40,15 +42,32 @@ Future<void> main() async {
     if (currentUser != null) {
       appState.setProfileFromFirebaseUser(currentUser);
       // Merge profilo/gruppo Firestore (fire-and-forget, non blocca avvio)
-      appState.hydrateProfileFromFirestore(currentUser.uid).catchError((_) {});
+      appState.hydrateProfileFromFirestore(currentUser.uid).catchError((
+        Object e,
+        StackTrace st,
+      ) {
+        appState.markBackendSyncError(e, st);
+      });
       // Hydrate picks/matchday history for "past predictions" and stats.
-      appState.hydrateCurrentUserHistoryFromFirestore().catchError((_) {});
+      appState.hydrateCurrentUserHistoryFromFirestore().catchError((
+        Object e,
+        StackTrace st,
+      ) {
+        appState.markBackendSyncError(e, st);
+      });
       // One-time migration: upload local data to Firestore
-      appState.migrateLocalDataToFirestoreIfNeeded().catchError((_) {});
+      appState.migrateLocalDataToFirestoreIfNeeded().catchError((
+        Object e,
+        StackTrace st,
+      ) {
+        appState.markBackendSyncError(e, st);
+      });
       // Push notifications: token sync + permessi.
       PushNotificationsService.instance
           .initializeForAppState(appState)
-          .catchError((_) {});
+          .catchError((Object e, StackTrace st) {
+            appState.markBackendSyncError(e, st);
+          });
     }
   }
 

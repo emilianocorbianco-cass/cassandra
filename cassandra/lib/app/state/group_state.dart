@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/group/models/group_member.dart';
 import '../../services/firestore/firestore_service.dart';
 import '../../services/firestore/models/group_document.dart';
+import '../config/storage_keys.dart';
 import 'user_profile.dart';
 
 /// Stato del gruppo, estratto da AppState per isolamento e testabilità.
@@ -14,10 +15,10 @@ import 'user_profile.dart';
 /// Gestisce: creazione/join/leave/delete gruppo, metadata locale,
 /// Firestore group IDs, active group, admin approval.
 class GroupState extends ChangeNotifier {
-  static const _kGroupNameV1 = 'group.name.v1';
-  static const _kGroupInviteCodeV1 = 'group.inviteCode.v1';
-  static const _kGroupImagePathV1 = 'group.imagePath.v1';
-  static const _kGroupAdminApprovalV1 = 'group.adminApproval.v1';
+  static const _kGroupNameV1 = StorageKeys.groupNameV1;
+  static const _kGroupInviteCodeV1 = StorageKeys.groupInviteCodeV1;
+  static const _kGroupImagePathV1 = StorageKeys.groupImagePathV1;
+  static const _kGroupAdminApprovalV1 = StorageKeys.groupAdminApprovalV1;
 
   final SharedPreferences? _prefs;
 

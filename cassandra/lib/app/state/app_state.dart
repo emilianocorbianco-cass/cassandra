@@ -26,6 +26,7 @@ import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
+import '../config/storage_keys.dart';
 
 class AppState extends ChangeNotifier {
   static const Duration _kProfileSyncDebounce = Duration(milliseconds: 450);
@@ -47,33 +48,36 @@ class AppState extends ChangeNotifier {
   }
 
   // Chiavi "nuove" (più pulite)
-  static const _kProfileTeamName = 'profile.teamName';
-  static const _kProfileFavoriteTeam = 'profile.favoriteTeam';
-  static const _kDemoSeedV1 = 'demo_seed.v1';
+  static const _kProfileTeamName = StorageKeys.profileTeamName;
+  static const _kProfileFavoriteTeam = StorageKeys.profileFavoriteTeam;
+  static const _kDemoSeedV1 = StorageKeys.demoSeedV1;
 
   // Chiavi legacy (macro-step 1 precedente)
-  static const _kTeamNameLegacy = 'teamName';
-  static const _kFavoriteTeamLegacy = 'favoriteTeam';
+  static const _kTeamNameLegacy = StorageKeys.teamNameLegacy;
+  static const _kFavoriteTeamLegacy = StorageKeys.favoriteTeamLegacy;
 
-  static const _kProfileId = 'profile.id.v1';
-  static const _kProfileDisplayName = 'profile.displayName.v1';
-  static const _kProfileEmail = 'profile.email.v1';
-  static const _kProfilePhotoUrl = 'profile.photoUrl.v1';
-  static const _kRememberMeEnabled = 'auth.rememberMe.enabled.v1';
-  static const _kRememberedUid = 'auth.remembered.uid.v1';
-  static const _kRememberedHandle = 'auth.remembered.handle.v1';
-  static const _kRememberedPhotoUrl = 'auth.remembered.photoUrl.v1';
-  static const _kRememberedProvider = 'auth.remembered.provider.v1';
-  static const _kDevicePushToken = 'push.deviceToken.v1';
-  static const _kFirestoreMigrationV1Done = 'firestore_migration_v1_done';
+  static const _kProfileId = StorageKeys.profileIdV1;
+  static const _kProfileDisplayName = StorageKeys.profileDisplayNameV1;
+  static const _kProfileEmail = StorageKeys.profileEmailV1;
+  static const _kProfilePhotoUrl = StorageKeys.profilePhotoUrlV1;
+  static const _kRememberMeEnabled = StorageKeys.rememberMeEnabledV1;
+  static const _kRememberedUid = StorageKeys.rememberedUidV1;
+  static const _kRememberedHandle = StorageKeys.rememberedHandleV1;
+  static const _kRememberedPhotoUrl = StorageKeys.rememberedPhotoUrlV1;
+  static const _kRememberedProvider = StorageKeys.rememberedProviderV1;
+  static const _kDevicePushToken = StorageKeys.devicePushTokenV1;
+  static const _kFirestoreMigrationV1Done =
+      StorageKeys.firestoreMigrationV1Done;
 
-  static const _kLanguage = 'language';
-  static const _kDefaultVisibility = 'defaultVisibility';
+  static const _kLanguage = StorageKeys.language;
+  static const _kDefaultVisibility = StorageKeys.defaultVisibility;
 
   // Key strings duplicated from PredictionState for scoped key generation.
-  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
-  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
-  static const _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
+  static const _kCurrentUserPicksByMatchday =
+      StorageKeys.currentUserPicksByMatchdayV1;
+  static const _kPredictionOutcomesByMatchday =
+      StorageKeys.predictionOutcomesByMatchdayV1;
+  static const _kMatchdayMatchesByDayV1 = StorageKeys.matchdayMatchesByDayV1;
 
   String _scopedHistoryKey(String base, {String? uid, String? seasonKey}) {
     final scopedUid = (uid ?? _profile.id).trim();
@@ -215,6 +219,7 @@ class AppState extends ChangeNotifier {
 
   String? get lastBackendSyncError => _lastBackendSyncError;
   DateTime? get lastBackendSyncErrorAt => _lastBackendSyncErrorAt;
+  bool get hasBackendSyncError => _lastBackendSyncError != null;
 
   void _recordBackendError(Object error, [StackTrace? st]) {
     final message = error.toString();
@@ -234,6 +239,14 @@ class AppState extends ChangeNotifier {
     _lastBackendSyncError = null;
     _lastBackendSyncErrorAt = null;
     notifyListeners();
+  }
+
+  void markBackendSyncError(Object error, [StackTrace? st]) {
+    _recordBackendError(error, st);
+  }
+
+  void clearBackendSyncError() {
+    _clearBackendError();
   }
 
   /// Fire-and-forget (debounced): sync full user profile to Firestore.
@@ -298,6 +311,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  @override
+  void dispose() {
+    _profileSyncDebounceTimer?.cancel();
+    _profileSyncDebounceTimer = null;
+    super.dispose();
+  }
+
   Future<void> hydrateProfileFromFirestore([String? uid]) async {
     final fs = _firestoreService;
     final targetUid = uid ?? _profile.id;
@@ -318,8 +338,8 @@ class AppState extends ChangeNotifier {
       }
       await refreshActiveGroupMetadataFromFirestore();
       await _repairProfilePhotoReferenceIfNeeded();
-    } catch (_) {
-      // ignore: best-effort hydration
+    } catch (e, st) {
+      _recordBackendError(e, st);
     }
   }
 
@@ -429,8 +449,9 @@ class AppState extends ChangeNotifier {
     if (fs != null && isAuthenticated && groupId != null) {
       try {
         await fs.updateGroupImageUrl(groupId: groupId, imageUrl: next);
-      } catch (_) {
-        // ignore: best-effort sync
+        _clearBackendError();
+      } catch (e, st) {
+        _recordBackendError(e, st);
       }
     }
   }
@@ -847,8 +868,9 @@ class AppState extends ChangeNotifier {
         await fs.removeUserFcmToken(uid: uid, token: previous);
       }
       await fs.addUserFcmToken(uid: uid, token: cleaned);
-    } catch (_) {
-      // ignore: best-effort sync
+      _clearBackendError();
+    } catch (e, st) {
+      _recordBackendError(e, st);
     }
   }
 
@@ -909,8 +931,9 @@ class AppState extends ChangeNotifier {
     if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
       try {
         await fs.removeUserFcmToken(uid: uid, token: token);
-      } catch (_) {
-        // ignore: best effort
+        _clearBackendError();
+      } catch (e, st) {
+        _recordBackendError(e, st);
       }
     }
 
@@ -936,8 +959,9 @@ class AppState extends ChangeNotifier {
     if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
       try {
         await fs.removeUserFcmToken(uid: uid, token: token);
-      } catch (_) {
-        // ignore: best effort
+        _clearBackendError();
+      } catch (e, st) {
+        _recordBackendError(e, st);
       }
     }
 
@@ -1108,7 +1132,9 @@ class AppState extends ChangeNotifier {
         dayNumber: dayNumber,
       );
       lockTime = md?.lockTime;
-    } catch (_) {
+      _clearBackendError();
+    } catch (e, st) {
+      _recordBackendError(e, st);
       lockTime = null;
     }
 
@@ -1356,8 +1382,10 @@ class AppState extends ChangeNotifier {
       }
 
       await prefs.setBool(_kFirestoreMigrationV1DoneScoped, true);
-    } catch (_) {
+      _clearBackendError();
+    } catch (e, st) {
       // Migration failed — will retry next launch
+      _recordBackendError(e, st);
     }
   }
 

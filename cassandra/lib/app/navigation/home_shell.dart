@@ -157,7 +157,9 @@ class _HomeShellState extends State<HomeShell> {
           );
         }
       }
+      app.clearBackendSyncError();
     } catch (e) {
+      app.markBackendSyncError(e);
       if (kDebugMode) {
         debugPrint('[live-sync] failed: $e');
       }
@@ -185,10 +187,48 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final app = CassandraScope.of(context);
 
     return Scaffold(
       // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
-      body: IndexedStack(index: _index, children: _pages),
+      body: Column(
+        children: [
+          if (app.hasBackendSyncError)
+            SafeArea(
+              bottom: false,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                color: const Color(0xFFF9EAC1),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.wifi_off_rounded,
+                      size: 16,
+                      color: Color(0xFF3E5966),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        l10n.predictionsOfflineStatus,
+                        style: const TextStyle(
+                          color: Color(0xFF3E5966),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(index: _index, children: _pages),
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: AppColors.navBarBg,

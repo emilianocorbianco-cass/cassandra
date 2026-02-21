@@ -9,7 +9,8 @@ import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
-import '../../domain/serie_a/team_name_normalizer.dart';
+import '../../services/firestore/firestore_serializers.dart';
+import '../config/storage_keys.dart';
 
 /// Stato dei pronostici, estratto da AppState per isolamento e testabilità.
 ///
@@ -21,12 +22,13 @@ class PredictionState extends ChangeNotifier {
 
   // ===== SharedPreferences keys =====
   static const _kCurrentUserPicksByMatchIdV1 =
-      'cassandra.current_user_picks_by_match_id_v1';
-  static const _kCurrentUserPicksByMatchday = 'picks.currentUser.byMatchday.v1';
-  static const _kPredictionOutcomesByMatchday = 'outcomes.byMatchday.v1';
-  static const _kMemberPicksByMemberIdV1 =
-      'cassandra.member_picks_by_member_id_v1';
-  static const _kMatchdayMatchesByDayV1 = 'matchdayMatchesByDay.v1';
+      StorageKeys.currentUserPicksByMatchIdV1;
+  static const _kCurrentUserPicksByMatchday =
+      StorageKeys.currentUserPicksByMatchdayV1;
+  static const _kPredictionOutcomesByMatchday =
+      StorageKeys.predictionOutcomesByMatchdayV1;
+  static const _kMemberPicksByMemberIdV1 = StorageKeys.memberPicksByMemberIdV1;
+  static const _kMatchdayMatchesByDayV1 = StorageKeys.matchdayMatchesByDayV1;
 
   final SharedPreferences? _prefs;
 
@@ -341,7 +343,9 @@ class PredictionState extends ChangeNotifier {
       final day = int.tryParse(e.key);
       if (day == null) continue;
       final list = (e.value as List).cast<Map<String, dynamic>>();
-      map[day] = list.map(_predictionMatchFromSnapshot).toList();
+      map[day] = list
+          .map((json) => FirestoreSerializers.predictionMatchFromMap(json))
+          .toList();
     }
     _matchdayMatchesByDay = map;
   }
@@ -367,7 +371,9 @@ class PredictionState extends ChangeNotifier {
 
     final encoded = <String, dynamic>{
       for (final e in _matchdayMatchesByDay.entries)
-        e.key.toString(): e.value.map(_predictionMatchToSnapshot).toList(),
+        e.key.toString(): e.value
+            .map(FirestoreSerializers.predictionMatchToMap)
+            .toList(),
     };
     final prefs = _prefs;
     if (prefs != null) {
@@ -684,98 +690,5 @@ class PredictionState extends ChangeNotifier {
     _prefs?.remove(_kMemberPicksByMemberIdV1);
 
     notifyListeners();
-  }
-
-  // ======================================================================
-  // SNAPSHOT SERIALIZATION (PredictionMatch <-> JSON)
-  // ======================================================================
-
-  Map<String, dynamic> _predictionMatchToSnapshot(PredictionMatch m) {
-    return {
-      'id': m.id,
-      'kickoff': m.kickoff.toIso8601String(),
-      'home': normalizeSerieATeamName(m.homeTeam),
-      'away': normalizeSerieATeamName(m.awayTeam),
-      if (m.homeTeamLogo != null) 'homeLogo': m.homeTeamLogo,
-      if (m.awayTeamLogo != null) 'awayLogo': m.awayTeamLogo,
-      if (m.homeGoals != null) 'homeGoals': m.homeGoals,
-      if (m.awayGoals != null) 'awayGoals': m.awayGoals,
-      if (m.statusShort != null && m.statusShort!.isNotEmpty)
-        'statusShort': m.statusShort,
-      if (m.liveEvents.isNotEmpty)
-        'events': m.liveEvents
-            .map(
-              (e) => {
-                'minute': e.minute,
-                if (e.extraMinute != null) 'extraMinute': e.extraMinute,
-                'type': e.type,
-                if (e.detail != null && e.detail!.isNotEmpty)
-                  'detail': e.detail,
-                if (e.teamName != null && e.teamName!.isNotEmpty)
-                  'teamName': e.teamName,
-                if (e.playerName != null && e.playerName!.isNotEmpty)
-                  'playerName': e.playerName,
-                if (e.assistName != null && e.assistName!.isNotEmpty)
-                  'assistName': e.assistName,
-              },
-            )
-            .toList(),
-      'odds': {
-        'home': m.odds.home,
-        'draw': m.odds.draw,
-        'away': m.odds.away,
-        'homeDraw': m.odds.homeDraw,
-        'drawAway': m.odds.drawAway,
-        'homeAway': m.odds.homeAway,
-      },
-    };
-  }
-
-  PredictionMatch _predictionMatchFromSnapshot(Map<String, dynamic> j) {
-    final odds = j['odds'] as Map<String, dynamic>;
-    final rawStatus = j['statusShort']?.toString().trim();
-    final rawEvents = (j['events'] as List<dynamic>? ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
-    return PredictionMatch(
-      id: j['id'] as String,
-      kickoff: DateTime.parse(j['kickoff'] as String).toLocal(),
-      homeTeam: normalizeSerieATeamName(j['home'] as String),
-      awayTeam: normalizeSerieATeamName(j['away'] as String),
-      homeTeamLogo: j['homeLogo'] as String?,
-      awayTeamLogo: j['awayLogo'] as String?,
-      homeGoals: _asNullableInt(j['homeGoals']),
-      awayGoals: _asNullableInt(j['awayGoals']),
-      statusShort: (rawStatus == null || rawStatus.isEmpty) ? null : rawStatus,
-      liveEvents: rawEvents
-          .map(
-            (e) => MatchLiveEvent(
-              minute: _asNullableInt(e['minute']) ?? 0,
-              extraMinute: _asNullableInt(e['extraMinute']),
-              type: e['type']?.toString() ?? 'unknown',
-              detail: e['detail']?.toString(),
-              teamName: e['teamName']?.toString(),
-              playerName: e['playerName']?.toString(),
-              assistName: e['assistName']?.toString(),
-            ),
-          )
-          .toList(growable: false),
-      odds: Odds(
-        home: (odds['home'] as num).toDouble(),
-        draw: (odds['draw'] as num).toDouble(),
-        away: (odds['away'] as num).toDouble(),
-        homeDraw: (odds['homeDraw'] as num).toDouble(),
-        drawAway: (odds['drawAway'] as num).toDouble(),
-        homeAway: (odds['homeAway'] as num).toDouble(),
-      ),
-    );
-  }
-
-  int? _asNullableInt(Object? raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString());
   }
 }

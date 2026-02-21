@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/matchday/matchday_recovery_rules.dart';
+import '../config/storage_keys.dart';
 
 /// Stato della giornata di campionato, estratto da AppState per isolamento
 /// e testabilità.
@@ -12,13 +13,14 @@ import '../../domain/matchday/matchday_recovery_rules.dart';
 /// finalizzazione giornate, auto-advance, origin kickoffs.
 class MatchdayState extends ChangeNotifier {
   // ===== SharedPreferences keys =====
-  static const _kCassandraMatchdayCursorV1 = 'cassandra.matchday.cursor.v1';
+  static const _kCassandraMatchdayCursorV1 =
+      StorageKeys.cassandraMatchdayCursorV1;
   static const int _kCassandraDefaultMatchdayCursor = 20;
-  static const _kFinalizedMatchdaysV1 = 'matchday.finalized.v1';
+  static const _kFinalizedMatchdaysV1 = StorageKeys.finalizedMatchdaysV1;
   static const _kCassandraMatchdayLastAutoBumpFromV1 =
-      'cassandra.matchday.lastAutoBumpFrom.v1';
+      StorageKeys.cassandraMatchdayLastAutoBumpFromV1;
   static const _kOriginKickoffsByMatchIdV1 =
-      'fixtures.originKickoffsByMatchId.v1';
+      StorageKeys.originKickoffsByMatchIdV1;
 
   final SharedPreferences? _prefs;
 
