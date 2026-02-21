@@ -242,6 +242,7 @@ class _GroupPageState extends State<GroupPage> {
         _firestoreSeasonPicksByMemberId = seasonPicksByMemberId;
         _firestoreLoading = false;
       });
+      appState.clearBackendSyncError();
 
       _scheduleFirestoreReveal(matchdayData?.lockTime);
       _bindFirestoreRealtime(
@@ -250,7 +251,8 @@ class _GroupPageState extends State<GroupPage> {
         seasonKey: appState.currentSeasonKey,
         dayNumber: appState.uiMatchdayNumber,
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      appState.markBackendSyncError(error, stackTrace);
       if (!mounted) return;
       setState(() {
         _firestoreGroupId = groupId;
@@ -264,6 +266,18 @@ class _GroupPageState extends State<GroupPage> {
         _firestoreLoading = false;
       });
     }
+  }
+
+  void _handleFirestoreRealtimeError(
+    AppState appState,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    appState.markBackendSyncError(error, stackTrace);
+    if (!mounted) return;
+    setState(() {
+      _firestoreLoading = false;
+    });
   }
 
   void _bindFirestoreRealtime({
@@ -286,49 +300,66 @@ class _GroupPageState extends State<GroupPage> {
 
     _cancelFirestoreRealtime();
 
-    _firestoreMembersSub = fs.streamGroupMembers(groupId).listen((docs) async {
-      final members = docs
-          .map(
-            (d) => GroupMember(
-              id: d.uid,
-              displayName: d.displayName,
-              teamName: d.teamName,
-              avatarSeed: d.avatarSeed,
-              favoriteTeam: d.favoriteTeam,
-              photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
-                  ? d.photoUrl!.trim()
-                  : null,
-            ),
-          )
-          .toList(growable: false);
+    _firestoreMembersSub = fs
+        .streamGroupMembers(groupId)
+        .listen(
+          (docs) async {
+            final members = docs
+                .map(
+                  (d) => GroupMember(
+                    id: d.uid,
+                    displayName: d.displayName,
+                    teamName: d.teamName,
+                    avatarSeed: d.avatarSeed,
+                    favoriteTeam: d.favoriteTeam,
+                    photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
+                        ? d.photoUrl!.trim()
+                        : null,
+                  ),
+                )
+                .toList(growable: false);
 
-      if (!mounted) return;
-      setState(() {
-        _firestoreMembers = members;
-      });
-      _recomputeFirestoreDerived(appState);
-    });
+            if (!mounted) return;
+            setState(() {
+              _firestoreMembers = members;
+            });
+            _recomputeFirestoreDerived(appState);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            _handleFirestoreRealtimeError(appState, error, stackTrace);
+          },
+        );
 
     _firestoreSeasonPicksSub = fs
         .streamPicksForSeason(seasonKey: seasonKey, groupId: groupId)
-        .listen((docs) {
-          if (!mounted) return;
-          setState(() {
-            _firestoreSeasonPicksDocs = docs;
-          });
-          _recomputeFirestoreDerived(appState);
-        });
+        .listen(
+          (docs) {
+            if (!mounted) return;
+            setState(() {
+              _firestoreSeasonPicksDocs = docs;
+            });
+            _recomputeFirestoreDerived(appState);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            _handleFirestoreRealtimeError(appState, error, stackTrace);
+          },
+        );
 
     _firestoreMatchdaySub = fs
         .streamMatchdayData(seasonKey: seasonKey, dayNumber: dayNumber)
-        .listen((doc) {
-          if (!mounted) return;
-          setState(() {
-            _firestoreCurrentMatchday = doc;
-          });
-          _scheduleFirestoreReveal(doc?.lockTime);
-          _recomputeFirestoreDerived(appState);
-        });
+        .listen(
+          (doc) {
+            if (!mounted) return;
+            setState(() {
+              _firestoreCurrentMatchday = doc;
+            });
+            _scheduleFirestoreReveal(doc?.lockTime);
+            _recomputeFirestoreDerived(appState);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            _handleFirestoreRealtimeError(appState, error, stackTrace);
+          },
+        );
   }
 
   void _cancelFirestoreRealtime() {

@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'api_football_exceptions.dart';
 
 class ApiFootballClient {
+  static const Duration _requestTimeout = Duration(seconds: 15);
+  static const int _maxAttempts = 3;
+
   ApiFootballClient({
     required this.apiKey,
     this.baseUrl = 'https://v3.football.api-sports.io',
@@ -46,7 +51,7 @@ class ApiFootballClient {
     String path, {
     Map<String, String>? query,
   }) async {
-    final resp = await _http.get(_uri(path, query: query), headers: _headers);
+    final resp = await _getWithRetry(_uri(path, query: query));
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw ApiFootballHttpException(resp.statusCode, resp.body);
@@ -63,6 +68,45 @@ class ApiFootballClient {
     }
 
     return decoded;
+  }
+
+  Future<http.Response> _getWithRetry(Uri uri) async {
+    for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
+      try {
+        final response = await _http
+            .get(uri, headers: _headers)
+            .timeout(_requestTimeout);
+
+        final shouldRetry =
+            _isRetryableStatus(response.statusCode) && attempt < _maxAttempts;
+        if (!shouldRetry) return response;
+      } on TimeoutException {
+        if (attempt >= _maxAttempts) {
+          throw ApiFootballException('Request timeout');
+        }
+      } on SocketException catch (e) {
+        if (attempt >= _maxAttempts) {
+          throw ApiFootballException('Network error: $e');
+        }
+      } on http.ClientException catch (e) {
+        if (attempt >= _maxAttempts) {
+          throw ApiFootballException('HTTP client error: $e');
+        }
+      }
+
+      await Future<void>.delayed(_retryDelayFor(attempt));
+    }
+    throw ApiFootballException('Request failed');
+  }
+
+  bool _isRetryableStatus(int statusCode) {
+    return statusCode == 429 || (statusCode >= 500 && statusCode <= 599);
+  }
+
+  Duration _retryDelayFor(int attempt) {
+    final baseMs = 350;
+    final factor = 1 << (attempt - 1); // 1,2,4
+    return Duration(milliseconds: baseMs * factor);
   }
 
   void close() => _http.close();

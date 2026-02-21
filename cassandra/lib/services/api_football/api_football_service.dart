@@ -259,7 +259,10 @@ class ApiFootballService {
               .firstOrNull;
           if (chosen != null) break;
         }
-        chosen ??= bookmakers.first as Map<dynamic, dynamic>?;
+        final firstBookmaker = bookmakers.first;
+        if (chosen == null && firstBookmaker is Map) {
+          chosen = firstBookmaker;
+        }
         if (chosen == null) continue;
 
         result[id] = ApiFootballFixtureOdds.fromBookmakerJson(id, chosen);

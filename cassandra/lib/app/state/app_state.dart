@@ -315,6 +315,12 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _profileSyncDebounceTimer?.cancel();
     _profileSyncDebounceTimer = null;
+    groupState.removeListener(notifyListeners);
+    predictionState.removeListener(notifyListeners);
+    matchdayState.removeListener(notifyListeners);
+    groupState.dispose();
+    predictionState.dispose();
+    matchdayState.dispose();
     super.dispose();
   }
 

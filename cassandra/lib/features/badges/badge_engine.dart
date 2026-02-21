@@ -53,7 +53,7 @@ class CassandraBadgeEngine {
       if (!isHome && !isAway) continue;
 
       final pick = picksByMatchId[m.id] ?? PickOption.none;
-      final outcome = outcomesByMatchId[m.id] ?? MatchOutcome.voided;
+      final outcome = outcomesByMatchId[m.id] ?? MatchOutcome.pending;
 
       if (outcome.isVoided) continue;
 
