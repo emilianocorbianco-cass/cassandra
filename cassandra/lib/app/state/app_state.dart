@@ -1159,6 +1159,8 @@ class AppState extends ChangeNotifier {
   String? _hydratedCurrentUserHistoryKey;
   String? _lastHistoryHydrationError;
   DateTime? _lastHistoryHydrationAttemptAt;
+  bool _historyHydrationLoopRunning = false;
+  bool _historyHydrationQueued = false;
 
   bool get isHydratingCurrentUserHistoryFromFirestore =>
       _hydratingCurrentUserHistoryFromFirestore;
@@ -1166,7 +1168,31 @@ class AppState extends ChangeNotifier {
   DateTime? get lastHistoryHydrationAttemptAt => _lastHistoryHydrationAttemptAt;
 
   void _triggerHistoryHydrationWithRetry() {
-    unawaited(_hydrateCurrentUserHistoryWithRetry());
+    _historyHydrationQueued = true;
+    if (_historyHydrationLoopRunning) return;
+    _historyHydrationLoopRunning = true;
+    unawaited(_runHistoryHydrationLoop());
+  }
+
+  Future<void> _runHistoryHydrationLoop() async {
+    try {
+      while (_historyHydrationQueued) {
+        _historyHydrationQueued = false;
+
+        // Serializza le hydration anche quando una chiamata diretta
+        // (es. login flow) è già in corso.
+        while (_hydratingCurrentUserHistoryFromFirestore) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+
+        await _hydrateCurrentUserHistoryWithRetry();
+      }
+    } finally {
+      _historyHydrationLoopRunning = false;
+      if (_historyHydrationQueued) {
+        _triggerHistoryHydrationWithRetry();
+      }
+    }
   }
 
   Future<void> _hydrateCurrentUserHistoryWithRetry() async {
