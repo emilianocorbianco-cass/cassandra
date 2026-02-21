@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -19,6 +21,8 @@ class PredictionsHistoryPage extends StatefulWidget {
 
 class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
   bool _initialized = false;
+  bool _hydratingFromBackend = false;
+  bool _didRequestBackendHydration = false;
 
   @override
   void didChangeDependencies() {
@@ -34,7 +38,32 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
       app.ensureCurrentUserPicksLoaded();
       app.ensureOutcomesHistoryLoaded();
       app.ensureMatchdayMatchesLoaded();
+      if (!_didRequestBackendHydration &&
+          app.isAuthenticated &&
+          app.firestoreService != null) {
+        _didRequestBackendHydration = true;
+        unawaited(_hydrateHistoryFromBackend());
+      }
     });
+  }
+
+  Future<void> _hydrateHistoryFromBackend() async {
+    if (!mounted) return;
+    final app = CassandraScope.of(context);
+    setState(() => _hydratingFromBackend = true);
+    try {
+      await app.hydrateCurrentUserHistoryFromFirestore(
+        force: true,
+        throwOnError: true,
+      );
+      app.clearBackendSyncError();
+    } catch (error, stackTrace) {
+      app.markBackendSyncError(error, stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() => _hydratingFromBackend = false);
+      }
+    }
   }
 
   MatchdayData _mockMatchday(int dayNumber) {
@@ -72,6 +101,11 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
               child: Text(l10n.predHistoryInfo),
             ),
           ),
+          if (_hydratingFromBackend)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
           const SizedBox(height: 8),
           if (savedDays.isEmpty)
             Card(
