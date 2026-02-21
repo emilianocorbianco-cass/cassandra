@@ -16,11 +16,49 @@ import 'models/matchday_document.dart';
 import 'models/picks_document.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _db;
+  late final FirebaseFirestore _db;
   static const Duration _requestTimeout = Duration(seconds: 15);
 
+  // ---------------------------------------------------------------------------
+  // Group profile sync — retry / chunk constants and test-injection fields
+  // ---------------------------------------------------------------------------
+
+  static const int _kGroupProfileBatchSize = 350;
+  static const int _kGroupProfileSyncMaxAttempts = 3;
+  static const Duration _kGroupProfileSyncRetryBaseDelay = Duration(
+    milliseconds: 500,
+  );
+
+  /// Injectable hook for unit tests — when non-null, replaces the Firestore
+  /// batch-commit in [updateGroupMemberProfileInGroups] so tests never need
+  /// Firebase to be initialized.
+  final Future<void> Function(int chunkIndex, List<String> groupIds)?
+  _groupProfileSyncChunkHook;
+
+  /// Injectable retry delay for unit tests.  [null] means use
+  /// [_kGroupProfileSyncRetryBaseDelay].  Set to [Duration.zero] to make
+  /// retries instant in tests.
+  final Duration? _groupProfileSyncRetryDelay;
+
   FirestoreService({FirebaseFirestore? firestore})
-    : _db = firestore ?? FirebaseFirestore.instance;
+    : _groupProfileSyncChunkHook = null,
+      _groupProfileSyncRetryDelay = null {
+    _db = firestore ?? FirebaseFirestore.instance;
+  }
+
+  /// Test-only named constructor: injects a chunk hook and instant retry delay
+  /// so unit tests can exercise retry logic without touching Firebase.
+  ///
+  /// [_db] is intentionally left un-initialized — accessing it from a test
+  /// that uses this constructor will throw [LateInitializationError]
+  /// immediately rather than silently succeeding with a live Firestore.
+  @visibleForTesting
+  FirestoreService.forGroupSyncTest({
+    required Future<void> Function(int chunkIndex, List<String> groupIds)
+    chunkHook,
+    Duration retryDelay = Duration.zero,
+  }) : _groupProfileSyncChunkHook = chunkHook,
+       _groupProfileSyncRetryDelay = retryDelay;
 
   Future<T> _withTimeout<T>(
     Future<T> future, {
@@ -35,6 +73,62 @@ class FirestoreService {
         message: 'Request timeout during $operation',
       );
     }
+  }
+
+  /// Attempts [commitAction] up to [_kGroupProfileSyncMaxAttempts] times with
+  /// exponential back-off.  Throws a descriptive [Exception] — never silently
+  /// swallows the error — so callers can detect and log partial progress.
+  Future<void> _retryChunkCommit({
+    required Future<void> Function() commitAction,
+    required List<String> chunkGroupIds,
+    required int chunkIndex,
+    required int totalChunks,
+  }) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < _kGroupProfileSyncMaxAttempts; attempt++) {
+      if (attempt > 0) {
+        final baseDelay =
+            _groupProfileSyncRetryDelay ?? _kGroupProfileSyncRetryBaseDelay;
+        final delay = baseDelay * (1 << attempt); // 500 ms, 1 000 ms, …
+        if (kDebugMode) {
+          debugPrint(
+            '[group-sync] chunk ${chunkIndex + 1}/$totalChunks: '
+            'retry $attempt after ${delay.inMilliseconds} ms '
+            '(last error: $lastError)',
+          );
+        }
+        await Future<void>.delayed(delay);
+      }
+
+      try {
+        await commitAction();
+        if (kDebugMode && attempt > 0) {
+          debugPrint(
+            '[group-sync] chunk ${chunkIndex + 1}/$totalChunks: '
+            'succeeded on attempt ${attempt + 1}',
+          );
+        }
+        return; // success
+      } catch (e) {
+        lastError = e;
+        if (kDebugMode) {
+          debugPrint(
+            '[group-sync] chunk ${chunkIndex + 1}/$totalChunks: '
+            'attempt ${attempt + 1} failed — $e',
+          );
+        }
+      }
+    }
+
+    // All attempts exhausted — surface a descriptive, non-silent error.
+    final groupSummary = chunkGroupIds.length <= 5
+        ? chunkGroupIds.join(', ')
+        : '${chunkGroupIds.take(5).join(', ')} … (${chunkGroupIds.length} total)';
+    throw Exception(
+      'updateGroupMemberProfileInGroups: chunk ${chunkIndex + 1}/$totalChunks '
+      'permanently failed after $_kGroupProfileSyncMaxAttempts attempts '
+      '(groups: $groupSummary): $lastError',
+    );
   }
 
   // ===== USER PROFILE =====
@@ -257,38 +351,87 @@ class FirestoreService {
         .toList(growable: false);
     if (uniqueGroupIds.isEmpty) return;
 
-    var batch = _db.batch();
-    var pendingWrites = 0;
-    for (final groupId in uniqueGroupIds) {
-      final memberRef = _db
-          .collection('groups')
-          .doc(groupId)
-          .collection('members')
-          .doc(uid);
-      batch.set(memberRef, {
-        'displayName': displayName,
-        'teamName': teamName,
-        'photoUrl': photoUrl,
-        'avatarSeed': avatarSeed,
-        'favoriteTeam': favoriteTeam,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      pendingWrites += 1;
+    // Pre-build chunks so every retry attempt reuses the same group-ID list.
+    final chunks = <List<String>>[];
+    for (var i = 0; i < uniqueGroupIds.length; i += _kGroupProfileBatchSize) {
+      final end = i + _kGroupProfileBatchSize > uniqueGroupIds.length
+          ? uniqueGroupIds.length
+          : i + _kGroupProfileBatchSize;
+      chunks.add(uniqueGroupIds.sublist(i, end));
+    }
 
-      if (pendingWrites >= 350) {
+    if (kDebugMode) {
+      debugPrint(
+        '[group-sync] starting profile sync for uid=$uid '
+        'across ${uniqueGroupIds.length} group(s) '
+        'in ${chunks.length} chunk(s)',
+      );
+    }
+
+    for (var chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      final chunkGroupIds = chunks[chunkIndex];
+
+      // Capture hook reference for null-safety promotion inside the closure.
+      final hook = _groupProfileSyncChunkHook;
+
+      // Build the commit action; branches on test hook vs. real Firestore.
+      Future<void> buildAndCommit() async {
+        if (hook != null) {
+          await hook(chunkIndex, chunkGroupIds);
+          return;
+        }
+        final batch = _db.batch();
+        for (final groupId in chunkGroupIds) {
+          final memberRef = _db
+              .collection('groups')
+              .doc(groupId)
+              .collection('members')
+              .doc(uid);
+          batch.set(memberRef, {
+            'displayName': displayName,
+            'teamName': teamName,
+            'photoUrl': photoUrl,
+            'avatarSeed': avatarSeed,
+            'favoriteTeam': favoriteTeam,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
         await _withTimeout(
           batch.commit(),
           operation: 'updateGroupMemberProfileInGroups.batchCommit',
         );
-        batch = _db.batch();
-        pendingWrites = 0;
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          '[group-sync] committing chunk ${chunkIndex + 1}/${chunks.length} '
+          '(${chunkGroupIds.length} group(s))',
+        );
+      }
+
+      // Throws if all retries are exhausted — deliberately NOT caught here so
+      // the caller learns that some groups were not updated.  Chunks already
+      // committed before this failure are not rolled back; the exception
+      // message identifies the failing chunk and group IDs.
+      await _retryChunkCommit(
+        commitAction: buildAndCommit,
+        chunkGroupIds: chunkGroupIds,
+        chunkIndex: chunkIndex,
+        totalChunks: chunks.length,
+      );
+
+      if (kDebugMode) {
+        debugPrint(
+          '[group-sync] chunk ${chunkIndex + 1}/${chunks.length} done '
+          '(${chunkIndex + 1} of ${chunks.length} committed)',
+        );
       }
     }
 
-    if (pendingWrites > 0) {
-      await _withTimeout(
-        batch.commit(),
-        operation: 'updateGroupMemberProfileInGroups.batchCommit',
+    if (kDebugMode) {
+      debugPrint(
+        '[group-sync] profile sync complete for uid=$uid '
+        '(${uniqueGroupIds.length} group(s), ${chunks.length} chunk(s))',
       );
     }
   }
