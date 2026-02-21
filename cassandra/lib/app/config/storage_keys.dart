@@ -33,6 +33,7 @@ class StorageKeys {
   static const groupInviteCodeV1 = 'group.inviteCode.v1';
   static const groupImagePathV1 = 'group.imagePath.v1';
   static const groupAdminApprovalV1 = 'group.adminApproval.v1';
+  static const groupActiveGroupIdV1 = 'group.activeGroupId.v1';
 
   // Prediction
   static const currentUserPicksByMatchIdV1 =

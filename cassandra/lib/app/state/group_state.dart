@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -40,6 +41,7 @@ class GroupState extends ChangeNotifier {
   static const _kGroupInviteCodeV1 = StorageKeys.groupInviteCodeV1;
   static const _kGroupImagePathV1 = StorageKeys.groupImagePathV1;
   static const _kGroupAdminApprovalV1 = StorageKeys.groupAdminApprovalV1;
+  static const _kGroupActiveGroupIdV1 = StorageKeys.groupActiveGroupIdV1;
 
   final SharedPreferences? _prefs;
 
@@ -73,11 +75,13 @@ class GroupState extends ChangeNotifier {
     String? groupInviteCode,
     String? groupImagePath,
     bool groupAdminApproval = false,
+    String? activeGroupId,
   }) : _prefs = prefs,
        _groupName = groupName,
        _groupInviteCode = groupInviteCode,
        _groupImagePath = groupImagePath,
-       _groupAdminApproval = groupAdminApproval;
+       _groupAdminApproval = groupAdminApproval,
+       _activeGroupId = activeGroupId;
 
   /// Crea dallo storage persistente (usato da AppState.load).
   factory GroupState.fromPrefs(SharedPreferences? prefs) {
@@ -87,6 +91,7 @@ class GroupState extends ChangeNotifier {
       groupInviteCode: prefs?.getString(_kGroupInviteCodeV1),
       groupImagePath: prefs?.getString(_kGroupImagePathV1),
       groupAdminApproval: prefs?.getBool(_kGroupAdminApprovalV1) ?? false,
+      activeGroupId: prefs?.getString(_kGroupActiveGroupIdV1),
     );
   }
 
@@ -98,17 +103,24 @@ class GroupState extends ChangeNotifier {
   // ===== Firestore group IDs =====
 
   void setFirestoreGroupIds(List<String> ids) {
-    _firestoreGroupIds = ids;
+    _firestoreGroupIds = ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
     if (_activeGroupId == null ||
         !_firestoreGroupIds.contains(_activeGroupId)) {
       _activeGroupId = _firestoreGroupIds.isNotEmpty
           ? _firestoreGroupIds.first
           : null;
+      unawaited(_persistActiveGroupId());
     }
   }
 
   void setActiveGroupId(String? id) {
-    _activeGroupId = id;
+    final cleaned = (id ?? '').trim();
+    _activeGroupId = cleaned.isEmpty ? null : cleaned;
+    unawaited(_persistActiveGroupId());
     notifyListeners();
   }
 
@@ -172,6 +184,7 @@ class GroupState extends ChangeNotifier {
       _firestoreGroupIds = [localGroupId];
       await _prefs?.setString(_kGroupNameV1, cleaned);
       await _prefs?.setString(_kGroupInviteCodeV1, code);
+      await _persistActiveGroupId();
       notifyListeners();
       return null;
     }
@@ -225,6 +238,7 @@ class GroupState extends ChangeNotifier {
         _firestoreGroupIds = [..._firestoreGroupIds, groupId];
       }
       _activeGroupId = groupId;
+      await _persistActiveGroupId();
 
       notifyListeners();
       return null;
@@ -264,6 +278,7 @@ class GroupState extends ChangeNotifier {
 
     _firestoreGroupIds = [..._firestoreGroupIds, group.id];
     _activeGroupId = group.id;
+    await _persistActiveGroupId();
 
     _groupName = group.name;
     _groupInviteCode = group.inviteCode;
@@ -293,6 +308,7 @@ class GroupState extends ChangeNotifier {
       _activeGroupId = _firestoreGroupIds.isNotEmpty
           ? _firestoreGroupIds.first
           : null;
+      await _persistActiveGroupId();
     }
 
     if (_firestoreGroupIds.isEmpty) {
@@ -330,6 +346,7 @@ class GroupState extends ChangeNotifier {
       await _prefs?.remove(_kGroupInviteCodeV1);
       await _prefs?.remove(_kGroupImagePathV1);
       await _prefs?.remove(_kGroupAdminApprovalV1);
+      await _prefs?.remove(_kGroupActiveGroupIdV1);
       notifyListeners();
       return null;
     }
@@ -351,6 +368,7 @@ class GroupState extends ChangeNotifier {
       _activeGroupId = _firestoreGroupIds.isNotEmpty
           ? _firestoreGroupIds.first
           : null;
+      await _persistActiveGroupId();
       if (_activeGroupId == null) {
         await _clearLocalGroupData();
       }
@@ -373,6 +391,7 @@ class GroupState extends ChangeNotifier {
     _activeGroupId = _firestoreGroupIds.isNotEmpty
         ? _firestoreGroupIds.first
         : null;
+    await _persistActiveGroupId();
 
     _deleteGroupImageFile();
     _groupImagePath = null;
@@ -399,6 +418,7 @@ class GroupState extends ChangeNotifier {
         _groupInviteCode = null;
         _activeGroupId = null;
         _firestoreGroupIds = [];
+        await _persistActiveGroupId();
         await _prefs?.remove(_kGroupNameV1);
         await _prefs?.remove(_kGroupInviteCodeV1);
         await _prefs?.remove(_kGroupImagePathV1);
@@ -519,6 +539,7 @@ class GroupState extends ChangeNotifier {
     await _prefs?.remove(_kGroupInviteCodeV1);
     await _prefs?.remove(_kGroupImagePathV1);
     await _prefs?.remove(_kGroupAdminApprovalV1);
+    await _prefs?.remove(_kGroupActiveGroupIdV1);
     notifyListeners();
   }
 
@@ -547,9 +568,22 @@ class GroupState extends ChangeNotifier {
     _deleteGroupImageFile();
     _groupImagePath = null;
     _groupAdminApproval = false;
+    _activeGroupId = null;
     await _prefs?.remove(_kGroupNameV1);
     await _prefs?.remove(_kGroupInviteCodeV1);
     await _prefs?.remove(_kGroupImagePathV1);
     await _prefs?.remove(_kGroupAdminApprovalV1);
+    await _prefs?.remove(_kGroupActiveGroupIdV1);
+  }
+
+  Future<void> _persistActiveGroupId() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    final activeId = (_activeGroupId ?? '').trim();
+    if (activeId.isEmpty) {
+      await prefs.remove(_kGroupActiveGroupIdV1);
+      return;
+    }
+    await prefs.setString(_kGroupActiveGroupIdV1, activeId);
   }
 }

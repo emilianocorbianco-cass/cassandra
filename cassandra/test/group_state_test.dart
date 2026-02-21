@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:cassandra/app/state/group_state.dart';
+import 'package:cassandra/app/config/storage_keys.dart';
 import 'package:cassandra/app/state/user_profile.dart';
 
 void main() {
@@ -174,6 +176,45 @@ void main() {
       state.setFirestoreGroupIds(['g3', 'g4']);
       // g2 not in new list, should reset to first
       expect(state.activeGroupId, 'g3');
+    });
+  });
+
+  group('active group persistence', () {
+    test(
+      'fromPrefs restores activeGroupId and keeps it when present in ids',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          StorageKeys.groupActiveGroupIdV1: 'g2',
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final state = GroupState.fromPrefs(prefs);
+        state.setFirestoreGroupIds(['g1', 'g2', 'g3']);
+        expect(state.activeGroupId, 'g2');
+      },
+    );
+
+    test('setActiveGroupId persists to SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final state = GroupState.fromPrefs(prefs);
+      state.setFirestoreGroupIds(['g1', 'g2']);
+      state.setActiveGroupId('g2');
+
+      await Future<void>.delayed(Duration.zero);
+      expect(prefs.getString(StorageKeys.groupActiveGroupIdV1), 'g2');
+    });
+
+    test('invalid restored activeGroupId is corrected and persisted', () async {
+      SharedPreferences.setMockInitialValues({
+        StorageKeys.groupActiveGroupIdV1: 'old-group',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final state = GroupState.fromPrefs(prefs);
+      state.setFirestoreGroupIds(['g3', 'g4']);
+
+      await Future<void>.delayed(Duration.zero);
+      expect(state.activeGroupId, 'g3');
+      expect(prefs.getString(StorageKeys.groupActiveGroupIdV1), 'g3');
     });
   });
 
