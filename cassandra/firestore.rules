@@ -57,8 +57,13 @@ service cloud.firestore {
       match /members/{memberUid} {
         allow read: if signedIn();
         allow create: if signedIn()
-                      && request.auth.uid == memberUid
-                      && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid));
+                      && (
+                        // join normale: l'utente crea il proprio documento
+                        (request.auth.uid == memberUid
+                          && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid)))
+                        // seed dev: l'admin del gruppo può creare utenti mock (uid mock_*)
+                        || (isGroupAdmin(groupId) && memberUid.matches('mock_.*'))
+                      );
         allow update: if signedIn()
                       && (request.auth.uid == memberUid
                           || isGroupAdmin(groupId));
@@ -86,11 +91,19 @@ service cloud.firestore {
                       || (resource.data.groupId is string
                           && isGroupMember(resource.data.groupId)));
       allow create: if signedIn()
-                    && request.resource.data.uid == request.auth.uid
-                    && (!request.resource.data.keys().hasAny(['groupId'])
-                        || (request.resource.data.groupId is string
-                            && isGroupMember(request.resource.data.groupId)))
-                    && !request.resource.data.keys().hasAny(['score', 'scoredAt']);
+                    && (
+                      // write normale: l'utente crea i propri pick
+                      (request.resource.data.uid == request.auth.uid
+                        && (!request.resource.data.keys().hasAny(['groupId'])
+                            || (request.resource.data.groupId is string
+                                && isGroupMember(request.resource.data.groupId)))
+                        && !request.resource.data.keys().hasAny(['score', 'scoredAt']))
+                      // seed dev: l'admin può creare pick per utenti mock (uid mock_*)
+                      || (request.resource.data.uid.matches('mock_.*')
+                          && request.resource.data.groupId is string
+                          && isGroupAdmin(request.resource.data.groupId)
+                          && !request.resource.data.keys().hasAny(['score', 'scoredAt']))
+                    );
       allow update: if signedIn()
                     && resource.data.uid == request.auth.uid
                     && request.resource.data.uid == resource.data.uid
