@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:cassandra/app/state/prediction_state.dart';
 import 'package:cassandra/features/predictions/models/pick_option.dart';
@@ -270,6 +273,47 @@ void main() {
       final s = PredictionState.inMemory();
       expect(s.savedMatchesForMatchday(99), isNull);
     });
+
+    test('ensureMatchdayMatchesLoaded ignores corrupt JSON payload', () async {
+      SharedPreferences.setMockInitialValues({
+        'matchdayMatchesByDay.v1': '{not-json',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final s = PredictionState.fromPrefs(prefs);
+
+      await s.ensureMatchdayMatchesLoaded();
+
+      expect(s.matchdayMatchesByDay, isEmpty);
+      expect(s.hasSavedMatchesForMatchday(20), isFalse);
+    });
+
+    test(
+      'ensureMatchdayMatchesLoaded keeps valid days and skips bad rows',
+      () async {
+        final validMatch = FirestoreSerializers.predictionMatchToMap(
+          _makeMatch('m-valid'),
+        );
+        final payload = jsonEncode({
+          '20': [
+            validMatch,
+            {'broken': true},
+          ],
+          'bad-day': [validMatch],
+          '21': 'not-a-list',
+        });
+        SharedPreferences.setMockInitialValues({
+          'matchdayMatchesByDay.v1': payload,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final s = PredictionState.fromPrefs(prefs);
+
+        await s.ensureMatchdayMatchesLoaded();
+
+        expect(s.hasSavedMatchesForMatchday(20), isTrue);
+        expect(s.savedMatchesForMatchday(20)!.single.id, 'm-valid');
+        expect(s.matchdayMatchesByDay.containsKey(21), isFalse);
+      },
+    );
   });
 
   // ==========================================================================
