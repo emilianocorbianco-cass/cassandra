@@ -69,7 +69,12 @@ class PicksDocument {
   ) {
     final d = doc.data()!;
 
-    final rawPicks = d['picksByMatchId'] as Map<String, dynamic>? ?? {};
+    // Use is-Map guard instead of direct cast so a corrupt field (e.g. a List)
+    // produces an empty picks map rather than a TypeError crash.
+    final rawPicksRaw = d['picksByMatchId'];
+    final rawPicks = rawPicksRaw is Map
+        ? Map<String, dynamic>.from(rawPicksRaw)
+        : <String, dynamic>{};
     final picks = <String, PickOption>{};
     for (final e in rawPicks.entries) {
       try {

@@ -1232,4 +1232,51 @@ void main() {
       expect(state.hasRememberedIdentity, isTrue);
     });
   });
+
+  // =========================================================================
+  // AppState.parseGroupIds — pure parsing helper
+  // =========================================================================
+
+  group('AppState.parseGroupIds', () {
+    test('null returns null', () {
+      expect(AppState.parseGroupIds(null), isNull);
+    });
+
+    test('non-List (String) returns null', () {
+      expect(AppState.parseGroupIds('g1'), isNull);
+    });
+
+    test('non-List (int) returns null', () {
+      expect(AppState.parseGroupIds(42), isNull);
+    });
+
+    test('non-List (Map) returns null', () {
+      expect(AppState.parseGroupIds({'a': 'b'}), isNull);
+    });
+
+    test('empty list returns empty list', () {
+      expect(AppState.parseGroupIds([]), isEmpty);
+    });
+
+    test('list of strings returns all strings', () {
+      expect(AppState.parseGroupIds(['g1', 'g2', 'g3']), ['g1', 'g2', 'g3']);
+    });
+
+    test('mixed list: non-String elements are silently dropped', () {
+      // Firestore schema drift: int slips in alongside valid String ids.
+      expect(AppState.parseGroupIds(['g1', 42, 'g2', null, 'g3']), [
+        'g1',
+        'g2',
+        'g3',
+      ]);
+    });
+
+    test('all-non-String list returns empty list (not null)', () {
+      expect(AppState.parseGroupIds([1, 2, null, false]), isEmpty);
+    });
+
+    test('duplicates are preserved (dedup is caller responsibility)', () {
+      expect(AppState.parseGroupIds(['g1', 'g1', 'g2']), ['g1', 'g1', 'g2']);
+    });
+  });
 }

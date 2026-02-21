@@ -31,11 +31,28 @@ class MatchdayDocument {
   }) {
     final d = doc.data()!;
 
-    final rawMatches = d['matches'] as List<dynamic>? ?? [];
-    final matches = rawMatches
-        .cast<Map<String, dynamic>>()
-        .map(FirestoreSerializers.predictionMatchFromMap)
-        .toList();
+    // Use a per-entry loop instead of .cast<Map>() so that a single corrupt
+    // element (wrong type, missing fields) is skipped with a log message
+    // rather than throwing a CastError / FormatException for the whole document.
+    final rawMatchesList = d['matches'];
+    final rawMatches = rawMatchesList is List ? rawMatchesList : const [];
+    final matches = <PredictionMatch>[];
+    for (final rawMatch in rawMatches) {
+      if (rawMatch is! Map) continue;
+      try {
+        matches.add(
+          FirestoreSerializers.predictionMatchFromMap(
+            Map<String, dynamic>.from(rawMatch),
+          ),
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            '[matchday] corrupt match entry in Firestore document, skipping: $e',
+          );
+        }
+      }
+    }
 
     final rawOutcomes = d['outcomesByMatchId'] as Map<String, dynamic>? ?? {};
     final outcomes = <String, MatchOutcome>{};

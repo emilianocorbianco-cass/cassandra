@@ -33,7 +33,9 @@ class GroupDocument {
       imageUrl: d['imageUrl'] as String?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (d['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      memberCount: d['memberCount'] as int? ?? 0,
+      // Use num? → toInt() so Firestore double values (e.g. 1.0 from a Cloud
+      // Function) are accepted without a TypeError.
+      memberCount: (d['memberCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -68,7 +70,7 @@ class GroupMemberDocument {
       displayName: d['displayName'] as String? ?? '',
       teamName: d['teamName'] as String? ?? '',
       photoUrl: d['photoUrl'] as String?,
-      avatarSeed: d['avatarSeed'] as int? ?? 0,
+      avatarSeed: (d['avatarSeed'] as num?)?.toInt() ?? 0,
       favoriteTeam: d['favoriteTeam'] as String?,
       joinedAt: (d['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       role: d['role'] as String? ?? 'member',

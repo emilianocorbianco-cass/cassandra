@@ -66,6 +66,21 @@ class AppState extends ChangeNotifier {
   static const _kLanguage = StorageKeys.language;
   static const _kDefaultVisibility = StorageKeys.defaultVisibility;
 
+  // ---------------------------------------------------------------------------
+  // Pure parsing helpers (extracted for testability)
+  // ---------------------------------------------------------------------------
+
+  /// Parses the [groupIds] field from a Firestore user-profile snapshot.
+  ///
+  /// Returns `null` when the field is absent or not a List, and silently
+  /// filters out any non-String elements (e.g. ints from schema drift) rather
+  /// than throwing a [CastError] from a lazy `.cast<String>()` call.
+  @visibleForTesting
+  static List<String>? parseGroupIds(dynamic raw) {
+    if (raw is! List) return null;
+    return raw.whereType<String>().toList(growable: false);
+  }
+
   // Key strings duplicated from PredictionState for scoped key generation.
   static const _kCurrentUserPicksByMatchday =
       StorageKeys.currentUserPicksByMatchdayV1;
@@ -192,10 +207,9 @@ class AppState extends ChangeNotifier {
     }
 
     final previousActiveGroupId = groupState.activeGroupId;
-    // Restore groupIds for multi-group support
-    final remoteGroupIds = (data['groupIds'] as List<dynamic>?)
-        ?.cast<String>()
-        .toList();
+    // Restore groupIds for multi-group support.  parseGroupIds is used instead
+    // of a direct cast so corrupt / mixed-type arrays don't throw CastError.
+    final remoteGroupIds = parseGroupIds(data['groupIds']);
     if (remoteGroupIds != null) {
       groupState.setFirestoreGroupIds(remoteGroupIds);
       changed = true;
