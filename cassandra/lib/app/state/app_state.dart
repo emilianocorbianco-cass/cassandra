@@ -65,6 +65,7 @@ class AppState extends ChangeNotifier {
   static const _kRememberedHandle = StorageKeys.rememberedHandleV1;
   static const _kRememberedPhotoUrl = StorageKeys.rememberedPhotoUrlV1;
   static const _kRememberedProvider = StorageKeys.rememberedProviderV1;
+  static const _kAnonymousHistoryScope = StorageKeys.anonymousHistoryScopeV1;
   static const _kDevicePushToken = StorageKeys.devicePushTokenV1;
   static const _kFirestoreMigrationV1Done =
       StorageKeys.firestoreMigrationV1Done;
@@ -79,10 +80,32 @@ class AppState extends ChangeNotifier {
       StorageKeys.predictionOutcomesByMatchdayV1;
   static const _kMatchdayMatchesByDayV1 = StorageKeys.matchdayMatchesByDayV1;
 
+  String? _anonymousHistoryScope;
+
+  String _resolveAnonymousHistoryScope() {
+    final cached = _anonymousHistoryScope;
+    if (cached != null && cached.trim().isNotEmpty) return cached.trim();
+
+    final fromPrefs = _prefs?.getString(_kAnonymousHistoryScope)?.trim();
+    if (fromPrefs != null && fromPrefs.isNotEmpty) {
+      _anonymousHistoryScope = fromPrefs;
+      return fromPrefs;
+    }
+
+    final generated =
+        'anon-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+    _anonymousHistoryScope = generated;
+    unawaited(_prefs?.setString(_kAnonymousHistoryScope, generated));
+    return generated;
+  }
+
   String _scopedHistoryKey(String base, {String? uid, String? seasonKey}) {
-    final scopedUid = (uid ?? _profile.id).trim();
+    final scopedUidRaw = (uid ?? _profile.id).trim();
+    final scopedUid = scopedUidRaw.isEmpty
+        ? _resolveAnonymousHistoryScope()
+        : scopedUidRaw;
     final scopedSeason = (seasonKey ?? currentSeasonKey).trim();
-    final safeUid = scopedUid.isEmpty ? 'anon' : scopedUid;
+    final safeUid = scopedUid;
     final safeSeason = scopedSeason.isEmpty ? 'season' : scopedSeason;
     return '$base.$safeUid.$safeSeason';
   }
@@ -918,14 +941,23 @@ class AppState extends ChangeNotifier {
     _triggerHistoryHydrationWithRetry();
     final token = _devicePushToken;
     if (token != null && token.trim().isNotEmpty) {
-      unawaited(
-        _firestoreService
-            ?.addUserFcmToken(uid: user.uid, token: token)
-            .then((_) => _clearBackendError())
-            .catchError((Object e, StackTrace st) {
-              _recordBackendError(e, st);
-            }),
-      );
+      final fs = _firestoreService;
+      if (fs == null) {
+        if (kDebugMode) {
+          debugPrint(
+            '[push] skipped token registration: firestore unavailable',
+          );
+        }
+      } else {
+        unawaited(
+          fs
+              .addUserFcmToken(uid: user.uid, token: token)
+              .then((_) => _clearBackendError())
+              .catchError((Object e, StackTrace st) {
+                _recordBackendError(e, st);
+              }),
+        );
+      }
     }
     notifyListeners();
   }

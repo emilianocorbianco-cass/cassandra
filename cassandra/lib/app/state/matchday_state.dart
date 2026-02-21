@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -202,6 +203,31 @@ class MatchdayState extends ChangeNotifier {
   MatchdayProgress? matchdayProgressFor(int matchdayNumber) =>
       _matchdayProgressByDay[matchdayNumber];
 
+  Future<void> _runAutoActionWithRetry({
+    required String label,
+    required Future<void> Function() action,
+    required void Function() onPermanentFailure,
+    int attempts = 3,
+  }) async {
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await action();
+        return;
+      } catch (error, stackTrace) {
+        final isLastAttempt = attempt >= attempts;
+        debugPrint(
+          '[matchday] $label attempt $attempt/$attempts failed: $error\n$stackTrace',
+        );
+        if (isLastAttempt) {
+          onPermanentFailure();
+          return;
+        }
+        final backoff = Duration(milliseconds: 250 * (1 << (attempt - 1)));
+        await Future<void>.delayed(backoff);
+      }
+    }
+  }
+
   void setMatchdayProgress({
     required int matchdayNumber,
     required MatchdayProgress progress,
@@ -219,14 +245,11 @@ class MatchdayState extends ChangeNotifier {
         _autoAdvancedFromMatchday != matchdayNumber) {
       _autoAdvancedFromMatchday = matchdayNumber;
       Future.microtask(() async {
-        try {
-          await setCassandraMatchdayCursor(matchdayNumber + 1);
-        } catch (error, stackTrace) {
-          _autoAdvancedFromMatchday = null;
-          debugPrint(
-            '[matchday] auto-advance failed for $matchdayNumber: $error\n$stackTrace',
-          );
-        }
+        await _runAutoActionWithRetry(
+          label: 'auto-advance($matchdayNumber)',
+          action: () => setCassandraMatchdayCursor(matchdayNumber + 1),
+          onPermanentFailure: () => _autoAdvancedFromMatchday = null,
+        );
       });
     }
 
@@ -236,14 +259,11 @@ class MatchdayState extends ChangeNotifier {
         _autoFinalizedFromMatchday != matchdayNumber) {
       _autoFinalizedFromMatchday = matchdayNumber;
       Future.microtask(() async {
-        try {
-          await markMatchdayFinalized(matchdayNumber);
-        } catch (error, stackTrace) {
-          _autoFinalizedFromMatchday = null;
-          debugPrint(
-            '[matchday] auto-finalize failed for $matchdayNumber: $error\n$stackTrace',
-          );
-        }
+        await _runAutoActionWithRetry(
+          label: 'auto-finalize($matchdayNumber)',
+          action: () => markMatchdayFinalized(matchdayNumber),
+          onPermanentFailure: () => _autoFinalizedFromMatchday = null,
+        );
       });
     }
 

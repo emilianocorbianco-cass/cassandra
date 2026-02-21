@@ -18,6 +18,7 @@ class StorageKeys {
   static const rememberedHandleV1 = 'auth.remembered.handle.v1';
   static const rememberedPhotoUrlV1 = 'auth.remembered.photoUrl.v1';
   static const rememberedProviderV1 = 'auth.remembered.provider.v1';
+  static const anonymousHistoryScopeV1 = 'auth.anonymousHistoryScope.v1';
   static const devicePushTokenV1 = 'push.deviceToken.v1';
 
   // Firestore migration
