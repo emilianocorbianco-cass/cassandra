@@ -975,15 +975,22 @@ class AppState extends ChangeNotifier {
     final uid = _profile.id.trim();
     if (fs == null || !isAuthenticated || uid.isEmpty) return;
 
-    try {
-      if (previous != null && previous.isNotEmpty && previous != cleaned) {
-        await fs.removeUserFcmToken(uid: uid, token: previous);
-      }
-      await fs.addUserFcmToken(uid: uid, token: cleaned);
-      _clearBackendError();
-    } catch (e, st) {
-      _recordBackendError(e, st);
+    // Remove stale token best-effort so it does not block new registration.
+    if (previous != null && previous.isNotEmpty && previous != cleaned) {
+      unawaited(
+        _runFirestoreWriteWithRetry(
+          operation: 'removeUserFcmToken',
+          action: () => fs.removeUserFcmToken(uid: uid, token: previous),
+        ),
+      );
     }
+    // Register new token with retry; fire-and-forget matching sign-in path.
+    unawaited(
+      _runFirestoreWriteWithRetry(
+        operation: 'addUserFcmToken',
+        action: () => fs.addUserFcmToken(uid: uid, token: cleaned),
+      ),
+    );
   }
 
   void setProfileFromFirebaseUser(User user) {
@@ -1048,12 +1055,10 @@ class AppState extends ChangeNotifier {
     final uid = _profile.id.trim();
     final fs = _firestoreService;
     if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
-      try {
-        await fs.removeUserFcmToken(uid: uid, token: token);
-        _clearBackendError();
-      } catch (e, st) {
-        _recordBackendError(e, st);
-      }
+      await _runFirestoreWriteWithRetry(
+        operation: 'removeUserFcmToken',
+        action: () => fs.removeUserFcmToken(uid: uid, token: token),
+      );
     }
 
     await _authService?.signOut();
@@ -1076,12 +1081,10 @@ class AppState extends ChangeNotifier {
     final uid = _profile.id.trim();
     final fs = _firestoreService;
     if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
-      try {
-        await fs.removeUserFcmToken(uid: uid, token: token);
-        _clearBackendError();
-      } catch (e, st) {
-        _recordBackendError(e, st);
-      }
+      await _runFirestoreWriteWithRetry(
+        operation: 'removeUserFcmToken',
+        action: () => fs.removeUserFcmToken(uid: uid, token: token),
+      );
     }
 
     await _authService?.deleteAccount();
