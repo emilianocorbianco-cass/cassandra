@@ -91,3 +91,25 @@ class PicksDocument {
     );
   }
 }
+
+/// Deduplicates [docs] keeping the most recent entry per
+/// (uid, seasonKey, dayNumber, groupId) tuple.
+///
+/// When two docs share the same tuple, the one with the later [PicksDocument.submittedAt]
+/// wins. Equal timestamps are broken by [PicksDocument.docId] lexicographic order
+/// (higher wins).
+List<PicksDocument> deduplicatePicks(Iterable<PicksDocument> docs) {
+  final byKey = <String, PicksDocument>{};
+  for (final doc in docs) {
+    final key =
+        '${doc.uid}|${doc.seasonKey}|${doc.dayNumber}|${doc.groupId?.trim() ?? ''}';
+    final prev = byKey[key];
+    if (prev == null ||
+        doc.submittedAt.isAfter(prev.submittedAt) ||
+        (doc.submittedAt.isAtSameMomentAs(prev.submittedAt) &&
+            doc.docId.compareTo(prev.docId) > 0)) {
+      byKey[key] = doc;
+    }
+  }
+  return byKey.values.toList(growable: false);
+}

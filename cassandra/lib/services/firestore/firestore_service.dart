@@ -529,25 +529,8 @@ class FirestoreService {
     String? groupId,
   }) => '${uid}_${seasonKey}_${dayNumber}_${_picksScopeKey(groupId)}';
 
-  String _picksDedupeKey(PicksDocument d) {
-    final scopedGroupId = d.groupId?.trim() ?? '';
-    return '${d.uid}|${d.seasonKey}|${d.dayNumber}|$scopedGroupId';
-  }
-
-  List<PicksDocument> _dedupePicksDocs(Iterable<PicksDocument> docs) {
-    final byKey = <String, PicksDocument>{};
-    for (final doc in docs) {
-      final key = _picksDedupeKey(doc);
-      final prev = byKey[key];
-      if (prev == null ||
-          doc.submittedAt.isAfter(prev.submittedAt) ||
-          (doc.submittedAt.isAtSameMomentAs(prev.submittedAt) &&
-              doc.docId.compareTo(prev.docId) > 0)) {
-        byKey[key] = doc;
-      }
-    }
-    return byKey.values.toList(growable: false);
-  }
+  List<PicksDocument> _dedupePicksDocs(Iterable<PicksDocument> docs) =>
+      deduplicatePicks(docs);
 
   Future<void> savePicks({
     required String uid,
