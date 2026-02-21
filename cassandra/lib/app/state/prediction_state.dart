@@ -19,6 +19,7 @@ import '../config/storage_keys.dart';
 /// recent matchday data.
 class PredictionState extends ChangeNotifier {
   static const int _kMaxMatchdayHistoryEntries = 64;
+  static const int _kMaxMemberPickEntries = 240;
 
   // ===== SharedPreferences keys =====
   static const _kCurrentUserPicksByMatchIdV1 =
@@ -421,6 +422,7 @@ class PredictionState extends ChangeNotifier {
           outer[memberId] = Map.unmodifiable(inner);
         }
       }
+      _pruneOldestMembers(outer);
       memberPicksByMemberId = Map.unmodifiable(outer);
     } catch (_) {}
   }
@@ -445,6 +447,7 @@ class PredictionState extends ChangeNotifier {
       }
     }
 
+    _pruneOldestMembers(next);
     memberPicksByMemberId = Map.unmodifiable(next);
     notifyListeners();
     unawaited(_persistMemberPicks());
@@ -634,6 +637,18 @@ class PredictionState extends ChangeNotifier {
     final removeCount = ordered.length - maxEntries;
     for (var i = 0; i < removeCount; i++) {
       map.remove(ordered[i]);
+    }
+  }
+
+  void _pruneOldestMembers(
+    Map<String, Map<String, PickOption>> map, {
+    int maxEntries = _kMaxMemberPickEntries,
+  }) {
+    if (map.length <= maxEntries) return;
+    final removeCount = map.length - maxEntries;
+    final keys = map.keys.take(removeCount).toList(growable: false);
+    for (final key in keys) {
+      map.remove(key);
     }
   }
 

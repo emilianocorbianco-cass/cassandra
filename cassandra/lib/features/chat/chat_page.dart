@@ -217,14 +217,16 @@ class _ChatPageState extends State<ChatPage>
             _handleMessagesChanged(messages);
             if (!mounted) return;
             if (!changed && !_messagesLoading) return;
+            CassandraScope.of(context).clearBackendSyncError();
             setState(() {
               _messagesSignature = signature;
               _messages = messages;
               _messagesLoading = false;
             });
           },
-          onError: (_) {
+          onError: (Object error, StackTrace stackTrace) {
             if (!mounted) return;
+            CassandraScope.of(context).markBackendSyncError(error, stackTrace);
             setState(() {
               _messagesLoading = false;
             });

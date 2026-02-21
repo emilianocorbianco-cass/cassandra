@@ -193,47 +193,50 @@ class FirestoreService {
     final memberRef = groupRef.collection('members').doc(uid);
     final userRef = _db.collection('users').doc(uid);
 
-    await _db.runTransaction((txn) async {
-      final groupSnap = await txn.get(groupRef);
-      if (!groupSnap.exists) {
-        throw FirebaseException(
-          plugin: 'cloud_firestore',
-          code: 'not-found',
-          message: 'Group not found',
-        );
-      }
+    await _withTimeout(
+      _db.runTransaction((txn) async {
+        final groupSnap = await txn.get(groupRef);
+        if (!groupSnap.exists) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'not-found',
+            message: 'Group not found',
+          );
+        }
 
-      final memberSnap = await txn.get(memberRef);
-      final baseMemberData = <String, dynamic>{
-        'displayName': displayName,
-        'teamName': teamName,
-        'photoUrl': photoUrl,
-        'avatarSeed': avatarSeed,
-        'favoriteTeam': favoriteTeam,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      if (!memberSnap.exists) {
-        final currentCount =
-            (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
-        txn.set(memberRef, {
-          ...baseMemberData,
-          'joinedAt': FieldValue.serverTimestamp(),
-          'role': 'member',
-        }, SetOptions(merge: true));
-        txn.update(groupRef, {
-          'memberCount': currentCount + 1,
+        final memberSnap = await txn.get(memberRef);
+        final baseMemberData = <String, dynamic>{
+          'displayName': displayName,
+          'teamName': teamName,
+          'photoUrl': photoUrl,
+          'avatarSeed': avatarSeed,
+          'favoriteTeam': favoriteTeam,
           'updatedAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        txn.set(memberRef, baseMemberData, SetOptions(merge: true));
-      }
+        };
 
-      txn.set(userRef, {
-        'groupIds': FieldValue.arrayUnion([groupId]),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    });
+        if (!memberSnap.exists) {
+          final currentCount =
+              (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+          txn.set(memberRef, {
+            ...baseMemberData,
+            'joinedAt': FieldValue.serverTimestamp(),
+            'role': 'member',
+          }, SetOptions(merge: true));
+          txn.update(groupRef, {
+            'memberCount': currentCount + 1,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          txn.set(memberRef, baseMemberData, SetOptions(merge: true));
+        }
+
+        txn.set(userRef, {
+          'groupIds': FieldValue.arrayUnion([groupId]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }),
+      operation: 'joinGroup.transaction',
+    );
   }
 
   Future<void> updateGroupMemberProfileInGroups({
@@ -272,14 +275,20 @@ class FirestoreService {
       pendingWrites += 1;
 
       if (pendingWrites >= 350) {
-        await batch.commit();
+        await _withTimeout(
+          batch.commit(),
+          operation: 'updateGroupMemberProfileInGroups.batchCommit',
+        );
         batch = _db.batch();
         pendingWrites = 0;
       }
     }
 
     if (pendingWrites > 0) {
-      await batch.commit();
+      await _withTimeout(
+        batch.commit(),
+        operation: 'updateGroupMemberProfileInGroups.batchCommit',
+      );
     }
   }
 
@@ -291,27 +300,30 @@ class FirestoreService {
     final memberRef = groupRef.collection('members').doc(uid);
     final userRef = _db.collection('users').doc(uid);
 
-    await _db.runTransaction((txn) async {
-      final groupSnap = await txn.get(groupRef);
-      final memberSnap = await txn.get(memberRef);
+    await _withTimeout(
+      _db.runTransaction((txn) async {
+        final groupSnap = await txn.get(groupRef);
+        final memberSnap = await txn.get(memberRef);
 
-      if (memberSnap.exists) {
-        txn.delete(memberRef);
-        if (groupSnap.exists) {
-          final currentCount =
-              (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
-          txn.update(groupRef, {
-            'memberCount': currentCount > 0 ? currentCount - 1 : 0,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+        if (memberSnap.exists) {
+          txn.delete(memberRef);
+          if (groupSnap.exists) {
+            final currentCount =
+                (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+            txn.update(groupRef, {
+              'memberCount': currentCount > 0 ? currentCount - 1 : 0,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
         }
-      }
 
-      txn.set(userRef, {
-        'groupIds': FieldValue.arrayRemove([groupId]),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    });
+        txn.set(userRef, {
+          'groupIds': FieldValue.arrayRemove([groupId]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }),
+      operation: 'leaveGroup.transaction',
+    );
   }
 
   Future<void> deleteGroupAsAdmin({
@@ -357,7 +369,10 @@ class FirestoreService {
         }, SetOptions(merge: true));
         batch.delete(groupRef.collection('members').doc(uid));
       }
-      await batch.commit();
+      await _withTimeout(
+        batch.commit(),
+        operation: 'deleteGroupAsAdmin.batchCommit',
+      );
     }
 
     await _withTimeout(

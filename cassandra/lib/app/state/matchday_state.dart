@@ -221,7 +221,12 @@ class MatchdayState extends ChangeNotifier {
       Future.microtask(() async {
         try {
           await setCassandraMatchdayCursor(matchdayNumber + 1);
-        } catch (_) {}
+        } catch (error, stackTrace) {
+          _autoAdvancedFromMatchday = null;
+          debugPrint(
+            '[matchday] auto-advance failed for $matchdayNumber: $error\n$stackTrace',
+          );
+        }
       });
     }
 
@@ -233,7 +238,12 @@ class MatchdayState extends ChangeNotifier {
       Future.microtask(() async {
         try {
           await markMatchdayFinalized(matchdayNumber);
-        } catch (_) {}
+        } catch (error, stackTrace) {
+          _autoFinalizedFromMatchday = null;
+          debugPrint(
+            '[matchday] auto-finalize failed for $matchdayNumber: $error\n$stackTrace',
+          );
+        }
       });
     }
 
