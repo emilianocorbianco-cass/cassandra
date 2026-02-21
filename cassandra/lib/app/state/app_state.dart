@@ -1466,6 +1466,7 @@ class AppState extends ChangeNotifier {
         debugPrint('[history-hydration] failed: $e');
         debugPrint('$st');
       }
+      _recordBackendError(e, st);
       if (throwOnError) rethrow;
     } finally {
       _hydratingCurrentUserHistoryFromFirestore = false;

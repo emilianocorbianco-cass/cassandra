@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../app/state/app_settings.dart';
 import '../../app/state/user_profile.dart';
@@ -425,6 +426,11 @@ class FirestoreService {
       } catch (_) {
         // Some profiles may be unreadable by security rules (e.g. not self).
         // Ignore and continue with available member-level photoUrl data.
+        if (kDebugMode) {
+          debugPrint(
+            '[group-members] failed loading fallback photo for uid=$uid',
+          );
+        }
       }
     }
     return out;
