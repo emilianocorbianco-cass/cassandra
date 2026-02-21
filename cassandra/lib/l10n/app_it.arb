@@ -273,6 +273,7 @@
   "liveEventYellowCard": "Ammonizione",
   "liveEventRedCard": "Espulsione",
   "liveEventWoodwork": "Palo/Traversa",
+  "liveEventVarGoal": "Gol annullato (VAR)",
   "liveEventGeneric": "Evento",
   "kickoffLabel": "Kickoff",
   "leaderboardsTitle": "Classifiche",

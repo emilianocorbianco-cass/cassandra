@@ -48,6 +48,8 @@ class LiveMatchDetailsPage extends StatelessWidget {
       case 'goal':
       case 'penalty_scored':
         return Icons.sports_soccer;
+      case 'var_goal':
+        return Icons.cancel_outlined;
       case 'penalty_missed':
       case 'penalty_event':
         return Icons.adjust_outlined;
@@ -69,6 +71,8 @@ class LiveMatchDetailsPage extends StatelessWidget {
       case 'goal':
       case 'penalty_scored':
         return CassandraColors.primary;
+      case 'var_goal':
+        return Colors.grey.shade600;
       case 'yellow_card':
         return Colors.amber.shade700;
       case 'red_card':
@@ -92,6 +96,8 @@ class LiveMatchDetailsPage extends StatelessWidget {
         return l10n.liveEventPenaltyScored;
       case 'penalty_missed':
         return l10n.liveEventPenaltyMissed;
+      case 'var_goal':
+        return l10n.liveEventVarGoal;
       case 'substitution':
         return l10n.liveEventSubstitution;
       case 'yellow_card':

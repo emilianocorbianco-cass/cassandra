@@ -273,6 +273,7 @@
   "liveEventYellowCard": "Yellow card",
   "liveEventRedCard": "Red card",
   "liveEventWoodwork": "Post/Crossbar",
+  "liveEventVarGoal": "Cancelled goal (VAR)",
   "liveEventGeneric": "Event",
   "kickoffLabel": "Kickoff",
   "leaderboardsTitle": "Standings",

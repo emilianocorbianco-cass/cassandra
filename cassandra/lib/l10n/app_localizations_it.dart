@@ -616,6 +616,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get liveEventWoodwork => 'Palo/Traversa';
 
   @override
+  String get liveEventVarGoal => 'Gol annullato (VAR)';
+
+  @override
   String get liveEventGeneric => 'Evento';
 
   @override

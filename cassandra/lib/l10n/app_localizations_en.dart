@@ -617,6 +617,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get liveEventWoodwork => 'Post/Crossbar';
 
   @override
+  String get liveEventVarGoal => 'Cancelled goal (VAR)';
+
+  @override
   String get liveEventGeneric => 'Event';
 
   @override

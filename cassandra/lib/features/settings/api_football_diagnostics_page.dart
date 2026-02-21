@@ -19,6 +19,8 @@ class _ApiFootballDiagnosticsPageState
     extends State<ApiFootballDiagnosticsPage> {
   late Future<_BackendDiagData> _future;
   bool _didLoad = false;
+  bool _seedLoading = false;
+  String? _seedResult;
 
   @override
   void didChangeDependencies() {
@@ -84,6 +86,31 @@ class _ApiFootballDiagnosticsPageState
         updatedAt: null,
         errorMessage: errorMessage,
       );
+    }
+  }
+
+  Future<void> _seedMockData() async {
+    final app = CassandraScope.of(context);
+    final fs = app.firestoreService;
+    if (fs == null) {
+      setState(() => _seedResult = 'FirestoreService non disponibile.');
+      return;
+    }
+    setState(() {
+      _seedLoading = true;
+      _seedResult = null;
+    });
+    try {
+      final result = await fs.seedMockGroupMembers(
+        inviteCode: 'CASS-6G2N',
+        seasonKey: app.currentSeasonKey,
+        dayNumber: 26,
+      );
+      if (mounted) setState(() => _seedResult = result);
+    } catch (e) {
+      if (mounted) setState(() => _seedResult = 'Errore: $e');
+    } finally {
+      if (mounted) setState(() => _seedLoading = false);
     }
   }
 
@@ -159,6 +186,51 @@ class _ApiFootballDiagnosticsPageState
                   ),
                 );
               }),
+
+              // ── Dev: seed mock group members ────────────────────────────
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                '🛠 Dev Tools',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Aggiunge Topolino e Pippo al gruppo CASS-6G2N con pick '
+                'per la giornata 26 della stagione corrente.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                icon: _seedLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.group_add_outlined, size: 18),
+                label: const Text('Seed Mock Users (CASS-6G2N · G26)'),
+                onPressed: _seedLoading ? null : _seedMockData,
+              ),
+              if (_seedResult != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _seedResult!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color:
+                        _seedResult!.startsWith('Errore') ||
+                            _seedResult!.startsWith('Gruppo') ||
+                            _seedResult!.startsWith('Giornata') ||
+                            _seedResult!.startsWith('FirestoreService')
+                        ? Colors.red.shade700
+                        : Colors.green.shade700,
+                  ),
+                ),
+              ],
             ],
           );
         },

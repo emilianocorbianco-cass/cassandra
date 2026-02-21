@@ -35,28 +35,84 @@ void main() {
     expect(s.playedOdds, closeTo(1.98, 0.0001));
   });
 
-  test('single wrong subtracts odds', () {
+  // ── Nuove regole penalità ────────────────────────────────────────────────
+
+  test('single wrong: home pick subtracts drawAway (X2) odds', () {
+    // Gioco 1 e sbaglio → perdo la quota X2 (drawAway = 1.70)
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
       pick: PickOption.home,
       outcome: MatchOutcome.away,
     );
 
-    expect(s.basePoints, closeTo(-1.98, 0.0001));
+    expect(s.basePoints, closeTo(-1.70, 0.0001)); // -drawAway
     expect(s.correct, isFalse);
     expect(s.playedOdds, closeTo(1.98, 0.0001));
   });
 
-  test('double wrong subtracts sum of singles', () {
+  test('single wrong: draw pick subtracts homeAway (12) odds', () {
+    // Gioco X e sbaglio → perdo la quota 12 (homeAway = 1.45)
+    final s = CassandraScoringEngine.scoreMatch(
+      match: match,
+      pick: PickOption.draw,
+      outcome: MatchOutcome.home,
+    );
+
+    expect(s.basePoints, closeTo(-1.45, 0.0001)); // -homeAway
+    expect(s.correct, isFalse);
+    expect(s.playedOdds, closeTo(3.25, 0.0001));
+  });
+
+  test('single wrong: away pick subtracts homeDraw (1X) odds', () {
+    // Gioco 2 e sbaglio → perdo la quota 1X (homeDraw = 1.32)
+    final s = CassandraScoringEngine.scoreMatch(
+      match: match,
+      pick: PickOption.away,
+      outcome: MatchOutcome.draw,
+    );
+
+    expect(s.basePoints, closeTo(-1.32, 0.0001)); // -homeDraw
+    expect(s.correct, isFalse);
+    expect(s.playedOdds, closeTo(4.10, 0.0001));
+  });
+
+  test('double wrong: homeDraw pick subtracts away × 2', () {
+    // Gioco 1X e sbaglio → perdo quota 2 × 2 (away × 2 = 8.20)
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
       pick: PickOption.homeDraw,
       outcome: MatchOutcome.away,
     );
 
-    expect(s.basePoints, closeTo(-(1.98 + 3.25), 0.0001));
+    expect(s.basePoints, closeTo(-(4.10 * 2), 0.0001)); // -8.20
     expect(s.correct, isFalse);
     expect(s.playedOdds, closeTo(1.32, 0.0001));
+  });
+
+  test('double wrong: drawAway pick subtracts home × 2', () {
+    // Gioco X2 e sbaglio → perdo quota 1 × 2 (home × 2 = 3.96)
+    final s = CassandraScoringEngine.scoreMatch(
+      match: match,
+      pick: PickOption.drawAway,
+      outcome: MatchOutcome.home,
+    );
+
+    expect(s.basePoints, closeTo(-(1.98 * 2), 0.0001)); // -3.96
+    expect(s.correct, isFalse);
+    expect(s.playedOdds, closeTo(1.70, 0.0001));
+  });
+
+  test('double wrong: homeAway pick subtracts draw × 2', () {
+    // Gioco 12 e sbaglio → perdo quota X × 2 (draw × 2 = 6.50)
+    final s = CassandraScoringEngine.scoreMatch(
+      match: match,
+      pick: PickOption.homeAway,
+      outcome: MatchOutcome.draw,
+    );
+
+    expect(s.basePoints, closeTo(-(3.25 * 2), 0.0001)); // -6.50
+    expect(s.correct, isFalse);
+    expect(s.playedOdds, closeTo(1.45, 0.0001));
   });
 
   test('not played subtracts max of 1X2', () {
@@ -137,11 +193,13 @@ void main() {
       outcomesByMatchId: {'m1': MatchOutcome.home, 'm2': MatchOutcome.away},
     );
 
-    // base = +1.98 + (-1.98) = 0
-    expect(complete.baseTotal, closeTo(0.0, 0.0001));
+    // m1: home pick correct → +1.98
+    // m2: home pick wrong  → -drawAway = -1.70 (nuova regola)
+    // base = +1.98 + (-1.70) = +0.28
+    expect(complete.baseTotal, closeTo(0.28, 0.0001));
     expect(complete.correctCount, 1);
-    expect(complete.bonusPoints, -10);
-    expect(complete.total, closeTo(-10.0, 0.0001));
+    expect(complete.bonusPoints, -10); // 1 su 2 corrette → bonus -10
+    expect(complete.total, closeTo(0.28 + (-10), 0.0001)); // -9.72
   });
   test('bonus table sanity checks', () {
     expect(CassandraScoringEngine.bonusForCorrectCount(0), -20);

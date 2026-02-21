@@ -71,17 +71,37 @@ class CassandraScoringEngine {
     }
   }
 
-  static double _wrongDoublePenaltySumSingles(
-    PredictionMatch match,
-    PickOption pick,
-  ) {
+  /// Penalità per singola sbagliata: si perde la quota della doppia chance
+  /// complementare (opposto logico della singola giocata).
+  ///   Gioco 1 e sbaglio → perdo la quota X2 (drawAway)
+  ///   Gioco X e sbaglio → perdo la quota 12 (homeAway)
+  ///   Gioco 2 e sbaglio → perdo la quota 1X (homeDraw)
+  static double _wrongSinglePenalty(PredictionMatch match, PickOption pick) {
+    switch (pick) {
+      case PickOption.home:
+        return match.odds.drawAway; // X2
+      case PickOption.draw:
+        return match.odds.homeAway; // 12
+      case PickOption.away:
+        return match.odds.homeDraw; // 1X
+      default:
+        return 0;
+    }
+  }
+
+  /// Penalità per doppia chance sbagliata: si perde la quota della singola
+  /// complementare × 2 (il segno escluso dalla doppia chance giocata).
+  ///   Gioco 1X e sbaglio → perdo quota 2 × 2 (away × 2)
+  ///   Gioco X2 e sbaglio → perdo quota 1 × 2 (home × 2)
+  ///   Gioco 12 e sbaglio → perdo quota X × 2 (draw × 2)
+  static double _wrongDoublePenalty(PredictionMatch match, PickOption pick) {
     switch (pick) {
       case PickOption.homeDraw:
-        return match.odds.home + match.odds.draw;
+        return match.odds.away * 2; // 2 × 2
       case PickOption.drawAway:
-        return match.odds.draw + match.odds.away;
+        return match.odds.home * 2; // 1 × 2
       case PickOption.homeAway:
-        return match.odds.home + match.odds.away;
+        return match.odds.draw * 2; // X × 2
       default:
         return 0;
     }
@@ -133,14 +153,16 @@ class CassandraScoringEngine {
     if (pick.isSingle) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectSingle(pick, outcome);
-      final base = correct ? played : -played;
+      final base = correct ? played : -_wrongSinglePenalty(match, pick);
 
       return MatchScoreBreakdown(
         matchId: match.id,
         basePoints: base,
         correct: correct,
         playedOdds: played,
-        note: correct ? 'Singola corretta' : 'Singola sbagliata',
+        note: correct
+            ? 'Singola corretta'
+            : 'Singola sbagliata: -doppia complementare',
       );
     }
 
@@ -158,13 +180,13 @@ class CassandraScoringEngine {
           note: 'Doppia corretta',
         );
       } else {
-        final sumSingles = _wrongDoublePenaltySumSingles(match, pick);
+        final penalty = _wrongDoublePenalty(match, pick);
         return MatchScoreBreakdown(
           matchId: match.id,
-          basePoints: -sumSingles,
+          basePoints: -penalty,
           correct: false,
           playedOdds: played,
-          note: 'Doppia sbagliata: -somma quote singole',
+          note: 'Doppia sbagliata: -singola complementare × 2',
         );
       }
     }

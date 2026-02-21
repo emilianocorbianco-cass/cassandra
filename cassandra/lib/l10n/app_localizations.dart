@@ -1190,6 +1190,12 @@ abstract class AppLocalizations {
   /// **'Post/Crossbar'**
   String get liveEventWoodwork;
 
+  /// No description provided for @liveEventVarGoal.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled goal (VAR)'**
+  String get liveEventVarGoal;
+
   /// No description provided for @liveEventGeneric.
   ///
   /// In en, this message translates to:

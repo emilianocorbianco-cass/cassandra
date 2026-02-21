@@ -965,4 +965,112 @@ class FirestoreService {
         .map((e) => ApiFootballStanding.fromMap(e.cast<String, dynamic>()))
         .toList();
   }
+
+  // ---------------------------------------------------------------------------
+  // Dev / test data seeding
+  // ---------------------------------------------------------------------------
+
+  /// Aggiunge due utenti mock al gruppo identificato da [inviteCode] con pick
+  /// per la giornata [dayNumber] della stagione [seasonKey].
+  ///
+  /// Utile per testare leaderboard e UI di gruppo senza creare account reali.
+  /// Restituisce un messaggio di esito leggibile dall'operatore.
+  Future<String> seedMockGroupMembers({
+    required String inviteCode,
+    required String seasonKey,
+    required int dayNumber,
+  }) async {
+    // 1. Trova il gruppo tramite invite code
+    final group = await getGroupByInviteCode(inviteCode);
+    if (group == null) {
+      return 'Gruppo non trovato per il codice: $inviteCode';
+    }
+    final groupId = group.id;
+
+    // 2. Recupera i match ID dalla giornata
+    final matchday = await getMatchdayData(
+      seasonKey: seasonKey,
+      dayNumber: dayNumber,
+    );
+    if (matchday == null || matchday.matches.isEmpty) {
+      return 'Giornata $dayNumber non trovata o vuota per la stagione $seasonKey';
+    }
+    final matchIds = matchday.matches.map((m) => m.id).toList();
+
+    // 3. Definizione utenti mock
+    const mockUsers = [
+      (
+        uid: 'mock_topolino_test',
+        displayName: 'Topolino',
+        teamName: 'Juventus',
+        avatarSeed: 42,
+      ),
+      (
+        uid: 'mock_pippo_test',
+        displayName: 'Pippo',
+        teamName: 'Inter',
+        avatarSeed: 77,
+      ),
+    ];
+
+    // Sequenze di pick variabili per simulare scelte diverse
+    const pickSequences = [
+      ['home', 'draw', 'away', 'homeDraw', 'drawAway', 'homeAway'],
+      ['away', 'homeDraw', 'home', 'drawAway', 'draw', 'homeAway'],
+    ];
+
+    for (var i = 0; i < mockUsers.length; i++) {
+      final user = mockUsers[i];
+      final seq = pickSequences[i % pickSequences.length];
+
+      // Membro del gruppo
+      await _withTimeout(
+        _db
+            .collection('groups')
+            .doc(groupId)
+            .collection('members')
+            .doc(user.uid)
+            .set({
+              'displayName': user.displayName,
+              'teamName': user.teamName,
+              'photoUrl': null,
+              'avatarSeed': user.avatarSeed,
+              'favoriteTeam': null,
+              'joinedAt': FieldValue.serverTimestamp(),
+              'role': 'member',
+            }),
+        operation: 'seedMockGroupMembers.addMember',
+      );
+
+      // Pick per la giornata
+      final picksByMatchId = <String, String>{};
+      for (var j = 0; j < matchIds.length; j++) {
+        picksByMatchId[matchIds[j]] = seq[j % seq.length];
+      }
+
+      final docId = '${user.uid}_${seasonKey}_${dayNumber}_$groupId';
+      await _withTimeout(
+        _db.collection('picks').doc(docId).set({
+          'uid': user.uid,
+          'seasonKey': seasonKey,
+          'dayNumber': dayNumber,
+          'picksByMatchId': picksByMatchId,
+          'submittedAt': FieldValue.serverTimestamp(),
+          'visibility': 'public',
+          'groupId': groupId,
+        }),
+        operation: 'seedMockGroupMembers.savePicks',
+      );
+
+      if (kDebugMode) {
+        debugPrint(
+          '[seed] ${user.displayName} (${user.uid}) aggiunto a $groupId '
+          'con ${picksByMatchId.length} pick',
+        );
+      }
+    }
+
+    return 'Seeding completato: ${mockUsers.map((u) => u.displayName).join(", ")} '
+        'aggiunti al gruppo $groupId (${matchIds.length} pick ciascuno)';
+  }
 }
