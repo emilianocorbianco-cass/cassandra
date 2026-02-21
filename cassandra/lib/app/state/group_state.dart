@@ -514,6 +514,15 @@ class GroupState extends ChangeNotifier {
         lower.startsWith('data:image/');
   }
 
+  /// Exposed for testing only — do not call from production code.
+  ///
+  /// Returns true when [value] is a portable image reference (an http/https URL
+  /// or an inline data: URI) that can be safely displayed across devices.
+  /// File-system paths and blank strings return false.
+  @visibleForTesting
+  static bool isPortableImageRef(String value) =>
+      _looksLikePortableImageRef(value);
+
   /// Fetch active group document da Firestore.
   Future<GroupDocument?> fetchActiveGroupDocument({
     required bool isAuthenticated,

@@ -1056,4 +1056,180 @@ void main() {
       expect(count, 1);
     });
   });
+
+  // ===========================================================================
+  // Backend sync error state
+  // ===========================================================================
+
+  group('Backend sync error state', () {
+    test('initially has no error', () {
+      final state = AppState.inMemory();
+      expect(state.hasBackendSyncError, isFalse);
+      expect(state.lastBackendSyncError, isNull);
+      expect(state.lastBackendSyncErrorAt, isNull);
+    });
+
+    test('markBackendSyncError sets message and records a timestamp', () {
+      final state = AppState.inMemory();
+      final before = DateTime.now();
+      state.markBackendSyncError(Exception('firestore timeout'));
+      final after = DateTime.now();
+
+      expect(state.hasBackendSyncError, isTrue);
+      expect(state.lastBackendSyncError, contains('firestore timeout'));
+      expect(state.lastBackendSyncErrorAt, isNotNull);
+      expect(
+        state.lastBackendSyncErrorAt!.isAfter(before) ||
+            state.lastBackendSyncErrorAt!.isAtSameMomentAs(before),
+        isTrue,
+      );
+      expect(
+        state.lastBackendSyncErrorAt!.isBefore(after) ||
+            state.lastBackendSyncErrorAt!.isAtSameMomentAs(after),
+        isTrue,
+      );
+    });
+
+    test('clearBackendSyncError resets both fields to null', () {
+      final state = AppState.inMemory();
+      state.markBackendSyncError(Exception('network error'));
+      expect(state.hasBackendSyncError, isTrue);
+
+      state.clearBackendSyncError();
+
+      expect(state.hasBackendSyncError, isFalse);
+      expect(state.lastBackendSyncError, isNull);
+      expect(state.lastBackendSyncErrorAt, isNull);
+    });
+
+    test('clearBackendSyncError does not notify when no error is set', () {
+      final state = AppState.inMemory();
+      var count = 0;
+      state.addListener(() => count++);
+
+      state.clearBackendSyncError(); // nothing to clear
+
+      expect(count, 0);
+    });
+
+    test('markBackendSyncError overwrites a previous error message', () {
+      final state = AppState.inMemory();
+      state.markBackendSyncError(Exception('error one'));
+      expect(state.lastBackendSyncError, contains('error one'));
+
+      state.markBackendSyncError(Exception('error two'));
+      expect(state.lastBackendSyncError, contains('error two'));
+      expect(state.lastBackendSyncError, isNot(contains('error one')));
+    });
+
+    test(
+      'clearBackendSyncError after markBackendSyncError notifies listeners',
+      () {
+        final state = AppState.inMemory();
+        state.markBackendSyncError(Exception('some error'));
+        var count = 0;
+        state.addListener(() => count++);
+
+        state.clearBackendSyncError();
+
+        expect(count, 1);
+      },
+    );
+  });
+
+  // ===========================================================================
+  // Remember-me identity persistence
+  // ===========================================================================
+
+  group('Remember-me identity persistence', () {
+    test('remember-me is disabled and has no identity by default', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      expect(state.rememberMeEnabled, isFalse);
+      expect(state.hasRememberedIdentity, isFalse);
+      expect(state.rememberedUid, isNull);
+    });
+
+    test(
+      'enabling remember-me stores uid and handle taken from the profile',
+      () async {
+        final state = AppState.inMemory(profile: _testProfile);
+        await state.setRememberMeEnabled(true);
+
+        expect(state.rememberMeEnabled, isTrue);
+        expect(state.rememberedUid, _testProfile.id);
+        expect(state.rememberedHandle, _testProfile.teamName.trim());
+        expect(state.hasRememberedIdentity, isTrue);
+      },
+    );
+
+    test(
+      'disabling remember-me clears uid and hasRememberedIdentity',
+      () async {
+        final state = AppState.inMemory(profile: _testProfile);
+        await state.setRememberMeEnabled(true);
+        expect(state.rememberedUid, isNotNull);
+
+        await state.setRememberMeEnabled(false);
+
+        expect(state.rememberMeEnabled, isFalse);
+        expect(state.rememberedUid, isNull);
+        expect(state.hasRememberedIdentity, isFalse);
+      },
+    );
+
+    test(
+      'setRememberMeEnabled is idempotent when already in target state',
+      () async {
+        final state = AppState.inMemory(profile: _testProfile);
+        await state.setRememberMeEnabled(true);
+
+        var count = 0;
+        state.addListener(() => count++);
+
+        await state.setRememberMeEnabled(true); // already enabled
+
+        expect(count, 0);
+      },
+    );
+
+    test(
+      'hasRememberedIdentity is false when enabled but profile uid is empty',
+      () async {
+        // inMemory() with no profile → uid is empty string
+        final state = AppState.inMemory();
+        await state.setRememberMeEnabled(true);
+
+        expect(state.rememberMeEnabled, isTrue);
+        // _syncRememberedIdentityFromProfile bails early when uid is empty
+        expect(state.rememberedUid, isNull);
+        expect(state.hasRememberedIdentity, isFalse);
+      },
+    );
+
+    test(
+      'forgetRememberedIdentity disables and wipes all remembered fields',
+      () async {
+        final state = AppState.inMemory(profile: _testProfile);
+        await state.setRememberMeEnabled(true);
+        expect(state.hasRememberedIdentity, isTrue);
+
+        await state.forgetRememberedIdentity();
+
+        expect(state.rememberMeEnabled, isFalse);
+        expect(state.rememberedUid, isNull);
+        expect(state.hasRememberedIdentity, isFalse);
+      },
+    );
+
+    test('enabling then disabling then re-enabling stores uid again', () async {
+      final state = AppState.inMemory(profile: _testProfile);
+      await state.setRememberMeEnabled(true);
+      await state.setRememberMeEnabled(false);
+      await state.setRememberMeEnabled(true);
+
+      expect(state.rememberMeEnabled, isTrue);
+      expect(state.rememberedUid, _testProfile.id);
+      expect(state.hasRememberedIdentity, isTrue);
+    });
+  });
 }

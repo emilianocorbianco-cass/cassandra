@@ -284,6 +284,112 @@ void main() {
       expect(state.activeGroupId, isNull);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Member photo fallback: portable vs non-portable image references
+  //
+  // GroupState.fetchFirestoreGroupMembers uses isPortableImageRef to decide
+  // whether a user-profile photo URL fetched as a fallback can be displayed
+  // on any device (network/data URI) or must be discarded (local file path).
+  // The tests below cover the predicate directly.
+  // ---------------------------------------------------------------------------
+
+  group('GroupState.isPortableImageRef – portable references', () {
+    test('https URL is portable', () {
+      expect(
+        GroupState.isPortableImageRef('https://example.com/avatar.jpg'),
+        isTrue,
+      );
+    });
+
+    test('http URL is portable', () {
+      expect(
+        GroupState.isPortableImageRef('http://cdn.example.com/photo.png'),
+        isTrue,
+      );
+    });
+
+    test('data:image/png URI is portable', () {
+      expect(
+        GroupState.isPortableImageRef(
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA',
+        ),
+        isTrue,
+      );
+    });
+
+    test('data:image/jpeg URI is portable', () {
+      expect(
+        GroupState.isPortableImageRef('data:image/jpeg;base64,/9j/4AAQ'),
+        isTrue,
+      );
+    });
+
+    test('data:image/webp URI is portable', () {
+      expect(
+        GroupState.isPortableImageRef('data:image/webp;base64,UklGRg=='),
+        isTrue,
+      );
+    });
+
+    test('HTTPS scheme is checked case-insensitively', () {
+      expect(
+        GroupState.isPortableImageRef('HTTPS://example.com/photo.jpg'),
+        isTrue,
+      );
+    });
+
+    test('leading/trailing whitespace is stripped before the check', () {
+      expect(
+        GroupState.isPortableImageRef('  https://example.com/a.jpg  '),
+        isTrue,
+      );
+    });
+  });
+
+  group('GroupState.isPortableImageRef – non-portable references', () {
+    test('absolute local file path is not portable', () {
+      expect(
+        GroupState.isPortableImageRef(
+          '/data/user/0/com.example.app/cache/photo.jpg',
+        ),
+        isFalse,
+      );
+    });
+
+    test('relative file path is not portable', () {
+      expect(GroupState.isPortableImageRef('images/avatar.png'), isFalse);
+    });
+
+    test('empty string is not portable', () {
+      expect(GroupState.isPortableImageRef(''), isFalse);
+    });
+
+    test('whitespace-only string is not portable', () {
+      expect(GroupState.isPortableImageRef('   '), isFalse);
+    });
+
+    test('bare file name without scheme is not portable', () {
+      expect(GroupState.isPortableImageRef('photo.jpg'), isFalse);
+    });
+
+    test('data: URI for non-image type is not portable', () {
+      // data:text/plain is not an image reference
+      expect(
+        GroupState.isPortableImageRef('data:text/plain;base64,SGVsbG8='),
+        isFalse,
+      );
+    });
+
+    test('Firebase Storage gs:// path is not portable', () {
+      expect(
+        GroupState.isPortableImageRef(
+          'gs://my-project.appspot.com/avatars/uid.jpg',
+        ),
+        isFalse,
+      );
+    });
+  });
 }
 
 UserProfile _dummyProfile() => const UserProfile(
