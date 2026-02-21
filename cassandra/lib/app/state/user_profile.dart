@@ -1,14 +1,49 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
-String _normalizeHandleValue(String raw, {String fallback = '@cassandra'}) {
-  final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
-  if (compact.isEmpty || compact == '@') return fallback;
-  final body = compact.startsWith('@') ? compact.substring(1) : compact;
-  if (body.isEmpty) return fallback;
-  return '@$body';
-}
-
 class UserProfile {
+  /// Maximum length for [displayName] (after trim).
+  static const int kMaxDisplayNameLength = 40;
+
+  /// Maximum length for the handle body (without the '@' prefix).
+  static const int kMaxHandleBodyLength = 24;
+
+  /// Maximum length for [favoriteTeam] (after trim).
+  static const int kMaxFavoriteTeamLength = 40;
+
+  /// Trims [raw] and clamps it to [kMaxDisplayNameLength].
+  /// Returns an empty string when [raw] is blank after trimming.
+  static String sanitizeDisplayName(String raw) {
+    final t = raw.trim();
+    return t.length > kMaxDisplayNameLength
+        ? t.substring(0, kMaxDisplayNameLength)
+        : t;
+  }
+
+  /// Normalises a team handle: strips whitespace, prepends '@', clamps the
+  /// body to [kMaxHandleBodyLength]. Returns [fallback] when blank after
+  /// normalization.
+  static String normalizeHandle(String raw, {String fallback = '@cassandra'}) {
+    final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty || compact == '@') return fallback;
+    final body = compact.startsWith('@') ? compact.substring(1) : compact;
+    if (body.isEmpty) return fallback;
+    final limited = body.length > kMaxHandleBodyLength
+        ? body.substring(0, kMaxHandleBodyLength)
+        : body;
+    return '@$limited';
+  }
+
+  /// Trims [raw] and clamps it to [kMaxFavoriteTeamLength].
+  /// Returns null when [raw] is null or blank after trimming.
+  static String? sanitizeFavoriteTeam(String? raw) {
+    if (raw == null) return null;
+    final t = raw.trim();
+    if (t.isEmpty) return null;
+    return t.length > kMaxFavoriteTeamLength
+        ? t.substring(0, kMaxFavoriteTeamLength)
+        : t;
+  }
+
   final String id;
   final String displayName;
 
@@ -62,18 +97,19 @@ class UserProfile {
     String? existingFavoriteTeam,
     String? existingPhotoUrl,
   }) {
-    final name =
+    final rawName =
         user.displayName ?? user.email?.split('@').first ?? 'Giocatore';
+    final name = sanitizeDisplayName(rawName);
     final defaultHandle =
         '@${name.trim().replaceAll(RegExp(r"\s+"), "").toLowerCase()}';
     return UserProfile(
       id: user.uid,
       displayName: name,
-      teamName: _normalizeHandleValue(
+      teamName: normalizeHandle(
         existingTeamName ?? defaultHandle,
         fallback: '@cassandra',
       ),
-      favoriteTeam: existingFavoriteTeam,
+      favoriteTeam: sanitizeFavoriteTeam(existingFavoriteTeam),
       email: user.email,
       photoUrl: user.photoURL ?? existingPhotoUrl,
     );

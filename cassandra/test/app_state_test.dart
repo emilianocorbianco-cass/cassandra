@@ -775,4 +775,232 @@ void main() {
       expect(picks['m1'], PickOption.away);
     });
   });
+
+  // =========================================================================
+  // Profile input validation
+  // =========================================================================
+
+  group('UserProfile sanitizers', () {
+    test('sanitizeDisplayName trims whitespace', () {
+      expect(UserProfile.sanitizeDisplayName('  Alice  '), 'Alice');
+    });
+
+    test('sanitizeDisplayName clamps to 40 chars', () {
+      final long = 'A' * 60;
+      final result = UserProfile.sanitizeDisplayName(long);
+      expect(result.length, UserProfile.kMaxDisplayNameLength);
+      expect(result, 'A' * UserProfile.kMaxDisplayNameLength);
+    });
+
+    test('sanitizeDisplayName returns empty string for blank input', () {
+      expect(UserProfile.sanitizeDisplayName('   '), isEmpty);
+      expect(UserProfile.sanitizeDisplayName(''), isEmpty);
+    });
+
+    test('normalizeHandle adds @ prefix and strips spaces', () {
+      expect(UserProfile.normalizeHandle('myteam'), '@myteam');
+      expect(UserProfile.normalizeHandle('@myteam'), '@myteam');
+      expect(UserProfile.normalizeHandle('my team'), '@myteam');
+    });
+
+    test('normalizeHandle clamps body to 24 chars', () {
+      final long = 'a' * 40;
+      final result = UserProfile.normalizeHandle(long);
+      expect(result, '@${'a' * UserProfile.kMaxHandleBodyLength}');
+      expect(result.length, 1 + UserProfile.kMaxHandleBodyLength);
+    });
+
+    test('normalizeHandle returns fallback for blank input', () {
+      expect(UserProfile.normalizeHandle(''), '@cassandra');
+      expect(UserProfile.normalizeHandle('@'), '@cassandra');
+      expect(UserProfile.normalizeHandle('   '), '@cassandra');
+    });
+
+    test('normalizeHandle accepts custom fallback', () {
+      expect(UserProfile.normalizeHandle('', fallback: '@default'), '@default');
+    });
+
+    test('sanitizeFavoriteTeam trims whitespace', () {
+      expect(UserProfile.sanitizeFavoriteTeam('  Juve  '), 'Juve');
+    });
+
+    test('sanitizeFavoriteTeam clamps to 40 chars', () {
+      final long = 'B' * 60;
+      final result = UserProfile.sanitizeFavoriteTeam(long);
+      expect(result, isNotNull);
+      expect(result!.length, UserProfile.kMaxFavoriteTeamLength);
+    });
+
+    test('sanitizeFavoriteTeam returns null for blank or null input', () {
+      expect(UserProfile.sanitizeFavoriteTeam(null), isNull);
+      expect(UserProfile.sanitizeFavoriteTeam(''), isNull);
+      expect(UserProfile.sanitizeFavoriteTeam('   '), isNull);
+    });
+  });
+
+  group('Profile input validation (AppState update methods)', () {
+    late AppState state;
+
+    setUp(() {
+      state = AppState.inMemory(profile: _testProfile);
+    });
+
+    // --- updateDisplayName ---
+
+    test('updateDisplayName trims whitespace', () async {
+      await state.updateDisplayName('  Bob  ');
+      expect(state.profile.displayName, 'Bob');
+    });
+
+    test('updateDisplayName clamps to 40 characters', () async {
+      final long = 'X' * 60;
+      await state.updateDisplayName(long);
+      expect(
+        state.profile.displayName.length,
+        UserProfile.kMaxDisplayNameLength,
+      );
+      expect(
+        state.profile.displayName,
+        'X' * UserProfile.kMaxDisplayNameLength,
+      );
+    });
+
+    test('updateDisplayName ignores blank input', () async {
+      final original = state.profile.displayName;
+      await state.updateDisplayName('   ');
+      expect(state.profile.displayName, original);
+    });
+
+    test('updateDisplayName ignores no-op update', () async {
+      var count = 0;
+      state.addListener(() => count++);
+      await state.updateDisplayName(state.profile.displayName);
+      expect(count, 0);
+    });
+
+    // --- updateTeamName ---
+
+    test('updateTeamName normalises to @handle format', () async {
+      await state.updateTeamName('myclub');
+      expect(state.profile.teamName, '@myclub');
+    });
+
+    test('updateTeamName strips internal spaces', () async {
+      await state.updateTeamName('my club');
+      expect(state.profile.teamName, '@myclub');
+    });
+
+    test('updateTeamName clamps handle body to 24 characters', () async {
+      final long = 'z' * 40;
+      await state.updateTeamName(long);
+      expect(
+        state.profile.teamName,
+        '@${'z' * UserProfile.kMaxHandleBodyLength}',
+      );
+    });
+
+    test('updateTeamName blank input falls back to @cassandra', () async {
+      await state.updateTeamName('');
+      expect(state.profile.teamName, '@cassandra');
+    });
+
+    // --- updateFavoriteTeam ---
+
+    test('updateFavoriteTeam trims whitespace', () async {
+      await state.updateFavoriteTeam('  Napoli  ');
+      expect(state.profile.favoriteTeam, 'Napoli');
+    });
+
+    test('updateFavoriteTeam clamps to 40 characters', () async {
+      final long = 'Y' * 60;
+      await state.updateFavoriteTeam(long);
+      expect(
+        state.profile.favoriteTeam!.length,
+        UserProfile.kMaxFavoriteTeamLength,
+      );
+    });
+
+    test('updateFavoriteTeam clears when blank', () async {
+      await state.updateFavoriteTeam('Roma');
+      await state.updateFavoriteTeam('');
+      expect(state.profile.favoriteTeam, isNull);
+    });
+
+    test('updateFavoriteTeam ignores no-op update', () async {
+      await state.updateFavoriteTeam('Inter');
+      var count = 0;
+      state.addListener(() => count++);
+      await state.updateFavoriteTeam('Inter');
+      expect(count, 0);
+    });
+  });
+
+  group('Profile input validation (mergeFirestoreProfile)', () {
+    test('mergeFirestoreProfile clamps long displayName', () {
+      final state = AppState.inMemory();
+      final long = 'Z' * 60;
+      state.mergeFirestoreProfile({'displayName': long});
+      expect(
+        state.profile.displayName.length,
+        UserProfile.kMaxDisplayNameLength,
+      );
+    });
+
+    test('mergeFirestoreProfile trims displayName', () {
+      final state = AppState.inMemory();
+      state.mergeFirestoreProfile({'displayName': '  Alice  '});
+      expect(state.profile.displayName, 'Alice');
+    });
+
+    test('mergeFirestoreProfile ignores blank displayName', () {
+      final state = AppState.inMemory(profile: _testProfile);
+      state.mergeFirestoreProfile({'displayName': '   '});
+      expect(state.profile.displayName, _testProfile.displayName);
+    });
+
+    test('mergeFirestoreProfile trims and clamps long favoriteTeam', () {
+      final state = AppState.inMemory(
+        profile: const UserProfile(
+          id: 'uid',
+          displayName: 'Test',
+          teamName: '@test',
+        ),
+      );
+      final long = '  ${'B' * 50}  ';
+      state.mergeFirestoreProfile({'favoriteTeam': long});
+      expect(state.profile.favoriteTeam, isNotNull);
+      expect(
+        state.profile.favoriteTeam!.length,
+        UserProfile.kMaxFavoriteTeamLength,
+      );
+      // Must be trimmed (no leading spaces)
+      expect(
+        state.profile.favoriteTeam,
+        'B' * UserProfile.kMaxFavoriteTeamLength,
+      );
+    });
+
+    test('mergeFirestoreProfile ignores blank favoriteTeam', () {
+      final state = AppState.inMemory(
+        profile: const UserProfile(
+          id: 'uid',
+          displayName: 'Test',
+          teamName: '@test',
+        ),
+      );
+      state.mergeFirestoreProfile({'favoriteTeam': '   '});
+      expect(state.profile.favoriteTeam, isNull);
+    });
+
+    test('mergeFirestoreProfile normalises teamName handle', () {
+      // Profile with no teamName (empty) so merge applies.
+      final state = AppState.inMemory();
+      final long = 'a' * 40;
+      state.mergeFirestoreProfile({'teamName': long});
+      expect(
+        state.profile.teamName,
+        '@${'a' * UserProfile.kMaxHandleBodyLength}',
+      );
+    });
+  });
 }

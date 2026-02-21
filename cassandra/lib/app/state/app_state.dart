@@ -33,21 +33,6 @@ class AppState extends ChangeNotifier {
   static const Duration _kProfileSyncRetryDelay = Duration(seconds: 2);
   static const Duration _kHistoryHydrationTimeout = Duration(seconds: 12);
   static const int _kHistoryHydrationAttempts = 2;
-  static const int _kMaxDisplayNameLength = 40;
-  static const int _kMaxHandleLength = 24;
-  static const int _kMaxFavoriteTeamLength = 40;
-
-  static String _normalizeHandle(String raw, {String fallback = '@cassandra'}) {
-    final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
-    if (compact.isEmpty || compact == '@') return fallback;
-    final body = compact.startsWith('@') ? compact.substring(1) : compact;
-    if (body.isEmpty) return fallback;
-    final limited = body.length > _kMaxHandleLength
-        ? body.substring(0, _kMaxHandleLength)
-        : body;
-    return '@$limited';
-  }
-
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = StorageKeys.profileTeamName;
   static const _kProfileFavoriteTeam = StorageKeys.profileFavoriteTeam;
@@ -142,12 +127,13 @@ class AppState extends ChangeNotifier {
     bool changed = false;
 
     final remoteDisplayName = data['displayName'] as String?;
-    if (remoteDisplayName != null &&
-        remoteDisplayName.trim().isNotEmpty &&
-        remoteDisplayName != _profile.displayName) {
-      _profile = _profile.copyWith(displayName: remoteDisplayName.trim());
-      _prefs?.setString(_kProfileDisplayName, remoteDisplayName.trim());
-      changed = true;
+    if (remoteDisplayName != null) {
+      final sanitized = UserProfile.sanitizeDisplayName(remoteDisplayName);
+      if (sanitized.isNotEmpty && sanitized != _profile.displayName) {
+        _profile = _profile.copyWith(displayName: sanitized);
+        _prefs?.setString(_kProfileDisplayName, sanitized);
+        changed = true;
+      }
     }
 
     final remoteTeamName = data['teamName'] as String?;
@@ -155,18 +141,17 @@ class AppState extends ChangeNotifier {
         remoteTeamName.trim().isNotEmpty &&
         _profile.teamName == _defaultProfile.teamName &&
         remoteTeamName != _profile.teamName) {
-      final normalizedRemote = _normalizeHandle(remoteTeamName);
+      final normalizedRemote = UserProfile.normalizeHandle(remoteTeamName);
       _profile = _profile.copyWith(teamName: normalizedRemote);
       _prefs?.setString(_kProfileTeamName, normalizedRemote);
       changed = true;
     }
 
     final remoteFavoriteTeam = data['favoriteTeam'] as String?;
-    if (remoteFavoriteTeam != null &&
-        remoteFavoriteTeam.isNotEmpty &&
-        _profile.favoriteTeam == null) {
-      _profile = _profile.copyWith(favoriteTeam: remoteFavoriteTeam);
-      _prefs?.setString(_kProfileFavoriteTeam, remoteFavoriteTeam);
+    final sanitizedFav = UserProfile.sanitizeFavoriteTeam(remoteFavoriteTeam);
+    if (sanitizedFav != null && _profile.favoriteTeam == null) {
+      _profile = _profile.copyWith(favoriteTeam: sanitizedFav);
+      _prefs?.setString(_kProfileFavoriteTeam, sanitizedFav);
       changed = true;
     }
 
@@ -773,7 +758,7 @@ class AppState extends ChangeNotifier {
           : storedDisplayName,
       teamName: (storedTeamName == null || storedTeamName.isEmpty)
           ? _defaultProfile.teamName
-          : _normalizeHandle(storedTeamName),
+          : UserProfile.normalizeHandle(storedTeamName),
       favoriteTeam: (storedFavorite == null || storedFavorite.isEmpty)
           ? null
           : storedFavorite,
@@ -849,7 +834,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateTeamName(String value) async {
-    final normalized = _normalizeHandle(value);
+    final normalized = UserProfile.normalizeHandle(value);
     if (normalized == _profile.teamName) return;
 
     _profile = _profile.copyWith(teamName: normalized);
@@ -863,10 +848,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateDisplayName(String value) async {
-    var cleaned = value.trim();
-    if (cleaned.length > _kMaxDisplayNameLength) {
-      cleaned = cleaned.substring(0, _kMaxDisplayNameLength);
-    }
+    final cleaned = UserProfile.sanitizeDisplayName(value);
     if (cleaned.isEmpty) return;
     if (cleaned == _profile.displayName) return;
 
@@ -903,11 +885,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateFavoriteTeam(String value) async {
-    var cleaned = value.trim();
-    if (cleaned.length > _kMaxFavoriteTeamLength) {
-      cleaned = cleaned.substring(0, _kMaxFavoriteTeamLength);
-    }
-    final stored = cleaned.isEmpty ? null : cleaned;
+    final stored = UserProfile.sanitizeFavoriteTeam(value);
 
     if (stored == _profile.favoriteTeam) return;
 
