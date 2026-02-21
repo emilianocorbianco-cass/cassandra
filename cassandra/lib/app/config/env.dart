@@ -1,6 +1,9 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
 
 class Env {
+  static bool _missingApiFootballKeyLogged = false;
+
   /// Lettura "safe" delle variabili.
   /// In widget test, dotenv non è inizializzato e dotenv.env lancia NotInitializedError:
   /// qui lo trasformiamo in null.
@@ -20,7 +23,18 @@ class Env {
     return t;
   }
 
-  static String? get apiFootballKey => _trimmed('API_FOOTBALL_KEY');
+  static String? get apiFootballKey {
+    final key = _trimmed('API_FOOTBALL_KEY');
+    if (key == null && !_missingApiFootballKeyLogged) {
+      _missingApiFootballKeyLogged = true;
+      if (kDebugMode) {
+        debugPrint(
+          '[env] API_FOOTBALL_KEY missing: app will fallback to cached/demo data.',
+        );
+      }
+    }
+    return key;
+  }
 
   static bool get useRapidApi {
     final v = (_raw('API_FOOTBALL_USE_RAPIDAPI') ?? 'false')
