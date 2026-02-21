@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,6 +16,26 @@ import 'user_profile.dart';
 /// Gestisce: creazione/join/leave/delete gruppo, metadata locale,
 /// Firestore group IDs, active group, admin approval.
 class GroupState extends ChangeNotifier {
+  String _friendlyGroupError(Object error, String fallback) {
+    if (error is FirebaseException) {
+      switch (error.code) {
+        case 'permission-denied':
+          return 'Permission denied';
+        case 'deadline-exceeded':
+          return 'Request timeout';
+        case 'unavailable':
+          return 'Backend unavailable';
+      }
+    }
+    return fallback;
+  }
+
+  void _logGroupError(String operation, Object error, StackTrace stackTrace) {
+    if (!kDebugMode) return;
+    debugPrint('[group-state][$operation] $error');
+    debugPrint('$stackTrace');
+  }
+
   static const _kGroupNameV1 = StorageKeys.groupNameV1;
   static const _kGroupInviteCodeV1 = StorageKeys.groupInviteCodeV1;
   static const _kGroupImagePathV1 = StorageKeys.groupImagePathV1;
@@ -172,8 +193,9 @@ class GroupState extends ChangeNotifier {
           code = candidate;
           break;
         }
-      } catch (_) {
-        return 'Permission denied';
+      } catch (error, stackTrace) {
+        _logGroupError('createGroup.checkInviteCode', error, stackTrace);
+        return _friendlyGroupError(error, 'Permission denied');
       }
     }
     if (code == null) return 'Invite code generation failed';
@@ -206,8 +228,9 @@ class GroupState extends ChangeNotifier {
 
       notifyListeners();
       return null;
-    } catch (_) {
-      return 'Create group failed';
+    } catch (error, stackTrace) {
+      _logGroupError('createGroup', error, stackTrace);
+      return _friendlyGroupError(error, 'Create group failed');
     }
   }
 
@@ -316,8 +339,9 @@ class GroupState extends ChangeNotifier {
     GroupDocument? group;
     try {
       group = await fs.getGroup(groupId);
-    } catch (_) {
-      return 'Delete group failed';
+    } catch (error, stackTrace) {
+      _logGroupError('deleteGroup.fetchGroup', error, stackTrace);
+      return _friendlyGroupError(error, 'Delete group failed');
     }
 
     if (group == null) {
@@ -338,8 +362,9 @@ class GroupState extends ChangeNotifier {
 
     try {
       await fs.deleteGroupAsAdmin(groupId: groupId, adminUid: uid);
-    } catch (_) {
-      return 'Delete group failed';
+    } catch (error, stackTrace) {
+      _logGroupError('deleteGroup.deleteAsAdmin', error, stackTrace);
+      return _friendlyGroupError(error, 'Delete group failed');
     }
 
     _firestoreGroupIds = _firestoreGroupIds
