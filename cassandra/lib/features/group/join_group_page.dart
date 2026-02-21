@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -38,7 +39,11 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     String? err;
     try {
       err = await appState.joinGroupByInviteCode(code);
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[join-group] unexpected error: $e');
+        debugPrint('$st');
+      }
       err = 'Permission denied';
     }
 

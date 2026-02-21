@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/services.dart';
@@ -102,7 +103,11 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           SnackBar(content: Text(l10n.groupShareUnavailableCodeCopied)),
         );
       }
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[create-group] share error: $e');
+        debugPrint('$st');
+      }
       await Clipboard.setData(ClipboardData(text: code));
       if (!mounted) return;
       messenger.showSnackBar(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -97,7 +98,11 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
           stickyAuth: true,
         ),
       );
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[welcome-back] biometric check error: $e');
+        debugPrint('$st');
+      }
       return false;
     }
   }
@@ -156,7 +161,11 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
         _loading = false;
         _error = errorMessage;
       });
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[welcome-back] sign-in error: $e');
+        debugPrint('$st');
+      }
       if (!mounted) return;
       setState(() {
         _loading = false;

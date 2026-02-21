@@ -1,6 +1,7 @@
 import 'package:cassandra/app/state/app_state.dart';
 import 'package:cassandra/features/auth/login_page.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class AccountSection extends StatelessWidget {
@@ -70,7 +71,11 @@ class AccountSection extends StatelessWidget {
         MaterialPageRoute(builder: (_) => const LoginPage()),
         (route) => false,
       );
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[delete-account] error: $e');
+        debugPrint('$st');
+      }
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
