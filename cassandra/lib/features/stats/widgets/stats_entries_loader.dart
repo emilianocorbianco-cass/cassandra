@@ -64,8 +64,8 @@ class StatsEntriesLoader {
             matches: md.matches,
             outcomesByMatchId: md.outcomesByMatchId,
           );
-        } catch (_) {
-          // ignore: fallback remains zero for missing/malformed day
+        } catch (error, stackTrace) {
+          app.markBackendSyncError(error, stackTrace);
         }
       }
     }

@@ -114,7 +114,8 @@ class _StatsPageState extends State<StatsPage> {
         _loading = false;
         _loadedGroupId = app.activeGroupId;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      app.markBackendSyncError(error, stackTrace);
       if (!mounted) return;
       final fallback = StatsEntriesLoader.emptyEntryFor(
         StatsEntriesLoader.currentUserMember(app),
