@@ -76,6 +76,8 @@ class _GroupPageState extends State<GroupPage> {
   final Set<int> _hydratedSeasonMatchdayDays = <int>{};
   bool _seasonHistoryHydrationInFlight = false;
   bool _seasonHistoryHydrationQueued = false;
+  String? _seasonHistoryHydrationGroupId;
+  String? _seasonHistoryHydrationSeasonKey;
 
   @override
   void initState() {
@@ -160,6 +162,8 @@ class _GroupPageState extends State<GroupPage> {
             _hydratedSeasonMatchdayDays.clear();
             _seasonHistoryHydrationInFlight = false;
             _seasonHistoryHydrationQueued = false;
+            _seasonHistoryHydrationGroupId = null;
+            _seasonHistoryHydrationSeasonKey = null;
           });
         });
       }
@@ -191,6 +195,8 @@ class _GroupPageState extends State<GroupPage> {
           _hydratedSeasonMatchdayDays.clear();
           _seasonHistoryHydrationInFlight = false;
           _seasonHistoryHydrationQueued = false;
+          _seasonHistoryHydrationGroupId = null;
+          _seasonHistoryHydrationSeasonKey = null;
         });
       }
       _refreshFromFirestore();
@@ -509,8 +515,9 @@ class _GroupPageState extends State<GroupPage> {
 
   void _ensureSeasonHistoryHydrated(AppState appState) {
     final fs = appState.firestoreService;
+    final groupId = _firestoreGroupId ?? appState.activeGroupId;
     final seasonKey = _firestoreSeasonKey ?? appState.currentSeasonKey;
-    if (fs == null || seasonKey.trim().isEmpty) return;
+    if (fs == null || groupId == null || seasonKey.trim().isEmpty) return;
 
     final allDays = _firestoreSeasonPicksDocs
         .map((d) => d.dayNumber)
@@ -526,22 +533,42 @@ class _GroupPageState extends State<GroupPage> {
     if (missingDays.isEmpty) return;
 
     if (_seasonHistoryHydrationInFlight) {
+      final scopeChanged =
+          _seasonHistoryHydrationGroupId != groupId ||
+          _seasonHistoryHydrationSeasonKey != seasonKey;
+      if (scopeChanged) {
+        _seasonHistoryHydrationGroupId = groupId;
+        _seasonHistoryHydrationSeasonKey = seasonKey;
+      }
       _seasonHistoryHydrationQueued = true;
       return;
     }
 
+    _seasonHistoryHydrationGroupId = groupId;
+    _seasonHistoryHydrationSeasonKey = seasonKey;
     _seasonHistoryHydrationInFlight = true;
     unawaited(
       _hydrateSeasonHistoryDays(
         appState: appState,
+        groupId: groupId,
         seasonKey: seasonKey,
         dayNumbers: missingDays,
       ),
     );
   }
 
+  bool _isSeasonHistoryHydrationScopeCurrent({
+    required String groupId,
+    required String seasonKey,
+  }) {
+    return mounted &&
+        _firestoreGroupId == groupId &&
+        (_firestoreSeasonKey ?? '') == seasonKey;
+  }
+
   Future<void> _hydrateSeasonHistoryDays({
     required AppState appState,
+    required String groupId,
     required String seasonKey,
     required List<int> dayNumbers,
   }) async {
@@ -556,12 +583,24 @@ class _GroupPageState extends State<GroupPage> {
 
     try {
       for (final day in dayNumbers) {
+        if (!_isSeasonHistoryHydrationScopeCurrent(
+          groupId: groupId,
+          seasonKey: seasonKey,
+        )) {
+          return;
+        }
         if (_hydratedSeasonMatchdayDays.contains(day)) continue;
         try {
           final md = await fs.getMatchdayData(
             seasonKey: seasonKey,
             dayNumber: day,
           );
+          if (!_isSeasonHistoryHydrationScopeCurrent(
+            groupId: groupId,
+            seasonKey: seasonKey,
+          )) {
+            return;
+          }
           _hydratedSeasonMatchdayDays.add(day);
           if (md == null || md.matches.isEmpty) continue;
 
@@ -587,7 +626,11 @@ class _GroupPageState extends State<GroupPage> {
         }
       }
 
-      if (loadedMatches.isNotEmpty || loadedOutcomes.isNotEmpty) {
+      if ((loadedMatches.isNotEmpty || loadedOutcomes.isNotEmpty) &&
+          _isSeasonHistoryHydrationScopeCurrent(
+            groupId: groupId,
+            seasonKey: seasonKey,
+          )) {
         appState.setRecentMatchdayDataBulk(
           matchesByMatchday: loadedMatches,
           outcomesByMatchday: loadedOutcomes,
@@ -595,6 +638,8 @@ class _GroupPageState extends State<GroupPage> {
       }
     } finally {
       _seasonHistoryHydrationInFlight = false;
+      _seasonHistoryHydrationGroupId = null;
+      _seasonHistoryHydrationSeasonKey = null;
       if (_seasonHistoryHydrationQueued) {
         _seasonHistoryHydrationQueued = false;
         if (mounted) {
