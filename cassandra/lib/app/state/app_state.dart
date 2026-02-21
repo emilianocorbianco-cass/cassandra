@@ -32,7 +32,11 @@ class AppState extends ChangeNotifier {
   static const Duration _kProfileSyncDebounce = Duration(milliseconds: 450);
   static const Duration _kProfileSyncRetryDelay = Duration(seconds: 2);
   static const Duration _kHistoryHydrationTimeout = Duration(seconds: 12);
+  static const Duration _kFirestoreWriteRetryBaseDelay = Duration(
+    milliseconds: 400,
+  );
   static const int _kHistoryHydrationAttempts = 2;
+  static const int _kFirestoreWriteAttempts = 3;
   // Chiavi "nuove" (più pulite)
   static const _kProfileTeamName = StorageKeys.profileTeamName;
   static const _kProfileFavoriteTeam = StorageKeys.profileFavoriteTeam;
@@ -428,14 +432,45 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated) return;
     final uid = _profile.id;
     if (uid.isEmpty) return;
+    final payload = Map<String, dynamic>.from(fields);
     unawaited(
-      fs
-          .updateUserField(uid, fields)
-          .then((_) => _clearBackendError())
-          .catchError((Object e, StackTrace st) {
-            _recordBackendError(e, st);
-          }),
+      _runFirestoreWriteWithRetry(
+        operation: 'updateUserField',
+        action: () => fs.updateUserField(uid, payload),
+      ),
     );
+  }
+
+  Future<void> _runFirestoreWriteWithRetry({
+    required String operation,
+    required Future<void> Function() action,
+  }) async {
+    for (var attempt = 1; attempt <= _kFirestoreWriteAttempts; attempt++) {
+      try {
+        await action();
+        _clearBackendError();
+        return;
+      } catch (error, stackTrace) {
+        final isLastAttempt = attempt >= _kFirestoreWriteAttempts;
+        if (kDebugMode) {
+          debugPrint(
+            '[firestore-write] $operation attempt '
+            '$attempt/$_kFirestoreWriteAttempts failed: $error',
+          );
+          debugPrint('$stackTrace');
+        }
+        if (isLastAttempt) {
+          _recordBackendError(error, stackTrace);
+          return;
+        }
+        final backoff = Duration(
+          milliseconds:
+              _kFirestoreWriteRetryBaseDelay.inMilliseconds *
+              (1 << (attempt - 1)),
+        );
+        await Future<void>.delayed(backoff);
+      }
+    }
   }
 
   bool get isAuthenticated => _authService?.isSignedIn ?? false;
@@ -998,12 +1033,10 @@ class AppState extends ChangeNotifier {
         }
       } else {
         unawaited(
-          fs
-              .addUserFcmToken(uid: user.uid, token: token)
-              .then((_) => _clearBackendError())
-              .catchError((Object e, StackTrace st) {
-                _recordBackendError(e, st);
-              }),
+          _runFirestoreWriteWithRetry(
+            operation: 'addUserFcmToken',
+            action: () => fs.addUserFcmToken(uid: user.uid, token: token),
+          ),
         );
       }
     }
@@ -1201,21 +1234,20 @@ class AppState extends ChangeNotifier {
   }) {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) return;
+    final payload = Map<String, PickOption>.from(picksByMatchId);
     unawaited(
-      fs
-          .savePicks(
-            uid: _profile.id,
-            seasonKey: currentSeasonKey,
-            dayNumber: dayNumber,
-            picksByMatchId: picksByMatchId,
-            visibility: visibility,
-            groupId: activeGroupId,
-            score: score,
-          )
-          .then((_) => _clearBackendError())
-          .catchError((Object e, StackTrace st) {
-            _recordBackendError(e, st);
-          }),
+      _runFirestoreWriteWithRetry(
+        operation: 'savePicks',
+        action: () => fs.savePicks(
+          uid: _profile.id,
+          seasonKey: currentSeasonKey,
+          dayNumber: dayNumber,
+          picksByMatchId: payload,
+          visibility: visibility,
+          groupId: activeGroupId,
+          score: score,
+        ),
+      ),
     );
   }
 
