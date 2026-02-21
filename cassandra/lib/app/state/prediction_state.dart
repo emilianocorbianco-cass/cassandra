@@ -72,7 +72,11 @@ class PredictionState extends ChangeNotifier {
         try {
           final pick = PickOption.values.byName(v);
           if (pick != PickOption.none) map[k] = pick;
-        } catch (_) {}
+        } catch (_) {
+          // Per-entry enum parse: unknown value skipped so one corrupt pick
+          // does not discard the whole live-picks map. High-volume during
+          // schema evolution; outer catch at line 78 logs structural errors.
+        }
       }
       currentUserPicksByMatchId = Map.unmodifiable(map);
     } catch (e, st) {
@@ -156,7 +160,10 @@ class PredictionState extends ChangeNotifier {
           if (s is! String) continue;
           try {
             picks[matchId] = PickOption.values.byName(s);
-          } catch (_) {}
+          } catch (_) {
+            // Per-entry enum parse: unknown value skipped so one corrupt pick
+            // does not discard the whole matchday history entry.
+          }
         }
         if (picks.isNotEmpty) _currentUserPicksByMatchday[day] = picks;
       }
@@ -254,7 +261,10 @@ class PredictionState extends ChangeNotifier {
           if (s is! String) continue;
           try {
             outcomes[matchId] = MatchOutcome.values.byName(s);
-          } catch (_) {}
+          } catch (_) {
+            // Per-entry enum parse: unknown value skipped so one corrupt outcome
+            // does not discard the whole matchday outcomes history entry.
+          }
         }
         if (outcomes.isNotEmpty) {
           parsed[day] = Map<String, MatchOutcome>.unmodifiable(outcomes);
@@ -430,7 +440,10 @@ class PredictionState extends ChangeNotifier {
           try {
             final pick = PickOption.values.byName(pickName);
             if (pick != PickOption.none) inner[matchId] = pick;
-          } catch (_) {}
+          } catch (_) {
+            // Per-entry enum parse: unknown value skipped so one corrupt pick
+            // does not discard the whole member's pick map.
+          }
         }
         if (inner.isNotEmpty) {
           outer[memberId] = Map.unmodifiable(inner);

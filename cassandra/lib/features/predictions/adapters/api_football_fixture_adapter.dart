@@ -136,31 +136,9 @@ double _clamp(double v, {required double min, required double max}) {
 }
 
 // --- Recuperi: parsing matchday dal campo "round" (API-Football) ---
-// Usiamo accesso dynamic per essere compatibili con diversi shape del model.
-String? _fixtureRound(ApiFootballFixture f) {
-  final d = f as dynamic;
-
-  // Prova f.round
-  try {
-    final r = d.round;
-    if (r is String) return r;
-  } catch (_) {}
-
-  // Prova f.league?.round
-  try {
-    final league = d.league;
-    final r = league?.round;
-    if (r is String) return r;
-  } catch (_) {}
-
-  // Prova f.leagueRound
-  try {
-    final r = d.leagueRound;
-    if (r is String) return r;
-  } catch (_) {}
-
-  return null;
-}
+// ApiFootballFixture normalizza già il round da league['round'] nel fromJson,
+// quindi si accede direttamente alla proprietà tipizzata senza dynamic probing.
+String? _fixtureRound(ApiFootballFixture f) => f.round;
 
 int? _matchdayFromRound(String? round) {
   if (round == null) return null;

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../features/predictions/models/pick_option.dart';
 
@@ -76,6 +77,9 @@ class PicksDocument {
         // one corrupt pick does not discard the whole PicksDocument.
         // Expected during schema evolution when new enum variants are not yet
         // known to older clients.
+        debugPrint(
+          '[picks] unknown PickOption "${e.value}" for match ${e.key} in doc ${doc.id}, skipping',
+        );
       }
     }
 

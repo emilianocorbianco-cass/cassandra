@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../features/predictions/models/prediction_match.dart';
 import '../../../features/scoring/models/match_outcome.dart';
@@ -45,6 +46,9 @@ class MatchdayDocument {
         // Silenced intentionally: unknown enum value is skipped per-entry so
         // one corrupt record does not discard the whole matchday document.
         // This fires at most once per stored outcome (not a run-time hot path).
+        debugPrint(
+          '[matchday] unknown MatchOutcome "${e.value}" for match ${e.key}, skipping',
+        );
       }
     }
 
