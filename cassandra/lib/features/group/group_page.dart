@@ -304,6 +304,14 @@ class _GroupPageState extends State<GroupPage> {
         .streamGroupMembers(groupId)
         .listen(
           (docs) async {
+            final missingPhotoUids = docs
+                .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
+                .map((d) => d.uid.trim())
+                .where((uid) => uid.isNotEmpty)
+                .toList(growable: false);
+            final userPhotoUrls = missingPhotoUids.isEmpty
+                ? const <String, String>{}
+                : await fs.getUserPhotoUrls(missingPhotoUids);
             final members = docs
                 .map(
                   (d) => GroupMember(
@@ -312,9 +320,13 @@ class _GroupPageState extends State<GroupPage> {
                     teamName: d.teamName,
                     avatarSeed: d.avatarSeed,
                     favoriteTeam: d.favoriteTeam,
-                    photoUrl: (d.photoUrl?.trim().isNotEmpty ?? false)
-                        ? d.photoUrl!.trim()
-                        : null,
+                    photoUrl: () {
+                      final direct = (d.photoUrl ?? '').trim();
+                      if (direct.isNotEmpty) return direct;
+                      final fallback = (userPhotoUrls[d.uid] ?? '').trim();
+                      if (_isPortableImageRef(fallback)) return fallback;
+                      return null;
+                    }(),
                   ),
                 )
                 .toList(growable: false);
@@ -360,6 +372,13 @@ class _GroupPageState extends State<GroupPage> {
             _handleFirestoreRealtimeError(appState, error, stackTrace);
           },
         );
+  }
+
+  static bool _isPortableImageRef(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('data:image/');
   }
 
   void _cancelFirestoreRealtime() {
