@@ -390,19 +390,42 @@ class PredictionState extends ChangeNotifier {
 
     final raw = prefs.getString(_kMatchdayMatchesByDayV1);
     if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final map = <int, List<PredictionMatch>>{};
 
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    final map = <int, List<PredictionMatch>>{};
+      for (final e in decoded.entries) {
+        final day = int.tryParse(e.key.toString());
+        if (day == null) continue;
+        final rawList = e.value;
+        if (rawList is! List) continue;
 
-    for (final e in decoded.entries) {
-      final day = int.tryParse(e.key);
-      if (day == null) continue;
-      final list = (e.value as List).cast<Map<String, dynamic>>();
-      map[day] = list
-          .map((json) => FirestoreSerializers.predictionMatchFromMap(json))
-          .toList();
+        final matches = <PredictionMatch>[];
+        for (final rawMatch in rawList) {
+          if (rawMatch is! Map) continue;
+          try {
+            final json = Map<String, dynamic>.from(rawMatch);
+            matches.add(FirestoreSerializers.predictionMatchFromMap(json));
+          } catch (error, stackTrace) {
+            debugPrint(
+              '[picks] corrupt match snapshot for day $day, skipping entry: '
+              '$error\n$stackTrace',
+            );
+          }
+        }
+        if (matches.isNotEmpty) {
+          map[day] = List<PredictionMatch>.unmodifiable(matches);
+        }
+      }
+      _pruneOldestByDay(map);
+      _matchdayMatchesByDay = map;
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[picks] corrupt matchday-matches snapshots in storage: '
+        '$error\n$stackTrace',
+      );
     }
-    _matchdayMatchesByDay = map;
   }
 
   bool hasSavedMatchesForMatchday(int matchdayNumber) {
