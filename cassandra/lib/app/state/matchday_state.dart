@@ -84,8 +84,8 @@ class MatchdayState extends ChangeNotifier {
           if (n != null && n > 0) _finalizedMatchdays.add(n);
         }
       }
-    } catch (_) {
-      // ignore corrupt storage
+    } catch (e, st) {
+      debugPrint('[matchday] corrupt finalized-matchdays in storage: $e\n$st');
     }
   }
 
@@ -146,8 +146,8 @@ class MatchdayState extends ChangeNotifier {
           for (final e in decoded.entries) e.key.toString(): e.value.toString(),
         };
       }
-    } catch (_) {
-      // ignore: keep empty
+    } catch (e, st) {
+      debugPrint('[matchday] corrupt origin-kickoffs in storage: $e\n$st');
     }
   }
 

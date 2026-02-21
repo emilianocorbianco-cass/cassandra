@@ -75,7 +75,9 @@ class PredictionState extends ChangeNotifier {
         } catch (_) {}
       }
       currentUserPicksByMatchId = Map.unmodifiable(map);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] corrupt current-user picks in storage: $e\n$st');
+    }
   }
 
   void setCurrentUserPick(String matchId, PickOption pick) {
@@ -158,7 +160,9 @@ class PredictionState extends ChangeNotifier {
         }
         if (picks.isNotEmpty) _currentUserPicksByMatchday[day] = picks;
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] corrupt picks-history in storage: $e\n$st');
+    }
   }
 
   void saveCurrentUserPicksHistory({
@@ -183,14 +187,18 @@ class PredictionState extends ChangeNotifier {
     }
     try {
       _prefs?.setString(_kCurrentUserPicksByMatchday, jsonEncode(out));
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] failed to persist picks-history: $e\n$st');
+    }
   }
 
   void clearCurrentUserPicksHistory() {
     _currentUserPicksByMatchday.clear();
     try {
       _prefs?.remove(_kCurrentUserPicksByMatchday);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] failed to remove picks-history: $e\n$st');
+    }
     notifyListeners();
   }
 
@@ -253,7 +261,9 @@ class PredictionState extends ChangeNotifier {
         }
       }
       _outcomesByMatchday = Map.unmodifiable(parsed);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] corrupt outcomes-history in storage: $e\n$st');
+    }
   }
 
   void saveOutcomesHistory({
@@ -276,7 +286,9 @@ class PredictionState extends ChangeNotifier {
     }
     try {
       _prefs?.setString(_kPredictionOutcomesByMatchday, jsonEncode(out));
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] failed to persist outcomes-history: $e\n$st');
+    }
     notifyListeners();
   }
 
@@ -284,7 +296,9 @@ class PredictionState extends ChangeNotifier {
     _outcomesByMatchday = const <int, Map<String, MatchOutcome>>{};
     try {
       _prefs?.remove(_kPredictionOutcomesByMatchday);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] failed to remove outcomes-history: $e\n$st');
+    }
     notifyListeners();
   }
 
@@ -424,7 +438,9 @@ class PredictionState extends ChangeNotifier {
       }
       _pruneOldestMembers(outer);
       memberPicksByMemberId = Map.unmodifiable(outer);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[picks] corrupt member-picks in storage: $e\n$st');
+    }
   }
 
   void setMemberPicksBulk(

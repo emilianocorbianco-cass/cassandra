@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,14 +8,10 @@ import 'package:cassandra/services/api_football/api_football_client.dart';
 import 'package:cassandra/services/api_football/api_football_service.dart';
 import 'package:cassandra/services/api_football/models/api_football_odds.dart';
 
-// Creates a client wired to [handler] with zero retry delay.
+// Creates a client wired to [handler].
 ApiFootballClient _client(
   Future<http.Response> Function(http.Request) handler,
-) => ApiFootballClient(
-  apiKey: 'test-key',
-  httpClient: MockClient(handler),
-  retryBaseDelay: Duration.zero,
-);
+) => ApiFootballClient(apiKey: 'test-key', httpClient: MockClient(handler));
 
 Map<String, dynamic> _oddsBody(List<Map<String, dynamic>> bookmakers) => {
   'response': [
@@ -193,12 +188,12 @@ void main() {
     });
 
     test('continues best-effort when one fixture fails', () async {
-      // Fixture 50: always SocketException (exhausts retries → caught).
+      // Fixture 50: 404 (non-retryable, caught by getOddsForFixtures).
       // Fixture 51: succeeds.
       var calls = 0;
       final client = _client((_) async {
         calls++;
-        if (calls <= 3) throw const SocketException('network down');
+        if (calls == 1) return http.Response('not found', 404);
         final bm = _bookmaker(8, bets: [_matchWinnerBet(home: '2.10')]);
         return http.Response(jsonEncode(_oddsBody([bm])), 200);
       });
@@ -207,7 +202,7 @@ void main() {
 
       expect(result.containsKey(50), isFalse);
       expect(result[51]!.home, 2.10);
-      expect(calls, 4); // 3 retries for 50, 1 for 51
+      expect(calls, 2); // 1 call per fixture, no retries on 404
     });
   });
 }
