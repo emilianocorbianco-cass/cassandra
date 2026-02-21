@@ -72,6 +72,7 @@ class _GroupPageState extends State<GroupPage> {
   StreamSubscription<List<GroupMemberDocument>>? _firestoreMembersSub;
   StreamSubscription<List<PicksDocument>>? _firestoreSeasonPicksSub;
   StreamSubscription<MatchdayDocument?>? _firestoreMatchdaySub;
+  int _firestoreMembersRevision = 0;
 
   @override
   void initState() {
@@ -304,38 +305,47 @@ class _GroupPageState extends State<GroupPage> {
         .streamGroupMembers(groupId)
         .listen(
           (docs) async {
-            final missingPhotoUids = docs
-                .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
-                .map((d) => d.uid.trim())
-                .where((uid) => uid.isNotEmpty)
-                .toList(growable: false);
-            final userPhotoUrls = missingPhotoUids.isEmpty
-                ? const <String, String>{}
-                : await fs.getUserPhotoUrls(missingPhotoUids);
-            final members = docs
-                .map(
-                  (d) => GroupMember(
-                    id: d.uid,
-                    displayName: d.displayName,
-                    teamName: d.teamName,
-                    avatarSeed: d.avatarSeed,
-                    favoriteTeam: d.favoriteTeam,
-                    photoUrl: () {
-                      final direct = (d.photoUrl ?? '').trim();
-                      if (direct.isNotEmpty) return direct;
-                      final fallback = (userPhotoUrls[d.uid] ?? '').trim();
-                      if (_isPortableImageRef(fallback)) return fallback;
-                      return null;
-                    }(),
-                  ),
-                )
-                .toList(growable: false);
+            final revision = ++_firestoreMembersRevision;
+            try {
+              final missingPhotoUids = docs
+                  .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
+                  .map((d) => d.uid.trim())
+                  .where((uid) => uid.isNotEmpty)
+                  .toList(growable: false);
+              final userPhotoUrls = missingPhotoUids.isEmpty
+                  ? const <String, String>{}
+                  : await fs.getUserPhotoUrls(missingPhotoUids);
 
-            if (!mounted) return;
-            setState(() {
-              _firestoreMembers = members;
-            });
-            _recomputeFirestoreDerived(appState);
+              if (!mounted || revision != _firestoreMembersRevision) return;
+
+              final members = docs
+                  .map(
+                    (d) => GroupMember(
+                      id: d.uid,
+                      displayName: d.displayName,
+                      teamName: d.teamName,
+                      avatarSeed: d.avatarSeed,
+                      favoriteTeam: d.favoriteTeam,
+                      photoUrl: () {
+                        final direct = (d.photoUrl ?? '').trim();
+                        if (direct.isNotEmpty) return direct;
+                        final fallback = (userPhotoUrls[d.uid] ?? '').trim();
+                        if (_isPortableImageRef(fallback)) return fallback;
+                        return null;
+                      }(),
+                    ),
+                  )
+                  .toList(growable: false);
+
+              setState(() {
+                _firestoreMembers = members;
+              });
+              _recomputeFirestoreDerived(appState);
+            } catch (error, stackTrace) {
+              if (revision == _firestoreMembersRevision) {
+                _handleFirestoreRealtimeError(appState, error, stackTrace);
+              }
+            }
           },
           onError: (Object error, StackTrace stackTrace) {
             _handleFirestoreRealtimeError(appState, error, stackTrace);
@@ -382,6 +392,7 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   void _cancelFirestoreRealtime() {
+    _firestoreMembersRevision++;
     _firestoreRevealTimer?.cancel();
     _firestoreRevealTimer = null;
     _firestoreMembersSub?.cancel();
