@@ -59,7 +59,8 @@ class GroupState extends ChangeNotifier {
   String? get groupInviteCode => _groupInviteCode;
   String? get groupImagePath => _groupImagePath;
   bool get groupAdminApproval => _groupAdminApproval;
-  List<String> get firestoreGroupIds => _firestoreGroupIds;
+  List<String> get firestoreGroupIds =>
+      List<String>.unmodifiable(_firestoreGroupIds);
 
   String? get activeGroupId =>
       _activeGroupId ??

@@ -156,6 +156,13 @@ void main() {
       expect(state.activeGroupId, 'g1');
     });
 
+    test('firestoreGroupIds is immutable for callers', () {
+      final state = GroupState.inMemory();
+      state.setFirestoreGroupIds(['g1', 'g2']);
+      final ids = state.firestoreGroupIds;
+      expect(() => ids.add('g3'), throwsUnsupportedError);
+    });
+
     test('setActiveGroupId changes active', () {
       final state = GroupState.inMemory();
       state.setFirestoreGroupIds(['g1', 'g2']);
