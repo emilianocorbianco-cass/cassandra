@@ -98,6 +98,32 @@ void main() {
       expect(cache.bonusPoints, -2);
       expect(cache.total, -7.5);
     });
+
+    // Firestore can serialize integer fields as doubles (e.g. 2.0 instead of 2).
+    // The fromMap factory must accept num and truncate, not throw TypeError.
+    test('fromMap accepts bonusPoints as double (e.g. Firestore 2.0)', () {
+      final cache = PicksScoreCache.fromMap({
+        'baseTotal': 3.5,
+        'bonusPoints': 2.0,
+        'total': 5.5,
+        'correctCount': 4.0,
+      });
+      expect(cache.bonusPoints, 2);
+      expect(cache.bonusPoints, isA<int>());
+      expect(cache.correctCount, 4);
+      expect(cache.correctCount, isA<int>());
+    });
+
+    test('fromMap accepts negative bonusPoints as double (-2.0 → -2)', () {
+      final cache = PicksScoreCache.fromMap({
+        'baseTotal': 0,
+        'bonusPoints': -2.0,
+        'total': -2.0,
+        'correctCount': 0.0,
+      });
+      expect(cache.bonusPoints, -2);
+      expect(cache.correctCount, 0);
+    });
   });
 
   group('deduplicatePicks', () {

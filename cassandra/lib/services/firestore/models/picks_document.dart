@@ -21,9 +21,11 @@ class PicksScoreCache {
   factory PicksScoreCache.fromMap(Map<String, dynamic> m) {
     return PicksScoreCache(
       baseTotal: (m['baseTotal'] as num?)?.toDouble() ?? 0,
-      bonusPoints: m['bonusPoints'] as int? ?? 0,
+      // Use num? → toInt() so that Firestore double values (e.g. 2.0, -1.0)
+      // are accepted without throwing a TypeError from a direct `as int?` cast.
+      bonusPoints: (m['bonusPoints'] as num?)?.toInt() ?? 0,
       total: (m['total'] as num?)?.toDouble() ?? 0,
-      correctCount: m['correctCount'] as int? ?? 0,
+      correctCount: (m['correctCount'] as num?)?.toInt() ?? 0,
       averageOddsPlayed: (m['averageOddsPlayed'] as num?)?.toDouble(),
     );
   }
