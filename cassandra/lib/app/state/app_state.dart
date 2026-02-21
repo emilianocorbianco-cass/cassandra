@@ -199,6 +199,7 @@ class AppState extends ChangeNotifier {
       }
     }
 
+    final previousActiveGroupId = groupState.activeGroupId;
     // Restore groupIds for multi-group support
     final remoteGroupIds = (data['groupIds'] as List<dynamic>?)
         ?.cast<String>()
@@ -220,6 +221,11 @@ class AppState extends ChangeNotifier {
           _recordBackendError(e, st);
         }),
       );
+    }
+
+    if (remoteGroupIds != null &&
+        previousActiveGroupId != groupState.activeGroupId) {
+      _triggerHistoryHydrationWithRetry();
     }
   }
 
@@ -405,9 +411,13 @@ class AppState extends ChangeNotifier {
       if (groupState.firestoreGroupIds.isEmpty) {
         final recoveredGroupIds = await fs.findGroupIdsForMember(targetUid);
         if (recoveredGroupIds.isNotEmpty) {
+          final previousActiveGroupId = groupState.activeGroupId;
           groupState.setFirestoreGroupIds(recoveredGroupIds);
           await fs.mergeUserField(targetUid, {'groupIds': recoveredGroupIds});
           notifyListeners();
+          if (previousActiveGroupId != groupState.activeGroupId) {
+            _triggerHistoryHydrationWithRetry();
+          }
         }
       }
       await refreshActiveGroupMetadataFromFirestore();
@@ -506,7 +516,22 @@ class AppState extends ChangeNotifier {
   bool get hasGroup => groupState.hasGroup;
   String? get activeGroupId => groupState.activeGroupId;
 
-  void setActiveGroupId(String? id) => groupState.setActiveGroupId(id);
+  void setActiveGroupId(String? id) {
+    final cleaned = (id ?? '').trim();
+    final next = cleaned.isEmpty ? null : cleaned;
+    if (next == groupState.activeGroupId) return;
+
+    groupState.setActiveGroupId(next);
+    _triggerHistoryHydrationWithRetry();
+    unawaited(
+      refreshActiveGroupMetadataFromFirestore().catchError((
+        Object e,
+        StackTrace st,
+      ) {
+        _recordBackendError(e, st);
+      }),
+    );
+  }
 
   Future<void> updateGroupImagePath(String? path) async {
     final cleaned = (path ?? '').trim();
@@ -1322,7 +1347,7 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || uid.isEmpty) return;
     if (_hydratingCurrentUserHistoryFromFirestore) return;
 
-    final hydrationKey = '$uid:$currentSeasonKey';
+    final hydrationKey = '$uid:$currentSeasonKey:${_historyGroupScopeKey()}';
     if (!force && _hydratedCurrentUserHistoryKey == hydrationKey) return;
 
     _hydratingCurrentUserHistoryFromFirestore = true;
@@ -1409,6 +1434,11 @@ class AppState extends ChangeNotifier {
     } finally {
       _hydratingCurrentUserHistoryFromFirestore = false;
     }
+  }
+
+  String _historyGroupScopeKey() {
+    final scopedGroupId = activeGroupId?.trim() ?? '';
+    return scopedGroupId.isEmpty ? 'nogroup' : scopedGroupId;
   }
 
   // ===== LOCAL → FIRESTORE MIGRATION =====

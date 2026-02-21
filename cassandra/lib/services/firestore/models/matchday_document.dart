@@ -41,7 +41,11 @@ class MatchdayDocument {
     for (final e in rawOutcomes.entries) {
       try {
         outcomes[e.key] = MatchOutcome.values.byName(e.value as String);
-      } catch (_) {}
+      } catch (_) {
+        // Silenced intentionally: unknown enum value is skipped per-entry so
+        // one corrupt record does not discard the whole matchday document.
+        // This fires at most once per stored outcome (not a run-time hot path).
+      }
     }
 
     return MatchdayDocument(

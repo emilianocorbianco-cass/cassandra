@@ -71,7 +71,12 @@ class PicksDocument {
     for (final e in rawPicks.entries) {
       try {
         picks[e.key] = PickOption.values.byName(e.value as String);
-      } catch (_) {}
+      } catch (_) {
+        // Silenced intentionally: unknown enum value is skipped per-entry so
+        // one corrupt pick does not discard the whole PicksDocument.
+        // Expected during schema evolution when new enum variants are not yet
+        // known to older clients.
+      }
     }
 
     final rawScore = d['score'] as Map<String, dynamic>?;
