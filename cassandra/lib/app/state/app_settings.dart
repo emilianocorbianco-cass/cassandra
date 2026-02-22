@@ -1,5 +1,46 @@
 import 'dart:ui';
 
+import 'package:flutter/material.dart' show ThemeMode;
+
+/// Tema dell'app:
+/// - system: segue le impostazioni del telefono
+/// - light/dark: forza chiaro o scuro
+enum CassandraThemeMode { system, light, dark }
+
+CassandraThemeMode cassandraThemeModeFromStorage(String? value) {
+  switch (value) {
+    case 'light':
+      return CassandraThemeMode.light;
+    case 'dark':
+      return CassandraThemeMode.dark;
+    case 'system':
+    default:
+      return CassandraThemeMode.system;
+  }
+}
+
+String cassandraThemeModeToStorage(CassandraThemeMode value) {
+  switch (value) {
+    case CassandraThemeMode.system:
+      return 'system';
+    case CassandraThemeMode.light:
+      return 'light';
+    case CassandraThemeMode.dark:
+      return 'dark';
+  }
+}
+
+ThemeMode flutterThemeMode(CassandraThemeMode value) {
+  switch (value) {
+    case CassandraThemeMode.system:
+      return ThemeMode.system;
+    case CassandraThemeMode.light:
+      return ThemeMode.light;
+    case CassandraThemeMode.dark:
+      return ThemeMode.dark;
+  }
+}
+
 /// Lingua dell'app:
 /// - system: segue la lingua del telefono
 /// - it/en: forza l'app in IT o EN

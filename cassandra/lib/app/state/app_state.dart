@@ -65,6 +65,7 @@ class AppState extends ChangeNotifier {
 
   static const _kLanguage = StorageKeys.language;
   static const _kDefaultVisibility = StorageKeys.defaultVisibility;
+  static const _kThemeMode = StorageKeys.themeMode;
 
   // ---------------------------------------------------------------------------
   // Pure parsing helpers (extracted for testability)
@@ -578,6 +579,7 @@ class AppState extends ChangeNotifier {
 
   UserProfile _profile;
   CassandraLanguage _language;
+  CassandraThemeMode _themeMode;
   PredictionVisibility _defaultVisibility;
   bool _rememberMeEnabled = false;
   bool _currentUserProfileSetupCompleted = false;
@@ -680,6 +682,7 @@ class AppState extends ChangeNotifier {
     this._prefs, {
     required UserProfile profile,
     required CassandraLanguage language,
+    required CassandraThemeMode themeMode,
     required PredictionVisibility defaultVisibility,
     required GroupState groupStateInstance,
     required PredictionState predictionStateInstance,
@@ -687,6 +690,7 @@ class AppState extends ChangeNotifier {
     int demoSeed = 0,
   }) : _profile = profile,
        _language = language,
+       _themeMode = themeMode,
        _defaultVisibility = defaultVisibility,
        _demoSeed = demoSeed {
     groupState = groupStateInstance;
@@ -706,6 +710,7 @@ class AppState extends ChangeNotifier {
   String get favoriteTeam => _profile.favoriteTeam ?? '';
 
   CassandraLanguage get language => _language;
+  CassandraThemeMode get themeMode => _themeMode;
   PredictionVisibility get defaultVisibility => _defaultVisibility;
   bool get rememberMeEnabled => _rememberMeEnabled;
   bool get hasCompletedProfileSetup => _currentUserProfileSetupCompleted;
@@ -867,6 +872,8 @@ class AppState extends ChangeNotifier {
     );
 
     final language = cassandraLanguageFromStorage(prefs.getString(_kLanguage));
+    final themeMode =
+        cassandraThemeModeFromStorage(prefs.getString(_kThemeMode));
     final visibility = predictionVisibilityFromStorage(
       prefs.getString(_kDefaultVisibility),
     );
@@ -892,6 +899,7 @@ class AppState extends ChangeNotifier {
         prefs,
         profile: profile,
         language: language,
+        themeMode: themeMode,
         defaultVisibility: visibility,
         groupStateInstance: groupStateInstance,
         predictionStateInstance: predictionStateInstance,
@@ -916,12 +924,14 @@ class AppState extends ChangeNotifier {
   factory AppState.inMemory({
     UserProfile? profile,
     CassandraLanguage language = CassandraLanguage.system,
+    CassandraThemeMode themeMode = CassandraThemeMode.system,
     PredictionVisibility defaultVisibility = PredictionVisibility.friends,
   }) {
     return AppState._(
       null,
       profile: profile ?? _defaultProfile,
       language: language,
+      themeMode: themeMode,
       defaultVisibility: defaultVisibility,
       groupStateInstance: GroupState.inMemory(),
       predictionStateInstance: PredictionState.inMemory(),
@@ -1010,6 +1020,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     await _prefs?.setString(_kLanguage, cassandraLanguageToStorage(value));
     _syncFieldToFirestore({'language': cassandraLanguageToStorage(value)});
+  }
+
+  Future<void> updateThemeMode(CassandraThemeMode value) async {
+    if (value == _themeMode) return;
+    _themeMode = value;
+    notifyListeners();
+    await _prefs?.setString(_kThemeMode, cassandraThemeModeToStorage(value));
   }
 
   Future<void> updateDefaultVisibility(PredictionVisibility value) async {
@@ -1172,6 +1189,7 @@ class AppState extends ChangeNotifier {
 
     _profile = _defaultProfile;
     _language = CassandraLanguage.system;
+    _themeMode = CassandraThemeMode.system;
     _defaultVisibility = PredictionVisibility.friends;
     await groupState.clearAll();
     predictionState.clearAllHistory();
@@ -1192,6 +1210,7 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kFavoriteTeamLegacy);
 
     await _prefs.remove(_kLanguage);
+    await _prefs.remove(_kThemeMode);
     await _prefs.remove(_kDefaultVisibility);
 
     await _prefs.remove(_kRememberMeEnabled);

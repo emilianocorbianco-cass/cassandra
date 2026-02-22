@@ -27,6 +27,7 @@ class StorageKeys {
   // App settings
   static const language = 'language';
   static const defaultVisibility = 'defaultVisibility';
+  static const themeMode = 'themeMode';
 
   // Group
   static const groupNameV1 = 'group.name.v1';
