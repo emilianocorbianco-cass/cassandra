@@ -294,7 +294,7 @@ class _ChatPageState extends State<ChatPage>
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                       decoration: const BoxDecoration(
                         border: Border(
-                          bottom: BorderSide(color: Color(0x1A000000)),
+                          bottom: BorderSide(color: CassandraColors.dividerSoft),
                         ),
                       ),
                       child: Text(
@@ -376,7 +376,7 @@ class _ChatPageState extends State<ChatPage>
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(28),
                                     borderSide: const BorderSide(
-                                      color: Color(0x4D804046),
+                                      color: CassandraColors.chatInputBorderIdle,
                                     ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
@@ -478,11 +478,9 @@ class _ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final align = mine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final avatarBg = mine ? CassandraColors.primary : const Color(0xFFF1E6D1);
-    final bubbleBg = mine ? CassandraColors.primary : const Color(0xFFF5F5F5);
-    final imageBubbleBg = mine
-        ? const Color(0xFFFDFDFD)
-        : const Color(0xFFFDFDFD);
+    final avatarBg = mine ? CassandraColors.primary : CassandraColors.chatOtherAvatarBg;
+    final bubbleBg = mine ? CassandraColors.primary : CassandraColors.cardBg;
+    const imageBubbleBg = CassandraColors.chatImageBubbleBg;
     final imageBorderColor = mine
         ? CassandraColors.primary.withValues(alpha: 0.6)
         : CassandraColors.primary.withValues(alpha: 0.26);

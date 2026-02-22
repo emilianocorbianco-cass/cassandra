@@ -10,7 +10,7 @@ import 'package:cassandra/features/serie_a/serie_a_page.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart';
-import '../theme/app_colors.dart';
+import '../theme/cassandra_colors.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
 import '../../features/predictions/models/prediction_match.dart';
@@ -202,20 +202,20 @@ class _HomeShellState extends State<HomeShell> {
                   horizontal: 16,
                   vertical: 8,
                 ),
-                color: const Color(0xFFF9EAC1),
+                color: CassandraColors.offlineBannerBg,
                 child: Row(
                   children: [
                     const Icon(
                       Icons.wifi_off_rounded,
                       size: 16,
-                      color: Color(0xFF3E5966),
+                      color: CassandraColors.offlineContent,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         l10n.predictionsOfflineStatus,
                         style: const TextStyle(
-                          color: Color(0xFF3E5966),
+                          color: CassandraColors.offlineContent,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -231,15 +231,15 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
-          backgroundColor: AppColors.navBarBg,
-          indicatorColor: AppColors.navBarBg,
+          backgroundColor: CassandraColors.navBarBg,
+          indicatorColor: CassandraColors.navBarBg,
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
           iconTheme: WidgetStateProperty.all(
-            const IconThemeData(color: Color(0xFFF6F4EF)),
+            const IconThemeData(color: CassandraColors.navBarFg),
           ),
           labelTextStyle: WidgetStateProperty.all(
-            const TextStyle(color: Color(0xFFF6F4EF)),
+            const TextStyle(color: CassandraColors.navBarFg),
           ),
         ),
         child: NavigationBar(
