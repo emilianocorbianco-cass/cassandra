@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../app/state/cassandra_scope.dart';
+import '../../services/firestore/models/matchday_document.dart';
 import '../badges/models/badge_counts.dart';
 import '../badges/trophy_engine.dart';
 import '../group/models/group_member.dart';
@@ -47,6 +50,8 @@ class _UserHubPageState extends State<UserHubPage> {
 
   bool _loading = false;
   String? _loadedKey;
+  StreamSubscription<MatchdayDocument?>? _matchdaySub;
+  MatchdayData? _liveMatchday;
 
   @override
   void initState() {
@@ -66,16 +71,45 @@ class _UserHubPageState extends State<UserHubPage> {
   }
 
   @override
+  void dispose() {
+    _matchdaySub?.cancel();
+    super.dispose();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final app = CassandraScope.of(context);
     final key = '${app.activeGroupId ?? 'none'}:${widget.member.id}';
     if (_loadedKey == key) return;
     _loadedKey = key;
+    _bindMatchdayStream();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadSeasonData();
     });
+  }
+
+  void _bindMatchdayStream() {
+    final app = CassandraScope.of(context);
+    final fs = app.firestoreService;
+    if (fs == null || !app.isAuthenticated) return;
+    _matchdaySub?.cancel();
+    _matchdaySub = fs
+        .streamMatchdayData(
+          seasonKey: app.currentSeasonKey,
+          dayNumber: widget.matchday.dayNumber,
+        )
+        .listen((doc) {
+          if (!mounted || doc == null) return;
+          setState(() {
+            _liveMatchday = MatchdayData(
+              dayNumber: doc.dayNumber,
+              matches: doc.matches,
+              outcomesByMatchId: doc.outcomesByMatchId,
+            );
+          });
+        });
   }
 
   Future<void> _loadSeasonData() async {
@@ -202,9 +236,10 @@ class _UserHubPageState extends State<UserHubPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final totalMatches = widget.matchday.matches.length;
-    final gradedCount = widget.matchday.matches.where((m) {
-      final o = widget.matchday.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
+    final effectiveMatchday = _liveMatchday ?? widget.matchday;
+    final totalMatches = effectiveMatchday.matches.length;
+    final gradedCount = effectiveMatchday.matches.where((m) {
+      final o = effectiveMatchday.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
       return !o.isPending;
     }).length;
 
@@ -281,7 +316,7 @@ class _UserHubPageState extends State<UserHubPage> {
             children: [
               UserPicksView(
                 member: widget.member,
-                matchday: widget.matchday,
+                matchday: effectiveMatchday,
                 picksByMatchId: widget.picksByMatchId,
               ),
               UserStatsView(entry: _seasonEntry, trophies: _trophies),
