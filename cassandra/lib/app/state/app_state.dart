@@ -256,6 +256,8 @@ class AppState extends ChangeNotifier {
   String? _lastBackendSyncError;
   DateTime? _lastBackendSyncErrorAt;
 
+  StreamSubscription<List<ApiFootballStanding>>? _standingsSubscription;
+
   String? get lastBackendSyncError => _lastBackendSyncError;
   DateTime? get lastBackendSyncErrorAt => _lastBackendSyncErrorAt;
   bool get hasBackendSyncError => _lastBackendSyncError != null;
@@ -417,6 +419,7 @@ class AppState extends ChangeNotifier {
     _profileSyncRetryTimer?.cancel();
     _profileSyncRetryTimer = null;
     _profileSyncRetryAttempt = 0;
+    _cancelStandingsStream();
     groupState.removeListener(notifyListeners);
     predictionState.removeListener(notifyListeners);
     matchdayState.removeListener(notifyListeners);
@@ -424,6 +427,26 @@ class AppState extends ChangeNotifier {
     predictionState.dispose();
     matchdayState.dispose();
     super.dispose();
+  }
+
+  void _startStandingsStream() {
+    _cancelStandingsStream();
+    final fs = _firestoreService;
+    if (fs == null) return;
+    _standingsSubscription = fs
+        .streamSeasonStandings(seasonKey: currentSeasonKey)
+        .listen(
+          (standings) =>
+              setCachedSeasonStandings(standings, updatedAt: DateTime.now()),
+          onError: (e) {
+            if (kDebugMode) debugPrint('[standings stream] error: $e');
+          },
+        );
+  }
+
+  void _cancelStandingsStream() {
+    _standingsSubscription?.cancel();
+    _standingsSubscription = null;
   }
 
   Future<void> hydrateProfileFromFirestore([String? uid]) async {
@@ -1068,6 +1091,7 @@ class AppState extends ChangeNotifier {
 
     _syncProfileToFirestore();
     _triggerHistoryHydrationWithRetry();
+    _startStandingsStream();
     final token = _devicePushToken;
     if (token != null && token.trim().isNotEmpty) {
       final fs = _firestoreService;
@@ -1112,6 +1136,7 @@ class AppState extends ChangeNotifier {
     _currentUserProfileSetupCompleted = false;
     await groupState.clearAll();
     predictionState.clearAllHistory();
+    _cancelStandingsStream();
     notifyListeners();
   }
 
@@ -1134,6 +1159,7 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
 
+    _cancelStandingsStream();
     await groupState.clearAll();
 
     await resetAll();

@@ -1,7 +1,12 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
+import '../../app/state/app_state.dart';
 import '../../app/state/cassandra_scope.dart';
+import '../../services/firestore/models/picks_document.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
 import '../badges/season_badge_engine.dart';
@@ -37,12 +42,22 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
   bool _autoRefreshRequested = false;
   String? _autoRefreshGroupId;
 
+  // Real-time picks stream
+  StreamSubscription<List<PicksDocument>>? _seasonPicksSub;
+  List<GroupMember> _seasonMembers = [];
+
   late final List<MatchdayData> _matchdays;
 
   @override
   void initState() {
     super.initState();
     _matchdays = mockSeasonMatchdays(startDay: 16, count: 5);
+  }
+
+  @override
+  void dispose() {
+    _seasonPicksSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshSeasonFromFirestore() async {
@@ -52,89 +67,125 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     setState(() => _firestoreLoading = true);
     try {
       final members = await app.fetchFirestoreGroupMembers();
+      if (!mounted) return;
       if (members.isEmpty) {
         setState(() => _firestoreLoading = false);
         return;
       }
-
-      final picksByMember = await app.fetchSeasonPicksByMemberForActiveGroup(
-        members.map((m) => m.id).toList(growable: false),
-      );
-
-      // Build all season entries for all group members
-      final entries = <SeasonLeaderboardEntry>[];
-      for (final member in members) {
-        final picksDocs = picksByMember[member.id] ?? const [];
-        if (picksDocs.isEmpty) {
-          entries.add(
-            SeasonLeaderboardEntry(
-              member: member,
-              matchdays: [],
-              totalPoints: 0,
-              averagePerMatchday: 0,
-              averageOddsPlayed: null,
-            ),
-          );
-          continue;
-        }
-
-        final perDay = <MemberMatchdayScore>[];
-        double total = 0;
-
-        for (final pd in picksDocs) {
-          // Use cached score from picks doc if available
-          if (pd.score != null) {
-            total += pd.score!.total;
-            // We don't have full breakdown, but we can build a summary entry
-            perDay.add(
-              MemberMatchdayScore(
-                matchday: MatchdayData(
-                  dayNumber: pd.dayNumber,
-                  matches: const [],
-                  outcomesByMatchId: const {},
-                ),
-                picksByMatchId: pd.picksByMatchId,
-                day: DayScoreBreakdown(
-                  matchBreakdowns: const [],
-                  baseTotal: pd.score!.baseTotal,
-                  bonusPoints: pd.score!.bonusPoints,
-                  total: pd.score!.total,
-                  correctCount: pd.score!.correctCount,
-                  averageOddsPlayed: pd.score!.averageOddsPlayed,
-                ),
-              ),
-            );
-          }
-        }
-
-        final avg = perDay.isEmpty ? 0.0 : total / perDay.length;
-        final oddsValues = perDay
-            .map((d) => d.day.averageOddsPlayed)
-            .whereType<double>()
-            .toList();
-        final avgOdds = oddsValues.isEmpty
-            ? null
-            : oddsValues.reduce((a, b) => a + b) / oddsValues.length;
-
-        entries.add(
-          SeasonLeaderboardEntry(
-            member: member,
-            matchdays: perDay,
-            totalPoints: total,
-            averagePerMatchday: avg,
-            averageOddsPlayed: avgOdds,
-          ),
-        );
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _firestoreSeasonEntries = entries;
-        _firestoreLoading = false;
-      });
+      _seasonMembers = members;
+      _bindSeasonPicksStream(app);
+      // _firestoreLoading will be cleared by the stream's first event
     } catch (_) {
       if (mounted) setState(() => _firestoreLoading = false);
     }
+  }
+
+  void _bindSeasonPicksStream(AppState app) {
+    _seasonPicksSub?.cancel();
+    final fs = app.firestoreService;
+    final groupId = app.activeGroupId;
+    if (fs == null || groupId == null || groupId.trim().isEmpty) {
+      setState(() => _firestoreLoading = false);
+      return;
+    }
+
+    bool firstEvent = true;
+    _seasonPicksSub = fs
+        .streamPicksForSeason(seasonKey: app.currentSeasonKey, groupId: groupId)
+        .listen(
+          (picks) {
+            if (!mounted) return;
+            final entries = _buildSeasonEntries(_seasonMembers, picks);
+            setState(() {
+              _firestoreSeasonEntries = entries;
+              if (firstEvent) {
+                _firestoreLoading = false;
+                firstEvent = false;
+              }
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            if (kDebugMode) debugPrint('[leaderboard stream] error: $e');
+            setState(() => _firestoreLoading = false);
+          },
+        );
+  }
+
+  List<SeasonLeaderboardEntry> _buildSeasonEntries(
+    List<GroupMember> members,
+    List<PicksDocument> picks,
+  ) {
+    // Group flat picks list by uid for O(1) lookup per member
+    final picksByUid = <String, List<PicksDocument>>{};
+    for (final pd in picks) {
+      picksByUid.putIfAbsent(pd.uid, () => []).add(pd);
+    }
+
+    final entries = <SeasonLeaderboardEntry>[];
+    for (final member in members) {
+      final picksDocs = picksByUid[member.id] ?? const [];
+      if (picksDocs.isEmpty) {
+        entries.add(
+          SeasonLeaderboardEntry(
+            member: member,
+            matchdays: [],
+            totalPoints: 0,
+            averagePerMatchday: 0,
+            averageOddsPlayed: null,
+          ),
+        );
+        continue;
+      }
+
+      final perDay = <MemberMatchdayScore>[];
+      double total = 0;
+
+      for (final pd in picksDocs) {
+        // Use cached score from picks doc if available
+        if (pd.score != null) {
+          total += pd.score!.total;
+          perDay.add(
+            MemberMatchdayScore(
+              matchday: MatchdayData(
+                dayNumber: pd.dayNumber,
+                matches: const [],
+                outcomesByMatchId: const {},
+              ),
+              picksByMatchId: pd.picksByMatchId,
+              day: DayScoreBreakdown(
+                matchBreakdowns: const [],
+                baseTotal: pd.score!.baseTotal,
+                bonusPoints: pd.score!.bonusPoints,
+                total: pd.score!.total,
+                correctCount: pd.score!.correctCount,
+                averageOddsPlayed: pd.score!.averageOddsPlayed,
+              ),
+            ),
+          );
+        }
+      }
+
+      final avg = perDay.isEmpty ? 0.0 : total / perDay.length;
+      final oddsValues = perDay
+          .map((d) => d.day.averageOddsPlayed)
+          .whereType<double>()
+          .toList();
+      final avgOdds = oddsValues.isEmpty
+          ? null
+          : oddsValues.reduce((a, b) => a + b) / oddsValues.length;
+
+      entries.add(
+        SeasonLeaderboardEntry(
+          member: member,
+          matchdays: perDay,
+          totalPoints: total,
+          averagePerMatchday: avg,
+          averageOddsPlayed: avgOdds,
+        ),
+      );
+    }
+    return entries;
   }
 
   void _ensureSeasonLoaded() {

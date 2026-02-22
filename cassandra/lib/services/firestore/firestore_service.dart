@@ -966,6 +966,29 @@ class FirestoreService {
         .toList();
   }
 
+  Stream<List<ApiFootballStanding>> streamSeasonStandings({
+    required String seasonKey,
+  }) {
+    return _db
+        .collection('seasons')
+        .doc(seasonKey)
+        .collection('standings')
+        .doc('current')
+        .snapshots()
+        .map((doc) {
+          if (!doc.exists) return const <ApiFootballStanding>[];
+          final data = doc.data();
+          final rows = data?['rows'];
+          if (rows is! List) return const <ApiFootballStanding>[];
+          return rows
+              .whereType<Map>()
+              .map(
+                (e) => ApiFootballStanding.fromMap(e.cast<String, dynamic>()),
+              )
+              .toList();
+        });
+  }
+
   // ---------------------------------------------------------------------------
   // Dev / test data seeding
   // ---------------------------------------------------------------------------
