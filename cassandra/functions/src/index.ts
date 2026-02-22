@@ -887,7 +887,13 @@ function normalizeEventType(typeRaw: string, detailRaw: string, commentsRaw: str
     return "card";
   }
   if (type === "subst") return "substitution";
-  if (type === "var") return "var";
+  if (type === "var") {
+    // Only store VAR decisions that cancel a goal; ignore reviews and other decisions.
+    if (detail.includes("goal disallowed") || detail.includes("goal cancelled")) {
+      return "var_goal";
+    }
+    return null;
+  }
   if (hasWoodworkKeyword(detail) || hasWoodworkKeyword(comments)) return "woodwork";
   if (detail.includes("penalty")) return "penalty_event";
   return null;
@@ -904,6 +910,7 @@ function isRelevantEventType(normalizedType: string): boolean {
     "card",
     "woodwork",
     "penalty_event",
+    "var_goal",
   ].includes(normalizedType);
 }
 
@@ -1316,6 +1323,7 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
   const season = seasonStartYear();
   const seasonKey = season.toString();
   const pendingGoalNotifications: PushPayload[] = [];
+  const pendingVarGoalNotifications: PushPayload[] = [];
 
   console.log(`[${options.logPrefix}] Starting for season ${seasonKey}`);
 
@@ -1573,6 +1581,43 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       await sleep(120);
     }
 
+    // var_goal detection: send a push notification when a VAR decision cancels
+    // a goal that wasn't already in the stored events.
+    // Guards mirror the goal-notification guards: live refresh only (includeOdds=false)
+    // and only when prior data exists to diff against.
+    if (!options.includeOdds && existingById.size > 0) {
+      for (const f of fixtures) {
+        const fixtureId = f.fixtureId.toString();
+        const newEvents = eventsByFixture.get(fixtureId) ?? [];
+        const existingMatch = existingById.get(fixtureId);
+        const existingEvents = Array.isArray(existingMatch?.["events"])
+          ? (existingMatch["events"] as MatchEventDoc[])
+          : [];
+
+        const existingVarCount = existingEvents.filter(
+          (e) => e.type === "var_goal"
+        ).length;
+        const newVarCount = newEvents.filter(
+          (e) => e.type === "var_goal"
+        ).length;
+        if (newVarCount <= existingVarCount) continue;
+
+        const status = (f.statusShort ?? "").trim().toUpperCase();
+        if (!isInProgressStatus(status) && !isFinalStatus(status)) continue;
+
+        pendingVarGoalNotifications.push({
+          title: "Gol annullato (VAR) \uD83D\uDEAB",
+          body: `${f.homeName} ${f.homeGoals ?? 0}-${f.awayGoals ?? 0} ${f.awayName}`,
+          data: {
+            type: "var_goal",
+            seasonKey,
+            dayNumber: md.toString(),
+            matchId: fixtureId,
+          },
+        });
+      }
+    }
+
     if (!options.includeOdds) {
       if (!existing.exists) {
         console.log(
@@ -1696,6 +1741,18 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
     }
     console.log(
       `[${options.logPrefix}] goal notifications sent=${pendingGoalNotifications.length}`
+    );
+  }
+
+  if (pendingVarGoalNotifications.length > 0) {
+    const tokens = await collectAllFcmTokens(db);
+    if (tokens.length > 0) {
+      for (const payload of pendingVarGoalNotifications) {
+        await sendPushToTokens(tokens, payload);
+      }
+    }
+    console.log(
+      `[${options.logPrefix}] var_goal notifications sent=${pendingVarGoalNotifications.length}`
     );
   }
 
