@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'state/app_settings.dart';
 import 'theme/cassandra_theme.dart';
 import '../features/splash/splash_screen.dart';
 import 'state/cassandra_scope.dart';
@@ -52,8 +51,6 @@ class CassandraApp extends StatelessWidget {
 
       title: 'Cassandra',
       theme: CassandraTheme.light(),
-      darkTheme: CassandraTheme.dark(),
-      themeMode: flutterThemeMode(appState.themeMode),
       builder: (context, child) {
         return Listener(
           behavior: HitTestBehavior.translucent,

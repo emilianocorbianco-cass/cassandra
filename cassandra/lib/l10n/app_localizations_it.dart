@@ -755,6 +755,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupOddsLabel => 'quota';
 
   @override
+  String get groupSyncError => 'Errore nel caricamento del gruppo';
+
+  @override
+  String get groupSyncRetry => 'Riprova';
+
+  @override
   String get tabGroup => 'Gruppo';
 
   @override

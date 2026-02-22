@@ -1499,6 +1499,18 @@ abstract class AppLocalizations {
   /// **'odds'**
   String get groupOddsLabel;
 
+  /// No description provided for @groupSyncError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error loading group data'**
+  String get groupSyncError;
+
+  /// No description provided for @groupSyncRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get groupSyncRetry;
+
   /// No description provided for @tabGroup.
   ///
   /// In en, this message translates to:

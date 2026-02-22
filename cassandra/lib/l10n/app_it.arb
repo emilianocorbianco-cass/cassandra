@@ -351,6 +351,8 @@
   "groupPickLabel": "pronostico",
   "groupOutcomeLabel": "esito",
   "groupOddsLabel": "quota",
+  "groupSyncError": "Errore nel caricamento del gruppo",
+  "groupSyncRetry": "Riprova",
   "tabGroup": "Gruppo",
   "tabLive": "Live",
   "tabSettings": "Settings",

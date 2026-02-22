@@ -64,6 +64,7 @@ class _GroupPageState extends State<GroupPage> {
   Map<String, List<PicksDocument>>? _firestoreSeasonPicksByMemberId;
   String? _firestoreGroupId;
   bool _firestoreLoading = false;
+  bool _firestoreLoadError = false;
   String? _firestoreSeasonKey;
   int? _firestoreDayNumber;
   List<PicksDocument> _firestoreSeasonPicksDocs = const <PicksDocument>[];
@@ -159,6 +160,7 @@ class _GroupPageState extends State<GroupPage> {
             _firestoreCurrentMatchday = null;
             _firestoreSeasonPicksDocs = const <PicksDocument>[];
             _firestoreLoading = false;
+            _firestoreLoadError = false;
             _hydratedSeasonMatchdayDays.clear();
             _seasonHistoryHydrationInFlight = false;
             _seasonHistoryHydrationQueued = false;
@@ -176,7 +178,8 @@ class _GroupPageState extends State<GroupPage> {
     final groupChanged = _firestoreGroupId != groupId;
     final seasonChanged = _firestoreSeasonKey != seasonKey;
     final dayChanged = _firestoreDayNumber != dayNumber;
-    final neverLoaded = _firestoreMembers == null && !_firestoreLoading;
+    final neverLoaded =
+        (_firestoreMembers == null || _firestoreLoadError) && !_firestoreLoading;
     if (!groupChanged && !seasonChanged && !dayChanged && !neverLoaded) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -192,6 +195,7 @@ class _GroupPageState extends State<GroupPage> {
           _firestoreSeasonPicksByMemberId = null;
           _firestoreCurrentMatchday = null;
           _firestoreSeasonPicksDocs = const <PicksDocument>[];
+          _firestoreLoadError = false;
           _hydratedSeasonMatchdayDays.clear();
           _seasonHistoryHydrationInFlight = false;
           _seasonHistoryHydrationQueued = false;
@@ -257,6 +261,7 @@ class _GroupPageState extends State<GroupPage> {
         _firestorePicksByMemberId = picks;
         _firestoreSeasonPicksByMemberId = seasonPicksByMemberId;
         _firestoreLoading = false;
+        _firestoreLoadError = false;
       });
       appState.clearBackendSyncError();
 
@@ -280,6 +285,7 @@ class _GroupPageState extends State<GroupPage> {
         _firestoreCurrentMatchday = null;
         _firestoreSeasonPicksDocs = const <PicksDocument>[];
         _firestoreLoading = false;
+        _firestoreLoadError = true;
       });
     }
   }
@@ -1102,6 +1108,24 @@ class _GroupPageState extends State<GroupPage> {
                       _firestoreLoading &&
                       _firestoreMembers == null
                   ? const Center(child: CircularProgressIndicator())
+                  : useFirestoreMembers && _firestoreLoadError
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l10n.groupSyncError),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: () => setState(() {
+                              _firestoreLoadError = false;
+                              _firestoreMembers = null;
+                            }),
+                            icon: const Icon(Icons.refresh),
+                            label: Text(l10n.groupSyncRetry),
+                          ),
+                        ],
+                      ),
+                    )
                   : useFirestoreMembers && members.isEmpty
                   ? Center(child: Text(l10n.commonNoDataAvailable))
                   : _segment == 2

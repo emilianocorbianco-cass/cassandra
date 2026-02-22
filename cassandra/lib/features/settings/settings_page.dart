@@ -5,7 +5,6 @@ import 'package:cassandra/features/settings/widgets/account_section.dart';
 import 'package:cassandra/features/settings/widgets/group_settings_section.dart';
 import 'package:cassandra/features/settings/widgets/language_selector.dart';
 import 'package:cassandra/features/settings/widgets/profile_settings_section.dart';
-import 'package:cassandra/features/settings/widgets/theme_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -27,7 +26,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _selectedFavoriteTeam;
   int _settingsSegment = 0; // 0 = my settings, 1 = my stats
   CassandraLanguage _language = CassandraLanguage.system;
-  CassandraThemeMode _themeMode = CassandraThemeMode.system;
 
   @override
   void dispose() {
@@ -49,7 +47,6 @@ class _SettingsPageState extends State<SettingsPage> {
         ? null
         : app.favoriteTeam.trim();
     _language = app.language;
-    _themeMode = app.themeMode;
 
     _initialized = true;
   }
@@ -60,7 +57,6 @@ class _SettingsPageState extends State<SettingsPage> {
     await app.updateTeamName(_teamNameCtrl.text);
     await app.updateFavoriteTeam(_selectedFavoriteTeam ?? '');
     await app.updateLanguage(_language);
-    await app.updateThemeMode(_themeMode);
 
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -79,7 +75,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ? null
           : app.favoriteTeam.trim();
       _language = app.language;
-      _themeMode = app.themeMode;
     });
 
     if (!mounted) return;
@@ -167,12 +162,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           currentValue: _language,
                           onChanged: (value) {
                             setState(() => _language = value);
-                          },
-                        ),
-                        ThemeSelector(
-                          currentValue: _themeMode,
-                          onChanged: (value) {
-                            setState(() => _themeMode = value);
                           },
                         ),
                         const SizedBox(height: 24),

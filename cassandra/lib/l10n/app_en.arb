@@ -351,6 +351,8 @@
   "groupPickLabel": "pick",
   "groupOutcomeLabel": "outcome",
   "groupOddsLabel": "odds",
+  "groupSyncError": "Error loading group data",
+  "groupSyncRetry": "Retry",
   "tabGroup": "Group",
   "tabLive": "Live",
   "tabSettings": "Settings",
