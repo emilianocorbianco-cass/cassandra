@@ -439,17 +439,18 @@ class _PredictionsPageState extends State<PredictionsPage>
         await appState.setCassandraMatchdayCursor(resolvedDoc.dayNumber);
       }
 
+      final resolvedDayNumber = resolvedDoc.dayNumber;
       final matches = resolvedDoc.matches;
       final outcomes = resolvedDoc.outcomesByMatchId;
       appState.setMatchdayProgress(
-        matchdayNumber: resolvedDoc.dayNumber,
+        matchdayNumber: resolvedDayNumber,
         progress: resolvedProgress!,
         allowAutoAdvance: false,
       );
 
       if (!mounted) return;
       setState(() {
-        _shownMatchdayNumber = resolvedDoc!.dayNumber;
+        _shownMatchdayNumber = resolvedDayNumber;
         _matches = matches;
         _usingRealFixtures = true;
         _standings = standings.isEmpty ? null : standings;
