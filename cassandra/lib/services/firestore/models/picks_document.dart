@@ -90,16 +90,25 @@ class PicksDocument {
       }
     }
 
-    final rawScore = d['score'] as Map<String, dynamic>?;
+    // Use is-Map guard so a corrupt 'score' field doesn't throw a CastError.
+    final rawScoreRaw = d['score'];
+    final rawScore = rawScoreRaw is Map
+        ? Map<String, dynamic>.from(rawScoreRaw)
+        : null;
+
+    // Use is-String guard so a corrupt 'groupId' field (e.g. a number stored
+    // by a buggy client) degrades to null rather than throwing a CastError.
+    final rawGroupId = d['groupId'];
+    final groupIdTrimmed = rawGroupId is String ? rawGroupId.trim() : null;
 
     return PicksDocument(
       docId: doc.id,
       uid: d['uid'] as String? ?? '',
       seasonKey: d['seasonKey'] as String? ?? '',
       dayNumber: d['dayNumber'] as int? ?? 0,
-      groupId: (d['groupId'] as String?)?.trim().isEmpty ?? true
+      groupId: (groupIdTrimmed == null || groupIdTrimmed.isEmpty)
           ? null
-          : (d['groupId'] as String?)!.trim(),
+          : groupIdTrimmed,
       picksByMatchId: picks,
       submittedAt: (d['submittedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       visibility: d['visibility'] as String? ?? 'friends',
