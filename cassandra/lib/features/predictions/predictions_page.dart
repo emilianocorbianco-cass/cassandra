@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1052,169 +1053,206 @@ class _CompactMatchCard extends StatelessWidget {
     final homeInitial = match.homeTeam.isNotEmpty ? match.homeTeam[0] : '?';
     final awayInitial = match.awayTeam.isNotEmpty ? match.awayTeam[0] : '?';
 
+    // Liquid Glass card: shadow esterno → ClipRRect → BackdropFilter → fill vetro
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 20,
+            spreadRadius: -2,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Logos + center ─────────────────────────────────────────
-          Row(
-            children: [
-              _TeamLogo(url: match.homeTeamLogo, initial: homeInitial),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_isLive)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        margin: const EdgeInsets.only(bottom: 2),
-                        decoration: BoxDecoration(
-                          color: CassandraColors.primary,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          match.statusShort!,
-                          style: const TextStyle(
-                            color: CassandraColors.onPrimary,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    Text(
-                      centerText,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: _isLive || _isFT ? 14 : 12,
-                        fontWeight: FontWeight.w700,
-                        color: _isLive
-                            ? CassandraColors.primary
-                            : CassandraColors.slate,
-                      ),
-                    ),
-                    if (_isFT)
-                      Text(
-                        'FT',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w700,
-                          color: CassandraColors.slate.withValues(alpha: 0.55),
-                        ),
-                      ),
-                  ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.70),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  width: 1.0,
+                ),
+                left: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  width: 1.0,
+                ),
+                right: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.20),
+                  width: 0.5,
+                ),
+                bottom: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 0.5,
                 ),
               ),
-              _TeamLogo(url: match.awayTeamLogo, initial: awayInitial),
-            ],
-          ),
-
-          const SizedBox(height: 4),
-
-          // ── Team names ─────────────────────────────────────────────
-          Text(
-            '${match.homeTeam} – ${match.awayTeam}',
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: CassandraColors.slate,
             ),
-          ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Logos + center ─────────────────────────────────────────
+                Row(
+                  children: [
+                    _TeamLogo(url: match.homeTeamLogo, initial: homeInitial),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isLive)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              margin: const EdgeInsets.only(bottom: 2),
+                              decoration: BoxDecoration(
+                                color: CassandraColors.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                match.statusShort!,
+                                style: const TextStyle(
+                                  color: CassandraColors.onPrimary,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          Text(
+                            centerText,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: _isLive || _isFT ? 14 : 12,
+                              fontWeight: FontWeight.w700,
+                              color: _isLive
+                                  ? CassandraColors.primary
+                                  : CassandraColors.slate,
+                            ),
+                          ),
+                          if (_isFT)
+                            Text(
+                              'FT',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                                color: CassandraColors.slate.withValues(
+                                  alpha: 0.55,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    _TeamLogo(url: match.awayTeamLogo, initial: awayInitial),
+                  ],
+                ),
 
-          // ── Kickoff date (only pre-match) ──────────────────────────
-          if (!_isLive && !_isFT) ...[
-            const SizedBox(height: 1),
-            Text(
-              formatKickoff(match.kickoff),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 9,
-                color: CassandraColors.slate.withValues(alpha: 0.60),
-              ),
-            ),
-          ],
+                const SizedBox(height: 4),
 
-          // ── Spacer ─────────────────────────────────────────────────
-          const SizedBox(height: 6),
+                // ── Team names ─────────────────────────────────────────────
+                Text(
+                  '${match.homeTeam} – ${match.awayTeam}',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: CassandraColors.slate,
+                  ),
+                ),
 
-          // ── Singles row (1/X/2) ────────────────────────────────────
-          Row(
-            children: [
-              _CompactOddsButton(
-                label: '1',
-                odds: match.odds.home,
-                selected: pick == PickOption.home,
-                locked: locked,
-                onPressed: () => onPick(PickOption.home),
-              ),
-              _CompactOddsButton(
-                label: 'X',
-                odds: match.odds.draw,
-                selected: pick == PickOption.draw,
-                locked: locked,
-                onPressed: () => onPick(PickOption.draw),
-              ),
-              _CompactOddsButton(
-                label: '2',
-                odds: match.odds.away,
-                selected: pick == PickOption.away,
-                locked: locked,
-                onPressed: () => onPick(PickOption.away),
-              ),
-            ],
-          ),
+                // ── Kickoff date (only pre-match) ──────────────────────────
+                if (!_isLive && !_isFT) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    formatKickoff(match.kickoff),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: CassandraColors.slate.withValues(alpha: 0.60),
+                    ),
+                  ),
+                ],
 
-          const SizedBox(height: 4),
+                // ── Spacer ─────────────────────────────────────────────────
+                const SizedBox(height: 6),
 
-          // ── Doubles row (1X/X2/12) ─────────────────────────────────
-          Row(
-            children: [
-              _CompactOddsButton(
-                label: '1X',
-                odds: match.odds.homeDraw,
-                selected: pick == PickOption.homeDraw,
-                locked: locked,
-                onPressed: () => onPick(PickOption.homeDraw),
-              ),
-              _CompactOddsButton(
-                label: 'X2',
-                odds: match.odds.drawAway,
-                selected: pick == PickOption.drawAway,
-                locked: locked,
-                onPressed: () => onPick(PickOption.drawAway),
-              ),
-              _CompactOddsButton(
-                label: '12',
-                odds: match.odds.homeAway,
-                selected: pick == PickOption.homeAway,
-                locked: locked,
-                onPressed: () => onPick(PickOption.homeAway),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+                // ── Singles row (1/X/2) ────────────────────────────────────
+                Row(
+                  children: [
+                    _CompactOddsButton(
+                      label: '1',
+                      odds: match.odds.home,
+                      selected: pick == PickOption.home,
+                      locked: locked,
+                      onPressed: () => onPick(PickOption.home),
+                    ),
+                    _CompactOddsButton(
+                      label: 'X',
+                      odds: match.odds.draw,
+                      selected: pick == PickOption.draw,
+                      locked: locked,
+                      onPressed: () => onPick(PickOption.draw),
+                    ),
+                    _CompactOddsButton(
+                      label: '2',
+                      odds: match.odds.away,
+                      selected: pick == PickOption.away,
+                      locked: locked,
+                      onPressed: () => onPick(PickOption.away),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 4),
+
+                // ── Doubles row (1X/X2/12) ─────────────────────────────────
+                Row(
+                  children: [
+                    _CompactOddsButton(
+                      label: '1X',
+                      odds: match.odds.homeDraw,
+                      selected: pick == PickOption.homeDraw,
+                      locked: locked,
+                      onPressed: () => onPick(PickOption.homeDraw),
+                    ),
+                    _CompactOddsButton(
+                      label: 'X2',
+                      odds: match.odds.drawAway,
+                      selected: pick == PickOption.drawAway,
+                      locked: locked,
+                      onPressed: () => onPick(PickOption.drawAway),
+                    ),
+                    _CompactOddsButton(
+                      label: '12',
+                      odds: match.odds.homeAway,
+                      selected: pick == PickOption.homeAway,
+                      locked: locked,
+                      onPressed: () => onPick(PickOption.homeAway),
+                    ),
+                  ],
+                ),
+              ],
+            ), // Column
+          ), // inner glass Container
+        ), // BackdropFilter
+      ), // ClipRRect
+    ); // outer shadow Container
   }
 }
 

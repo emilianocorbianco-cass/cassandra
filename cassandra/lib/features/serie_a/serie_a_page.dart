@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -296,133 +297,175 @@ class _SerieAPageState extends State<SerieAPage> {
         final liveStatus = _statusLabelForCard(m.statusShort, l10n);
         final kickoff = formatKickoff(m.kickoff);
 
-        // Card premium: bianca + ombra soft — allineata al linguaggio predictions.
+        // Liquid Glass card: shadow esterno → ClipRRect → BackdropFilter → vetro.
         const liveSet = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'P'};
         final rawStatus = (m.statusShort ?? '').trim().toUpperCase();
         final isMatchLive = liveSet.contains(rawStatus);
 
-        return Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
+        return Container(
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            onTap: () {
-              Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute(
-                  builder: (_) => LiveMatchDetailsPage(match: m),
-                ),
-              );
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 20,
+                spreadRadius: -2,
+                offset: const Offset(0, 4),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: TeamName(
-                        name: m.homeTeam,
-                        logoUrl: m.homeTeamLogo,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 5,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    Navigator.of(context, rootNavigator: true).push(
+                      MaterialPageRoute(
+                        builder: (_) => LiveMatchDetailsPage(match: m),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          width: 1.0,
+                        ),
+                        left: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          width: 1.0,
+                        ),
+                        right: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.20),
+                          width: 0.5,
+                        ),
+                        bottom: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          width: 0.5,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 118,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    child: Row(
                       children: [
-                        // LIVE badge
-                        if (isMatchLive) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            margin: const EdgeInsets.only(bottom: 2),
-                            decoration: BoxDecoration(
-                              color: CassandraColors.primary,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              m.statusShort!,
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: TeamName(
+                              name: m.homeTeam,
+                              logoUrl: m.homeTeamLogo,
                               style: const TextStyle(
-                                color: CassandraColors.onPrimary,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ),
-                        ] else ...[
-                          // Orario pre-partita
-                          Text(
-                            kickoff,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: CassandraColors.slate.withValues(
-                                alpha: 0.7,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                        ],
-                        // Score — navy bold
-                        Text(
-                          liveScore,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: CassandraColors.navBarBg,
-                            letterSpacing: -0.5,
-                            height: 1.1,
                           ),
                         ),
-                        // Status (FT, 1T, ecc.)
-                        if (liveStatus.isNotEmpty) ...[
-                          const SizedBox(height: 1),
-                          Text(
-                            liveStatus,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: CassandraColors.slate.withValues(
-                                alpha: 0.70,
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 118,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // LIVE badge
+                              if (isMatchLive) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
+                                  margin: const EdgeInsets.only(bottom: 2),
+                                  decoration: BoxDecoration(
+                                    color: CassandraColors.primary,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    m.statusShort!,
+                                    style: const TextStyle(
+                                      color: CassandraColors.onPrimary,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ] else ...[
+                                // Orario pre-partita
+                                Text(
+                                  kickoff,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: CassandraColors.slate.withValues(
+                                      alpha: 0.7,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                              ],
+                              // Score — navy bold
+                              Text(
+                                liveScore,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: CassandraColors.navBarBg,
+                                  letterSpacing: -0.5,
+                                  height: 1.1,
+                                ),
                               ),
+                              // Status (FT, 1T, ecc.)
+                              if (liveStatus.isNotEmpty) ...[
+                                const SizedBox(height: 1),
+                                Text(
+                                  liveStatus,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: CassandraColors.slate.withValues(
+                                      alpha: 0.70,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: TeamName(
+                              name: m.awayTeam,
+                              logoUrl: m.awayTeamLogo,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              reversed: true,
                             ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: TeamName(
-                        name: m.awayTeam,
-                        logoUrl: m.awayTeamLogo,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                        reversed: true,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
+                  ), // inner glass Container
+                ), // InkWell
+              ), // Material
+            ), // BackdropFilter
+          ), // ClipRRect
+        ); // outer shadow Container
       },
     );
   }

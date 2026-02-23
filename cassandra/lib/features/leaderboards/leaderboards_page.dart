@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -512,9 +513,6 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                               : formatOdds(e.averagePerMatchday);
 
                           final isLeader = i == 0;
-                          final cardColor = isLeader
-                              ? CassandraColors.navBarBg
-                              : Colors.white;
                           final fgColor = isLeader
                               ? CassandraColors.navBarFg
                               : CassandraColors.slate;
@@ -522,80 +520,146 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                               ? CassandraColors.navBarFg
                               : CassandraColors.navBarBg;
 
+                          // ListTile condiviso (leader e non-leader)
+                          final tile = ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => MemberSeasonPage(entry: e),
+                                ),
+                              );
+                            },
+                            leading: SizedBox(
+                              width: 64,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 22,
+                                    child: isLeader
+                                        ? const Icon(
+                                            Icons.emoji_events_rounded,
+                                            size: 18,
+                                            color: Color(0xFFFFD700),
+                                          )
+                                        : Text(
+                                            '${i + 1}',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              color: CassandraColors.primary,
+                                            ),
+                                          ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  AvatarWithBadges(
+                                    radius: 18,
+                                    backgroundColor: _avatarColorFromSeed(
+                                      e.member.avatarSeed,
+                                    ),
+                                    text: e.member.avatarInitial,
+                                    badges: badges,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            title: Text(
+                              e.member.uiName,
+                              style: TextStyle(
+                                color: fgColor,
+                                fontWeight: isLeader
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                            trailing: Text(
+                              metricLabel,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: metricColor,
+                              ),
+                            ),
+                          );
+
+                          if (isLeader) {
+                            // Leader: sfondo navy pieno, nessun blur
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: CassandraColors.navBarBg,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.14),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: tile,
+                            );
+                          }
+
+                          // Non-leader: Liquid Glass
                           return Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             decoration: BoxDecoration(
-                              color: cardColor,
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(
-                                    alpha: isLeader ? 0.14 : 0.05,
-                                  ),
-                                  blurRadius: isLeader ? 14 : 6,
-                                  offset: const Offset(0, 2),
+                                  color: Colors.black.withValues(alpha: 0.10),
+                                  blurRadius: 16,
+                                  spreadRadius: -2,
+                                  offset: const Offset(0, 3),
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
                                 ),
                               ],
                             ),
-                            child: ListTile(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => MemberSeasonPage(entry: e),
-                                  ),
-                                );
-                              },
-                              leading: SizedBox(
-                                width: 64,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    SizedBox(
-                                      width: 22,
-                                      child: isLeader
-                                          ? const Icon(
-                                              Icons.emoji_events_rounded,
-                                              size: 18,
-                                              color: Color(0xFFFFD700),
-                                            )
-                                          : Text(
-                                              '${i + 1}',
-                                              textAlign: TextAlign.center,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                color: CassandraColors.primary,
-                                              ),
-                                            ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    AvatarWithBadges(
-                                      radius: 18,
-                                      backgroundColor: _avatarColorFromSeed(
-                                        e.member.avatarSeed,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(
+                                  sigmaX: 10,
+                                  sigmaY: 10,
+                                ),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.70),
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.88,
+                                        ),
+                                        width: 1.0,
                                       ),
-                                      text: e.member.avatarInitial,
-                                      badges: badges,
+                                      left: BorderSide(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.65,
+                                        ),
+                                        width: 1.0,
+                                      ),
+                                      right: BorderSide(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.20,
+                                        ),
+                                        width: 0.5,
+                                      ),
+                                      bottom: BorderSide(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        width: 0.5,
+                                      ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                              title: Text(
-                                e.member.uiName,
-                                style: TextStyle(
-                                  color: fgColor,
-                                  fontWeight: isLeader
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                ),
-                              ),
-                              trailing: Text(
-                                metricLabel,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: metricColor,
+                                  ),
+                                  child: tile,
                                 ),
                               ),
                             ),

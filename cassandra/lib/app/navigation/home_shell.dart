@@ -198,99 +198,116 @@ class _HomeShellState extends State<HomeShell> {
     final l10n = AppLocalizations.of(context)!;
     final app = CassandraScope.of(context);
 
-    return Scaffold(
-      // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
-      body: Column(
-        children: [
-          if (app.hasBackendSyncError)
-            SafeArea(
-              bottom: false,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                color: CassandraColors.offlineBannerBg,
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.wifi_off_rounded,
-                      size: 16,
-                      color: CassandraColors.offlineContent,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l10n.predictionsOfflineStatus,
-                        style: const TextStyle(
-                          color: CassandraColors.offlineContent,
-                          fontWeight: FontWeight.w700,
+    // Liquid Glass: gradient background su cui le card vetro si appoggiano.
+    // Solo questo Scaffold è transparent — le pagine pushate usano il tema.
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF5EEF0), // blush caldo (leggero riflesso del primary)
+            CassandraColors.bg, // beige brand #F2EEE8
+            Color(0xFFE8DDD2), // beige più profondo per dare profondità
+          ],
+          stops: [0.0, 0.45, 1.0],
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
+        body: Column(
+          children: [
+            if (app.hasBackendSyncError)
+              SafeArea(
+                bottom: false,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  color: CassandraColors.offlineBannerBg,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.wifi_off_rounded,
+                        size: 16,
+                        color: CassandraColors.offlineContent,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          l10n.predictionsOfflineStatus,
+                          style: const TextStyle(
+                            color: CassandraColors.offlineContent,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          Expanded(
-            child: IndexedStack(index: _index, children: _pages),
-          ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          backgroundColor: CassandraColors.navBarBg,
-          // Indicatore rosso semitrasparente — tab attivo distinguibile.
-          indicatorColor: CassandraColors.primary.withValues(alpha: 0.28),
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          iconTheme: WidgetStateProperty.all(
-            const IconThemeData(color: CassandraColors.navBarFg),
-          ),
-          // Label bold sul tab selezionato.
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return TextStyle(
-              color: CassandraColors.navBarFg,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-              fontSize: 11,
-            );
-          }),
-        ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: [
-            NavigationDestination(
-              icon: const Icon(Icons.sports_soccer_outlined),
-              selectedIcon: const Icon(Icons.sports_soccer),
-              label: l10n.tabPredictions,
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.groups_outlined),
-              selectedIcon: const Icon(Icons.groups),
-              label: l10n.tabGroup,
-            ),
-            NavigationDestination(
-              // live_tv comunica meglio di format_list_bulleted
-              icon: const Icon(Icons.live_tv_outlined),
-              selectedIcon: const Icon(Icons.live_tv),
-              label: l10n.tabLive,
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.chat_bubble_outline),
-              selectedIcon: const Icon(Icons.chat_bubble),
-              label: l10n.tabChat,
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.settings_outlined),
-              selectedIcon: const Icon(Icons.settings),
-              label: l10n.tabSettings,
+            Expanded(
+              child: IndexedStack(index: _index, children: _pages),
             ),
           ],
         ),
-      ),
-    );
+        bottomNavigationBar: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            backgroundColor: CassandraColors.navBarBg,
+            // Indicatore rosso semitrasparente — tab attivo distinguibile.
+            indicatorColor: CassandraColors.primary.withValues(alpha: 0.28),
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            iconTheme: WidgetStateProperty.all(
+              const IconThemeData(color: CassandraColors.navBarFg),
+            ),
+            // Label bold sul tab selezionato.
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              final selected = states.contains(WidgetState.selected);
+              return TextStyle(
+                color: CassandraColors.navBarFg,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                fontSize: 11,
+              );
+            }),
+          ),
+          child: NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: (i) => setState(() => _index = i),
+            destinations: [
+              NavigationDestination(
+                icon: const Icon(Icons.sports_soccer_outlined),
+                selectedIcon: const Icon(Icons.sports_soccer),
+                label: l10n.tabPredictions,
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.groups_outlined),
+                selectedIcon: const Icon(Icons.groups),
+                label: l10n.tabGroup,
+              ),
+              NavigationDestination(
+                // live_tv comunica meglio di format_list_bulleted
+                icon: const Icon(Icons.live_tv_outlined),
+                selectedIcon: const Icon(Icons.live_tv),
+                label: l10n.tabLive,
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.chat_bubble_outline),
+                selectedIcon: const Icon(Icons.chat_bubble),
+                label: l10n.tabChat,
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.settings_outlined),
+                selectedIcon: const Icon(Icons.settings),
+                label: l10n.tabSettings,
+              ),
+            ],
+          ),
+        ),
+      ), // Scaffold
+    ); // DecoratedBox
   }
 }
