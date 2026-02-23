@@ -86,6 +86,7 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
                     backgroundColor: _avatarColorFromSeed(e.member.avatarSeed),
                     text: e.member.avatarInitial,
                     badges: badges,
+                    imagePathOrUrl: e.member.photoUrl,
                   ),
                 ],
               ),

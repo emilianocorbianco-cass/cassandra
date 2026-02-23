@@ -34,21 +34,47 @@ class CassandraTheme {
       // Più avanti possiamo decidere un font unico cross-platform.
       fontFamily: 'Avenir',
 
+      // AppBar navy — coerente con la NavBar, crea il "frame scuro" premium.
       appBarTheme: const AppBarTheme(
-        backgroundColor: CassandraColors.bg,
-        foregroundColor: CassandraColors.primary,
+        backgroundColor: CassandraColors.navBarBg,
+        foregroundColor: CassandraColors.navBarFg,
+        titleTextStyle: TextStyle(
+          color: CassandraColors.navBarFg,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Avenir',
+        ),
+        iconTheme: IconThemeData(color: CassandraColors.navBarFg),
+        actionsIconTheme: IconThemeData(color: CassandraColors.navBarFg),
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
       ),
 
+      // TextTheme con gerarchia tipografica editoriale.
       textTheme:
           const TextTheme(
-            headlineLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w600),
+            headlineLarge: TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.w700,
+              height: 1.1,
+              letterSpacing: -1.0,
+            ),
+            titleLarge: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              height: 1.15,
+              letterSpacing: -0.3,
+            ),
+            titleMedium: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+            ),
           ).apply(
             bodyColor: CassandraColors.slate,
-            displayColor: CassandraColors.slate,
+            displayColor: CassandraColors.navBarBg,
           ),
     );
   }
@@ -57,9 +83,7 @@ class CassandraTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      cardTheme: const CardThemeData(
-        surfaceTintColor: Colors.transparent,
-      ),
+      cardTheme: const CardThemeData(surfaceTintColor: Colors.transparent),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {

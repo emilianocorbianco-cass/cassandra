@@ -383,72 +383,6 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
           children: [
             if (_firestoreSeasonEntries == null)
               DemoBanner(label: l10n.leaderboardsDemoBanner),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Builder(
-                  builder: (context) {
-                    // Debug: dati/pronostici cache (coerente con Gruppo/Utente)
-                    final app = CassandraScope.of(context);
-                    final matches = app.cachedPredictionMatches;
-                    final total = matches?.length ?? 0;
-                    final outcomes = app.effectivePredictionOutcomesByMatchId;
-                    final graded = (matches == null)
-                        ? 0
-                        : matches.where((m) {
-                            final o = outcomes[m.id] ?? MatchOutcome.pending;
-                            return !o.isPending;
-                          }).length;
-
-                    final kind = _firestoreLoading
-                        ? l10n.leaderboardsDataRefreshing
-                        : app.cachedPredictionMatchesAreReal
-                        ? l10n.leaderboardsDataRealApi
-                        : (total > 0
-                              ? l10n.settingsKindDemo
-                              : l10n.leaderboardsDataEmpty);
-
-                    final updated = app.cachedPredictionMatchesUpdatedAt;
-                    String fmt(DateTime dt) {
-                      final dd = dt.day.toString().padLeft(2, '0');
-                      final mm = dt.month.toString().padLeft(2, '0');
-                      final hh = dt.hour.toString().padLeft(2, '0');
-                      final mi = dt.minute.toString().padLeft(2, '0');
-                      return '$dd/$mm $hh:$mi';
-                    }
-
-                    final updatedLabel = (updated == null)
-                        ? l10n.leaderboardsNever
-                        : fmt(updated);
-
-                    final resultsLabel = (total == 0)
-                        ? null
-                        : (graded == total
-                              ? l10n.groupResultsLabel(graded, total)
-                              : l10n.groupResultsLabelPartial(graded, total));
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(l10n.leaderboardsDataLine(kind, updatedLabel)),
-                          ],
-                        ),
-                        if (resultsLabel != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            resultsLabel,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
@@ -577,8 +511,36 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                               ? formatOdds(e.totalPoints)
                               : formatOdds(e.averagePerMatchday);
 
-                          return Card(
+                          final isLeader = i == 0;
+                          final cardColor = isLeader
+                              ? CassandraColors.navBarBg
+                              : Colors.white;
+                          final fgColor = isLeader
+                              ? CassandraColors.navBarFg
+                              : CassandraColors.slate;
+                          final metricColor = isLeader
+                              ? CassandraColors.navBarFg
+                              : CassandraColors.navBarBg;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(
+                                    alpha: isLeader ? 0.14 : 0.05,
+                                  ),
+                                  blurRadius: isLeader ? 14 : 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
                             child: ListTile(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -593,14 +555,20 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                   children: [
                                     SizedBox(
                                       width: 22,
-                                      child: Text(
-                                        '${i + 1}',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: CassandraColors.primary,
-                                        ),
-                                      ),
+                                      child: isLeader
+                                          ? const Icon(
+                                              Icons.emoji_events_rounded,
+                                              size: 18,
+                                              color: Color(0xFFFFD700),
+                                            )
+                                          : Text(
+                                              '${i + 1}',
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: CassandraColors.primary,
+                                              ),
+                                            ),
                                     ),
                                     const SizedBox(width: 6),
                                     AvatarWithBadges(
@@ -614,11 +582,20 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                   ],
                                 ),
                               ),
-                              title: Text(e.member.uiName),
+                              title: Text(
+                                e.member.uiName,
+                                style: TextStyle(
+                                  color: fgColor,
+                                  fontWeight: isLeader
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
                               trailing: Text(
                                 metricLabel,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w800,
+                                  color: metricColor,
                                 ),
                               ),
                             ),

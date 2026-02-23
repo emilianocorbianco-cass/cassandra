@@ -16,6 +16,7 @@ import '../../domain/matchday/matchday_recovery_rules.dart'
 import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import '../../services/firestore/models/matchday_document.dart';
+import '../../services/api_football/models/api_football_standing.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -28,6 +29,7 @@ class _HomeShellState extends State<HomeShell> {
   Timer? _liveSyncTimer;
   bool _liveSyncInFlight = false;
   bool _didInitialLiveSync = false;
+  StreamSubscription<List<ApiFootballStanding>>? _standingsSub;
 
   @override
   void didChangeDependencies() {
@@ -57,6 +59,19 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  void _bindStandingsStream() {
+    if (_standingsSub != null) return; // bind solo una volta
+    final app = CassandraScope.of(context);
+    final fs = app.firestoreService;
+    if (fs == null || !app.isAuthenticated) return;
+    _standingsSub = fs
+        .streamSeasonStandings(seasonKey: app.currentSeasonKey)
+        .listen((standings) {
+          if (!mounted || standings.isEmpty) return;
+          CassandraScope.of(context).setCachedSeasonStandings(standings);
+        });
+  }
+
   Future<void> _syncLiveFromBackend() async {
     if (!mounted || _liveSyncInFlight) return;
 
@@ -66,9 +81,7 @@ class _HomeShellState extends State<HomeShell> {
     _liveSyncInFlight = true;
 
     try {
-      final standingsFuture = fs.getSeasonStandings(
-        seasonKey: app.currentSeasonKey,
-      );
+      _bindStandingsStream();
       final now = DateTime.now();
       var dayNumber = app.cassandraMatchdayCursor;
       app.ensureOriginKickoffsLoaded();
@@ -117,11 +130,6 @@ class _HomeShellState extends State<HomeShell> {
       }
 
       await app.persistOriginKickoffs();
-
-      final standings = await standingsFuture;
-      if (standings.isNotEmpty) {
-        app.setCachedSeasonStandings(standings);
-      }
 
       if (resolvedDoc != null && resolvedProgress != null) {
         if (resolvedDoc.dayNumber != app.cassandraMatchdayCursor) {
@@ -180,6 +188,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _standingsSub?.cancel();
     _liveSyncTimer?.cancel();
     super.dispose();
   }
@@ -232,38 +241,51 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: CassandraColors.navBarBg,
-          indicatorColor: CassandraColors.navBarBg,
+          // Indicatore rosso semitrasparente — tab attivo distinguibile.
+          indicatorColor: CassandraColors.primary.withValues(alpha: 0.28),
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.transparent,
           iconTheme: WidgetStateProperty.all(
             const IconThemeData(color: CassandraColors.navBarFg),
           ),
-          labelTextStyle: WidgetStateProperty.all(
-            const TextStyle(color: CassandraColors.navBarFg),
-          ),
+          // Label bold sul tab selezionato.
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              color: CassandraColors.navBarFg,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              fontSize: 11,
+            );
+          }),
         ),
         child: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: (i) => setState(() => _index = i),
           destinations: [
             NavigationDestination(
-              icon: const Icon(Icons.sports_soccer),
+              icon: const Icon(Icons.sports_soccer_outlined),
+              selectedIcon: const Icon(Icons.sports_soccer),
               label: l10n.tabPredictions,
             ),
             NavigationDestination(
-              icon: const Icon(Icons.groups),
+              icon: const Icon(Icons.groups_outlined),
+              selectedIcon: const Icon(Icons.groups),
               label: l10n.tabGroup,
             ),
             NavigationDestination(
-              icon: const Icon(Icons.format_list_bulleted),
+              // live_tv comunica meglio di format_list_bulleted
+              icon: const Icon(Icons.live_tv_outlined),
+              selectedIcon: const Icon(Icons.live_tv),
               label: l10n.tabLive,
             ),
             NavigationDestination(
               icon: const Icon(Icons.chat_bubble_outline),
+              selectedIcon: const Icon(Icons.chat_bubble),
               label: l10n.tabChat,
             ),
             NavigationDestination(
-              icon: const Icon(Icons.settings),
+              icon: const Icon(Icons.settings_outlined),
+              selectedIcon: const Icon(Icons.settings),
               label: l10n.tabSettings,
             ),
           ],

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,7 +6,7 @@ import '../../../app/theme/cassandra_colors.dart';
 import '../../../l10n/app_localizations.dart';
 import '../models/badge_type.dart';
 
-class AvatarWithBadges extends StatelessWidget {
+class AvatarWithBadges extends StatefulWidget {
   final String text;
   final Color backgroundColor;
   final double radius;
@@ -21,40 +22,70 @@ class AvatarWithBadges extends StatelessWidget {
     this.radius = 18,
   });
 
-  ImageProvider<Object>? _resolveImageProvider() {
+  @override
+  State<AvatarWithBadges> createState() => _AvatarWithBadgesState();
+}
+
+class _AvatarWithBadgesState extends State<AvatarWithBadges> {
+  String? _cachedSource;
+  ImageProvider<Object>? _cachedProvider;
+
+  static ImageProvider<Object>? _buildProvider(String? imagePathOrUrl) {
     final source = (imagePathOrUrl ?? '').trim();
     if (source.isEmpty) return null;
     if (source.startsWith('http://') || source.startsWith('https://')) {
       return NetworkImage(source);
     }
-    final file = File(source);
-    if (file.existsSync()) {
-      return FileImage(file);
+    if (source.startsWith('data:')) {
+      try {
+        final comma = source.indexOf(',');
+        if (comma >= 0) {
+          return MemoryImage(base64Decode(source.substring(comma + 1)));
+        }
+      } catch (_) {}
+      return null;
     }
-    return null;
+    final file = File(source);
+    return file.existsSync() ? FileImage(file) : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cachedSource = widget.imagePathOrUrl;
+    _cachedProvider = _buildProvider(widget.imagePathOrUrl);
+  }
+
+  @override
+  void didUpdateWidget(AvatarWithBadges oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.imagePathOrUrl != _cachedSource) {
+      _cachedSource = widget.imagePathOrUrl;
+      _cachedProvider = _buildProvider(widget.imagePathOrUrl);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isEnglish = AppLocalizations.of(context)!.localeName.startsWith('en');
-    final sorted = badges.toList()
+    final sorted = widget.badges.toList()
       ..sort((a, b) => a.priority.compareTo(b.priority));
     final visible = sorted.take(2).toList(); // per ora max 2 badge visibili
 
-    final bubbleSize = (radius * 0.75).clamp(12.0, 16.0);
-    final imageProvider = _resolveImageProvider();
+    final bubbleSize = (widget.radius * 0.75).clamp(12.0, 16.0);
+    final imageProvider = _cachedProvider;
 
     return SizedBox(
-      width: radius * 2,
-      height: radius * 2,
+      width: widget.radius * 2,
+      height: widget.radius * 2,
       child: Stack(
         children: [
           CircleAvatar(
-            radius: radius,
-            backgroundColor: backgroundColor,
+            radius: widget.radius,
+            backgroundColor: widget.backgroundColor,
             foregroundImage: imageProvider,
             child: imageProvider == null
-                ? Text(text, style: const TextStyle(color: Colors.white))
+                ? Text(widget.text, style: const TextStyle(color: Colors.white))
                 : null,
           ),
           if (visible.isNotEmpty)

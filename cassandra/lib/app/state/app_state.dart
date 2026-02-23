@@ -872,8 +872,9 @@ class AppState extends ChangeNotifier {
     );
 
     final language = cassandraLanguageFromStorage(prefs.getString(_kLanguage));
-    final themeMode =
-        cassandraThemeModeFromStorage(prefs.getString(_kThemeMode));
+    final themeMode = cassandraThemeModeFromStorage(
+      prefs.getString(_kThemeMode),
+    );
     final visibility = predictionVisibilityFromStorage(
       prefs.getString(_kDefaultVisibility),
     );

@@ -212,18 +212,14 @@ class _SerieAPageState extends State<SerieAPage> {
                         value: 0,
                         label: Text(
                           l10n.serieASegmentResults,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
                       ButtonSegment(
                         value: 1,
                         label: Text(
                           l10n.serieASegmentStandings,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
                     ],
@@ -300,9 +296,16 @@ class _SerieAPageState extends State<SerieAPage> {
         final liveStatus = _statusLabelForCard(m.statusShort, l10n);
         final kickoff = formatKickoff(m.kickoff);
 
-        return Card(
-          clipBehavior: Clip.antiAlias,
+        // Card premium: bianca + ombra soft — allineata al linguaggio predictions.
+        const liveSet = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'P'};
+        final rawStatus = (m.statusShort ?? '').trim().toUpperCase();
+        final isMatchLive = liveSet.contains(rawStatus);
+
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
           child: InkWell(
+            borderRadius: BorderRadius.circular(14),
             onTap: () {
               Navigator.of(context, rootNavigator: true).push(
                 MaterialPageRoute(
@@ -310,8 +313,18 @@ class _SerieAPageState extends State<SerieAPage> {
                 ),
               );
             },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 children: [
                   Expanded(
@@ -328,31 +341,68 @@ class _SerieAPageState extends State<SerieAPage> {
                   SizedBox(
                     width: 118,
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          kickoff,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: CassandraColors.slate),
-                        ),
-                        const SizedBox(height: 2),
+                        // LIVE badge
+                        if (isMatchLive) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            margin: const EdgeInsets.only(bottom: 2),
+                            decoration: BoxDecoration(
+                              color: CassandraColors.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              m.statusShort!,
+                              style: const TextStyle(
+                                color: CassandraColors.onPrimary,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ] else ...[
+                          // Orario pre-partita
+                          Text(
+                            kickoff,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: CassandraColors.slate.withValues(
+                                alpha: 0.7,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                        ],
+                        // Score — navy bold
                         Text(
                           liveScore,
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 2),
-                        SizedBox(
-                          height: 18,
-                          child: Text(
-                            liveStatus,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: CassandraColors.slate,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: CassandraColors.navBarBg,
+                            letterSpacing: -0.5,
+                            height: 1.1,
                           ),
                         ),
+                        // Status (FT, 1T, ecc.)
+                        if (liveStatus.isNotEmpty) ...[
+                          const SizedBox(height: 1),
+                          Text(
+                            liveStatus,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: CassandraColors.slate.withValues(
+                                alpha: 0.70,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

@@ -33,6 +33,9 @@ import '../../services/firestore/models/picks_document.dart';
 import '../../services/firestore/models/group_document.dart';
 import '../../services/firestore/models/matchday_document.dart';
 
+// Status codes API-Football per partite in corso (usati per lo scoring provvisorio).
+const _kLiveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'};
+
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
 
@@ -179,7 +182,8 @@ class _GroupPageState extends State<GroupPage> {
     final seasonChanged = _firestoreSeasonKey != seasonKey;
     final dayChanged = _firestoreDayNumber != dayNumber;
     final neverLoaded =
-        (_firestoreMembers == null || _firestoreLoadError) && !_firestoreLoading;
+        (_firestoreMembers == null || _firestoreLoadError) &&
+        !_firestoreLoading;
     if (!groupChanged && !seasonChanged && !dayChanged && !neverLoaded) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -822,6 +826,26 @@ class _GroupPageState extends State<GroupPage> {
           }
         : baseOutcomesByMatchId;
 
+    // Provisional outcomes per partite in corso: deriva l'esito dal punteggio live
+    // (homeGoals/awayGoals) così lo scoring mostra un punteggio provvisorio invece di 0.
+    final liveOverrides = <String, MatchOutcome>{
+      for (final m in currentMatches)
+        if (_kLiveStatuses.contains(m.statusShort) &&
+            m.homeGoals != null &&
+            m.awayGoals != null)
+          m.id: m.homeGoals! > m.awayGoals!
+              ? MatchOutcome.home
+              : m.homeGoals! < m.awayGoals!
+              ? MatchOutcome.away
+              : MatchOutcome.draw,
+    };
+    final effectiveOutcomesByMatchId = liveOverrides.isEmpty
+        ? outcomesByMatchId
+        : Map<String, MatchOutcome>.unmodifiable({
+            ...outcomesByMatchId,
+            ...liveOverrides,
+          });
+
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
 
@@ -968,7 +992,7 @@ class _GroupPageState extends State<GroupPage> {
       final currentDayScore = CassandraScoringEngine.computeDayScore(
         matches: currentMatches,
         picksByMatchId: currentPicks,
-        outcomesByMatchId: outcomesByMatchId,
+        outcomesByMatchId: effectiveOutcomesByMatchId,
       );
       totalPoints += currentDayScore.total;
       if (currentDayScore.averageOddsPlayed != null) {

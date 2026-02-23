@@ -239,7 +239,8 @@ class _UserHubPageState extends State<UserHubPage> {
     final effectiveMatchday = _liveMatchday ?? widget.matchday;
     final totalMatches = effectiveMatchday.matches.length;
     final gradedCount = effectiveMatchday.matches.where((m) {
-      final o = effectiveMatchday.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
+      final o =
+          effectiveMatchday.outcomesByMatchId[m.id] ?? MatchOutcome.pending;
       return !o.isPending;
     }).length;
 
