@@ -6,6 +6,8 @@ import 'package:cassandra/domain/matchday/matchday_recovery_rules.dart';
 MatchdayProgress _makeProgress({
   bool primaryDone = false,
   bool finalDone = false,
+  bool? readyToAdvance,
+  DateTime? holdUntil,
   int totalFixtures = 10,
   int playedFixtures = 10,
   int voidFixtures = 0,
@@ -15,6 +17,8 @@ MatchdayProgress _makeProgress({
   isLocked: isLocked,
   primaryDone: primaryDone,
   finalDone: finalDone,
+  holdUntil: holdUntil ?? DateTime(2026, 3, 2, 12, 0),
+  readyToAdvance: readyToAdvance ?? primaryDone,
   totalFixtures: totalFixtures,
   playedFixtures: playedFixtures,
   voidFixtures: voidFixtures,
@@ -277,12 +281,16 @@ void main() {
     });
 
     test(
-      'auto-advance triggers when primaryDone + valid + on cursor',
+      'auto-advance triggers when readyToAdvance + valid + on cursor',
       () async {
         final s = MatchdayState.inMemory();
         await s.setCassandraMatchdayCursor(10);
 
-        final progress = _makeProgress(primaryDone: true, playedFixtures: 8);
+        final progress = _makeProgress(
+          primaryDone: true,
+          readyToAdvance: true,
+          playedFixtures: 8,
+        );
         s.setMatchdayProgress(matchdayNumber: 10, progress: progress);
 
         // Wait for microtask to complete
@@ -298,7 +306,11 @@ void main() {
         final s = MatchdayState.inMemory();
         await s.setCassandraMatchdayCursor(10);
 
-        final progress = _makeProgress(primaryDone: true, playedFixtures: 8);
+        final progress = _makeProgress(
+          primaryDone: true,
+          readyToAdvance: true,
+          playedFixtures: 8,
+        );
         s.setMatchdayProgress(
           matchdayNumber: 10,
           progress: progress,
@@ -317,7 +329,11 @@ void main() {
 
       s.setMatchdayProgress(
         matchdayNumber: 9, // not the cursor
-        progress: _makeProgress(primaryDone: true, playedFixtures: 8),
+        progress: _makeProgress(
+          primaryDone: true,
+          readyToAdvance: true,
+          playedFixtures: 8,
+        ),
       );
 
       await Future.delayed(Duration.zero);
@@ -331,7 +347,11 @@ void main() {
 
       s.setMatchdayProgress(
         matchdayNumber: 10,
-        progress: _makeProgress(primaryDone: true, playedFixtures: 5),
+        progress: _makeProgress(
+          primaryDone: true,
+          readyToAdvance: true,
+          playedFixtures: 5,
+        ),
       );
 
       await Future.delayed(Duration.zero);
@@ -343,7 +363,11 @@ void main() {
       final s = MatchdayState.inMemory();
       await s.setCassandraMatchdayCursor(10);
 
-      final progress = _makeProgress(primaryDone: true, playedFixtures: 8);
+      final progress = _makeProgress(
+        primaryDone: true,
+        readyToAdvance: true,
+        playedFixtures: 8,
+      );
       s.setMatchdayProgress(matchdayNumber: 10, progress: progress);
 
       await Future.delayed(Duration.zero);
@@ -357,6 +381,25 @@ void main() {
       await Future.delayed(Duration.zero);
       expect(s.cassandraMatchdayCursor, 10); // no second auto-advance
     });
+
+    test(
+      'auto-advance does not trigger if primaryDone but not readyToAdvance',
+      () async {
+        final s = MatchdayState.inMemory();
+        await s.setCassandraMatchdayCursor(10);
+
+        final progress = _makeProgress(
+          primaryDone: true,
+          readyToAdvance: false, // hold fino a domani mezzogiorno
+          playedFixtures: 8,
+        );
+        s.setMatchdayProgress(matchdayNumber: 10, progress: progress);
+
+        await Future.delayed(Duration.zero);
+        await Future.delayed(Duration.zero);
+        expect(s.cassandraMatchdayCursor, 10); // invariato
+      },
+    );
   });
 
   // ==========================================================================

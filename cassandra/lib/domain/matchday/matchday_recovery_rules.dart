@@ -23,6 +23,14 @@ class MatchdayProgress {
   /// Tutte le partite della matchday risolte (final oppure nulle)
   final bool finalDone;
 
+  /// Mezzogiorno del giorno dopo l'ultimo kickoff del cluster primario.
+  /// La giornata resta visibile fino a questo momento.
+  final DateTime holdUntil;
+
+  /// True se primaryDone E ora siamo oltre holdUntil.
+  /// Usato come gate per avanzamento alla giornata successiva.
+  final bool readyToAdvance;
+
   final int totalFixtures;
 
   /// Partite effettivamente giocate e finite (non nulle)
@@ -36,6 +44,8 @@ class MatchdayProgress {
     required this.isLocked,
     required this.primaryDone,
     required this.finalDone,
+    required this.holdUntil,
+    required this.readyToAdvance,
     required this.totalFixtures,
     required this.playedFixtures,
     required this.voidFixtures,
@@ -145,6 +155,8 @@ MatchdayProgress computeMatchdayProgress<T>(
       isLocked: true,
       primaryDone: true,
       finalDone: true,
+      holdUntil: epoch,
+      readyToAdvance: true,
       totalFixtures: 0,
       playedFixtures: 0,
       voidFixtures: 0,
@@ -178,6 +190,18 @@ MatchdayProgress computeMatchdayProgress<T>(
   );
   final finalDone = sorted.every((f) => res(f) != FixtureResolution.pending);
 
+  // Hold: mezzogiorno del giorno dopo l'ultimo kickoff del cluster primario.
+  final lastPrimaryKickoff = primaryCluster.isNotEmpty
+      ? kickoff(primaryCluster.last)
+      : firstKickoff;
+  final lastLocal = lastPrimaryKickoff.toLocal();
+  final holdUntil = DateTime(
+    lastLocal.year,
+    lastLocal.month,
+    lastLocal.day,
+  ).add(const Duration(days: 1, hours: 12));
+  final readyToAdvance = primaryDone && now.isAfter(holdUntil);
+
   final played = sorted
       .where((f) => res(f) == FixtureResolution.finalResult)
       .length;
@@ -190,6 +214,8 @@ MatchdayProgress computeMatchdayProgress<T>(
     isLocked: now.isAfter(lockAt),
     primaryDone: primaryDone,
     finalDone: finalDone,
+    holdUntil: holdUntil,
+    readyToAdvance: readyToAdvance,
     totalFixtures: sorted.length,
     playedFixtures: played,
     voidFixtures: voided,

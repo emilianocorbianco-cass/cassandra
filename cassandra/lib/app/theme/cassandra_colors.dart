@@ -9,11 +9,11 @@ class CassandraColors {
 
   // ── App background ────────────────────────────────────────────────────────
   // "Bianco antico" — used by Scaffold and AppBar.
-  static const Color bg = Color(0xFFF2EEE8);
+  static const Color bg = Color(0xFFE7E3DF);
 
   // ── Brand / primary ───────────────────────────────────────────────────────
   // Rosso principale — drives the Material 3 colorSchemeSeed.
-  static const Color primary = Color(0xFF9C1A39);
+  static const Color primary = Color(0xFFD3003F);
 
   // Testo chiaro su sfondi primari selezionati (es. SegmentedButton).
   static const Color onPrimary = Color(0xFFF6F4EF);
@@ -22,7 +22,7 @@ class CassandraColors {
   static const Color slate = Color(0xFF405058);
 
   // ── Navigation bar ────────────────────────────────────────────────────────
-  static const Color navBarBg = Color(0xFF031926); // dark navy
+  static const Color navBarBg = Color(0xFF0F1F26); // ink black
   static const Color navBarFg = Color(0xFFF6F4EF); // cream — icons & labels
 
   // ── Offline banner ────────────────────────────────────────────────────────
@@ -38,6 +38,10 @@ class CassandraColors {
 
   // Input field border when not focused (muted primary, 30 % opacity).
   static const Color chatInputBorderIdle = Color(0x4D804046);
+
+  // ── Predictions live ──────────────────────────────────────────────────────
+  static const Color inkBlack = Color(0xFF0F1F26);
+  static const Color darkCyan = Color(0xFF00B884);
 
   // ── Dividers ──────────────────────────────────────────────────────────────
   // Soft 10 % black divider line.

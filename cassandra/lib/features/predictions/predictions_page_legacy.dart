@@ -421,7 +421,7 @@ class _PredictionsPageLegacyState extends State<PredictionsPageLegacy>
         resolvedDoc = candidate;
         resolvedProgress = progress;
 
-        if (!progress.primaryDone) break;
+        if (!progress.readyToAdvance) break;
         dayNumber += 1;
       }
 

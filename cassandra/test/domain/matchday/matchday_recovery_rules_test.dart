@@ -92,6 +92,139 @@ void main() {
       // Played count: solo le 6 FT.
       expect(p.playedFixtures, 6);
       expect(p.isValidMatchday, isTrue);
+
+      // Hold: ultimo kickoff cluster 1 = 21 dic 20:45 => holdUntil = 22 dic 12:00
+      // now = 21 dic 23:30 < holdUntil => readyToAdvance = false
+      expect(p.holdUntil, DateTime(2025, 12, 22, 12, 0));
+      expect(p.readyToAdvance, isFalse);
+    });
+
+    test('readyToAdvance true after noon next day', () {
+      final dec20_1800 = DateTime(2025, 12, 20, 18, 0);
+      final dec21_2045 = DateTime(2025, 12, 21, 20, 45);
+      final jan14_1830 = DateTime(2026, 1, 14, 18, 30);
+      final jan15_2045 = DateTime(2026, 1, 15, 20, 45);
+
+      final fixtures = <_Fx>[
+        _Fx(id: 1, kickoff: dec20_1800, origin: dec20_1800, st: 'FT'),
+        _Fx(
+          id: 2,
+          kickoff: dec20_1800.add(const Duration(hours: 2)),
+          origin: dec20_1800.add(const Duration(hours: 2)),
+          st: 'FT',
+        ),
+        _Fx(
+          id: 3,
+          kickoff: dec20_1800.add(const Duration(hours: 20)),
+          origin: dec20_1800.add(const Duration(hours: 20)),
+          st: 'FT',
+        ),
+        _Fx(
+          id: 4,
+          kickoff: dec20_1800.add(const Duration(hours: 21)),
+          origin: dec20_1800.add(const Duration(hours: 21)),
+          st: 'FT',
+        ),
+        _Fx(
+          id: 5,
+          kickoff: dec20_1800.add(const Duration(hours: 24)),
+          origin: dec20_1800.add(const Duration(hours: 24)),
+          st: 'FT',
+        ),
+        _Fx(id: 6, kickoff: dec21_2045, origin: dec21_2045, st: 'FT'),
+        _Fx(id: 7, kickoff: jan14_1830, origin: jan14_1830, st: 'NS'),
+        _Fx(
+          id: 8,
+          kickoff: jan14_1830.add(const Duration(hours: 2)),
+          origin: jan14_1830.add(const Duration(hours: 2)),
+          st: 'NS',
+        ),
+        _Fx(
+          id: 9,
+          kickoff: jan14_1830.add(const Duration(days: 1)),
+          origin: jan14_1830.add(const Duration(days: 1)),
+          st: 'NS',
+        ),
+        _Fx(id: 10, kickoff: jan15_2045, origin: jan15_2045, st: 'NS'),
+      ];
+
+      // 22 dic 12:01 — dopo mezzogiorno del giorno dopo
+      final nowAfterHold = DateTime(2025, 12, 22, 12, 1);
+
+      final p = computeMatchdayProgress<_Fx>(
+        fixtures,
+        now: nowAfterHold,
+        kickoff: (f) => f.kickoff,
+        originKickoff: (f) => f.origin,
+        statusShort: (f) => f.st,
+      );
+
+      expect(p.primaryDone, isTrue);
+      expect(p.readyToAdvance, isTrue);
+    });
+
+    test('readyToAdvance false at exactly noon (not after)', () {
+      final dec20_1800 = DateTime(2025, 12, 20, 18, 0);
+      final dec21_2045 = DateTime(2025, 12, 21, 20, 45);
+      final jan14_1830 = DateTime(2026, 1, 14, 18, 30);
+      final jan15_2045 = DateTime(2026, 1, 15, 20, 45);
+
+      final fixtures = <_Fx>[
+        _Fx(id: 1, kickoff: dec20_1800, origin: dec20_1800, st: 'FT'),
+        _Fx(
+          id: 2,
+          kickoff: dec20_1800.add(const Duration(hours: 2)),
+          origin: dec20_1800.add(const Duration(hours: 2)),
+          st: 'FT',
+        ),
+        _Fx(
+          id: 3,
+          kickoff: dec20_1800.add(const Duration(hours: 20)),
+          origin: dec20_1800.add(const Duration(hours: 20)),
+          st: 'FT',
+        ),
+        _Fx(
+          id: 4,
+          kickoff: dec20_1800.add(const Duration(hours: 21)),
+          origin: dec20_1800.add(const Duration(hours: 21)),
+          st: 'FT',
+        ),
+        _Fx(
+          id: 5,
+          kickoff: dec20_1800.add(const Duration(hours: 24)),
+          origin: dec20_1800.add(const Duration(hours: 24)),
+          st: 'FT',
+        ),
+        _Fx(id: 6, kickoff: dec21_2045, origin: dec21_2045, st: 'FT'),
+        _Fx(id: 7, kickoff: jan14_1830, origin: jan14_1830, st: 'NS'),
+        _Fx(
+          id: 8,
+          kickoff: jan14_1830.add(const Duration(hours: 2)),
+          origin: jan14_1830.add(const Duration(hours: 2)),
+          st: 'NS',
+        ),
+        _Fx(
+          id: 9,
+          kickoff: jan14_1830.add(const Duration(days: 1)),
+          origin: jan14_1830.add(const Duration(days: 1)),
+          st: 'NS',
+        ),
+        _Fx(id: 10, kickoff: jan15_2045, origin: jan15_2045, st: 'NS'),
+      ];
+
+      // Esattamente mezzogiorno — isAfter è false
+      final nowExactlyNoon = DateTime(2025, 12, 22, 12, 0);
+
+      final p = computeMatchdayProgress<_Fx>(
+        fixtures,
+        now: nowExactlyNoon,
+        kickoff: (f) => f.kickoff,
+        originKickoff: (f) => f.origin,
+        statusShort: (f) => f.st,
+      );
+
+      expect(p.primaryDone, isTrue);
+      expect(p.readyToAdvance, isFalse);
     });
 
     test('final giocata oltre 48h dal kickoff originario => nulla', () {

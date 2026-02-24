@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'dart:ui';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
@@ -69,8 +71,6 @@ class _PredictionsPageState extends State<PredictionsPage>
   Timer? _lockRefreshTimer;
   DateTime? _lockRefreshTarget;
   final Map<String, PickOption> _picks = {};
-  VisibilityChoice? _submittedVisibility;
-  DateTime? _submittedAt;
 
   @override
   void initState() {
@@ -227,10 +227,6 @@ class _PredictionsPageState extends State<PredictionsPage>
       if (!mounted) return;
     }
     if (!mounted) return;
-    setState(() {
-      _submittedVisibility = visibility;
-      _submittedAt = DateTime.now();
-    });
     final label = visibility == VisibilityChoice.public
         ? l10n.predictionsVisibilityPublic
         : l10n.predictionsVisibilityPrivate;
@@ -391,7 +387,7 @@ class _PredictionsPageState extends State<PredictionsPage>
 
         resolvedDoc = candidate;
         resolvedProgress = progress;
-        if (!progress.primaryDone) break;
+        if (!progress.readyToAdvance) break;
         dayNumber += 1;
       }
 
@@ -471,12 +467,6 @@ class _PredictionsPageState extends State<PredictionsPage>
         .where((m) => !voidedByPostponement.contains(m.id))
         .toList(growable: false);
 
-    final lockLabel = _locked
-        ? l10n.predictionsPicksLocked
-        : _lockTime != null
-        ? l10n.predictionsEditableUntil(formatKickoff(_lockTime!))
-        : '';
-
     final scoreOutcomesByMatchId = <String, MatchOutcome>{
       for (final m in scoringMatches)
         if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
@@ -499,7 +489,6 @@ class _PredictionsPageState extends State<PredictionsPage>
               ? '+${dayScore.bonusPoints}'
               : '${dayScore.bonusPoints}');
 
-    final matchdayTitle = l10n.groupMatchdayTitle(_effectiveMatchdayNumber);
     final matchdayDateShort = _matchdayDateRangeShort(english: isEnglish);
 
     return Scaffold(
@@ -512,54 +501,19 @@ class _PredictionsPageState extends State<PredictionsPage>
             if (!usingRealFixturesNow)
               DemoBanner(label: l10n.predictionsSampleDataBanner),
 
-            // ── Inline page header ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    matchdayTitle,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: CassandraColors.primary,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  if (matchdayDateShort.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      matchdayDateShort,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: CassandraColors.primary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
             // ── Hero score card ────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: _HeroScoreCard(
                 dayScore: dayScore,
                 matches: scoringMatches,
                 outcomesByMatchId: scoreOutcomesByMatchId,
                 pickFor: _pickFor,
-                locked: _locked,
-                lockLabel: lockLabel,
                 isMatchdayFinalized: isMatchdayFinalized,
                 bonusSigned: bonusSigned,
                 isEnglish: isEnglish,
-                submittedAt: _submittedAt,
-                submittedVisibility: _submittedVisibility,
-                l10n: l10n,
+                matchdayNumber: _effectiveMatchdayNumber,
+                matchdayDateRange: matchdayDateShort,
               ),
             ),
 
@@ -569,22 +523,27 @@ class _PredictionsPageState extends State<PredictionsPage>
                 slivers: [
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisExtent: 180,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                          ),
+                    sliver: SliverList(
                       delegate: SliverChildBuilderDelegate((ctx, i) {
                         final match = matches[i];
                         final pick = _pickFor(match.id);
-                        return _CompactMatchCard(
-                          match: match,
-                          pick: pick,
-                          locked: _locked,
-                          onPick: (p) => _setPick(match.id, p),
+                        final outcome = scoreOutcomesByMatchId[match.id];
+                        final breakdown = dayScore.matchBreakdowns
+                            .cast<MatchScoreBreakdown?>()
+                            .firstWhere(
+                              (b) => b?.matchId == match.id,
+                              orElse: () => null,
+                            );
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _CompactMatchCard(
+                            match: match,
+                            pick: pick,
+                            locked: _locked,
+                            onPick: (p) => _setPick(match.id, p),
+                            outcome: outcome,
+                            matchBreakdown: breakdown,
+                          ),
                         );
                       }, childCount: matches.length),
                     ),
@@ -698,313 +657,378 @@ class _PredictionsPageState extends State<PredictionsPage>
 // Hero Score Card
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Whether [pick] matches the live [outcome].
+bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
+  switch (pick) {
+    case PickOption.home:
+      return outcome == MatchOutcome.home;
+    case PickOption.draw:
+      return outcome == MatchOutcome.draw;
+    case PickOption.away:
+      return outcome == MatchOutcome.away;
+    case PickOption.homeDraw:
+      return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;
+    case PickOption.drawAway:
+      return outcome == MatchOutcome.draw || outcome == MatchOutcome.away;
+    case PickOption.homeAway:
+      return outcome == MatchOutcome.home || outcome == MatchOutcome.away;
+    case PickOption.none:
+      return false;
+  }
+}
+
 class _HeroScoreCard extends StatelessWidget {
   const _HeroScoreCard({
     required this.dayScore,
     required this.matches,
     required this.outcomesByMatchId,
     required this.pickFor,
-    required this.locked,
-    required this.lockLabel,
     required this.isMatchdayFinalized,
     required this.bonusSigned,
     required this.isEnglish,
-    required this.submittedAt,
-    required this.submittedVisibility,
-    required this.l10n,
+    required this.matchdayNumber,
+    required this.matchdayDateRange,
   });
 
   final DayScoreBreakdown dayScore;
   final List<PredictionMatch> matches;
   final Map<String, MatchOutcome> outcomesByMatchId;
   final PickOption Function(String) pickFor;
-  final bool locked;
-  final String lockLabel;
   final bool isMatchdayFinalized;
   final String bonusSigned;
   final bool isEnglish;
-  final DateTime? submittedAt;
-  final VisibilityChoice? submittedVisibility;
-  final AppLocalizations l10n;
+  final int matchdayNumber;
+  final String matchdayDateRange;
 
-  static const _fg = CassandraColors.navBarFg;
+  static const _fg = CassandraColors.cardBg; // white smoke #F5F5F5
+
+  List<Color> _segmentColors() {
+    return matches.map((m) {
+      final outcome = outcomesByMatchId[m.id];
+      final isPending = outcome == null || outcome.isPending;
+      final isVoided = outcome?.isVoided ?? false;
+      if (isVoided) return Colors.transparent;
+      if (isPending) return CassandraColors.cardBg;
+      final pick = pickFor(m.id);
+      final correct = _isPickCorrect(pick, outcome);
+      return correct ? CassandraColors.darkCyan : CassandraColors.primary;
+    }).toList();
+  }
+
+  List<bool> _segmentVoided() {
+    return matches.map((m) {
+      final outcome = outcomesByMatchId[m.id];
+      return outcome?.isVoided ?? false;
+    }).toList();
+  }
+
+  /// Bonus value color: darkCyan if positive, cherry red if negative,
+  /// white smoke if zero or not yet finalized.
+  Color get _bonusColor {
+    if (!isMatchdayFinalized) return _fg;
+    if (dayScore.bonusPoints > 0) return CassandraColors.darkCyan;
+    if (dayScore.bonusPoints < 0) return CassandraColors.primary;
+    return _fg;
+  }
 
   @override
   Widget build(BuildContext context) {
     final total = formatOdds(dayScore.total);
-    final base = formatOdds(dayScore.baseTotal);
     final correctCount = dayScore.correctCount;
     final totalMatches = matches.length;
+    final totalPoints = isMatchdayFinalized ? formatOdds(dayScore.total) : '-';
+
+    final segColors = _segmentColors();
+    final segVoided = _segmentVoided();
+
+    final matchdayTitle = isEnglish
+        ? 'Matchday $matchdayNumber'
+        : 'Giornata $matchdayNumber';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
-        color: CassandraColors.navBarBg,
+        color: CassandraColors.inkBlack,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Top row: big score + breakdown ──────────────────────────────
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Left: total points (big)
-              Expanded(
-                flex: 55,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isEnglish ? 'Matchday points' : 'Punti giornata',
-                      style: TextStyle(
-                        color: _fg.withValues(alpha: 0.60),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      total,
-                      style: const TextStyle(
-                        color: _fg,
-                        fontSize: 44,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
-                        letterSpacing: -1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Right: compact breakdown
-              Expanded(
-                flex: 45,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _BreakdownLine(
-                      label: isEnglish
-                          ? 'Correct: $correctCount/$totalMatches'
-                          : 'Corretti: $correctCount/$totalMatches',
-                      color: _fg.withValues(alpha: 0.90),
-                      bold: true,
-                    ),
-                    const SizedBox(height: 3),
-                    _BreakdownLine(
-                      label: isEnglish ? 'Points: $base' : 'Punti: $base',
-                      color: _fg.withValues(alpha: 0.65),
-                    ),
-                    const SizedBox(height: 2),
-                    _BreakdownLine(
-                      label: 'Bonus: $bonusSigned',
-                      color: dayScore.bonusPoints > 0
-                          ? const Color(0xFF6EE7A0)
-                          : _fg.withValues(alpha: 0.55),
-                      bold: dayScore.bonusPoints != 0,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          // ── Correctness bar ──────────────────────────────────────────────
-          _CorrectnessDots(
-            matches: matches,
-            outcomesByMatchId: outcomesByMatchId,
-            pickFor: pickFor,
-          ),
-
-          // ── Lock / submitted label ───────────────────────────────────────
-          if (lockLabel.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            if (locked)
-              // Locked: riquadro con bordo rosso arrotondato
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: CassandraColors.primary,
-                    width: 1.5,
+          // ── Left: title + date + ring with score ──────────────────────
+          Expanded(
+            flex: 55,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  matchdayTitle,
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
-                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lock_outline, size: 11, color: _fg),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        lockLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _fg,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                if (matchdayDateRange.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    matchdayDateRange,
+                    style: const TextStyle(
+                      color: _fg,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
-                  ],
-                ),
-              )
-            else
-              // Unlocked: stile sbiadito invariato
-              Row(
-                children: [
-                  Icon(
-                    Icons.schedule_outlined,
-                    size: 11,
-                    color: _fg.withValues(alpha: 0.45),
-                  ),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      lockLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _fg.withValues(alpha: 0.45),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
-              ),
-          ],
-
-          if (submittedVisibility != null && submittedAt != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              l10n.predictionsLastSubmit(
-                formatKickoff(submittedAt!),
-                submittedVisibility == VisibilityChoice.public
-                    ? l10n.predictionsVisibilityPublic
-                    : l10n.predictionsVisibilityPrivate,
-              ),
-              style: TextStyle(
-                color: _fg.withValues(alpha: 0.45),
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
+                const SizedBox(height: 12),
+                // Ring with "punti live" + score in center
+                SizedBox(
+                  width: 140,
+                  height: 140,
+                  child: CustomPaint(
+                    painter: _RingPainter(
+                      segmentColors: segColors,
+                      segmentVoided: segVoided,
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isEnglish ? 'live points' : 'punti live',
+                            style: const TextStyle(
+                              color: _fg,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            total,
+                            style: const TextStyle(
+                              color: _fg,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              height: 1.0,
+                              letterSpacing: -1.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
+
+          // ── Right: 6-line breakdown (enlarged) ────────────────────────
+          Expanded(
+            flex: 45,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 4),
+                // 1. "Pronostici corretti"
+                Text(
+                  isEnglish ? 'Correct picks' : 'Pronostici corretti',
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // 2. X/10
+                Text(
+                  '$correctCount/$totalMatches',
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 3. "Punti bonus"
+                Text(
+                  isEnglish ? 'Bonus points' : 'Punti bonus',
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // 4. Bonus value (darkCyan +, cherry red -, white smoke 0)
+                Text(
+                  isMatchdayFinalized ? bonusSigned : '-',
+                  style: TextStyle(
+                    color: _bonusColor,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 5. "Punti totali"
+                Text(
+                  isEnglish ? 'Total points' : 'Punti totali',
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // 6. Total value (always white smoke)
+                Text(
+                  totalPoints,
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _BreakdownLine extends StatelessWidget {
-  const _BreakdownLine({
-    required this.label,
-    required this.color,
-    this.bold = false,
-  });
+// ─────────────────────────────────────────────────────────────────────────────
+// Flat 2D Ring Painter — two semicircles × 5 segments
+// ─────────────────────────────────────────────────────────────────────────────
 
-  final String label;
-  final Color color;
-  final bool bold;
+class _RingPainter extends CustomPainter {
+  _RingPainter({required this.segmentColors, required this.segmentVoided});
+
+  final List<Color> segmentColors;
+  final List<bool> segmentVoided;
+
+  // Gap between the two semicircles (at 3h and 9h).
+  static const double _semiGapDeg = 6.0;
+  static const double _semiGapRad = _semiGapDeg * math.pi / 180;
+
+  // Gap between segments within a semicircle.
+  static const double _segGapDeg = 3.0;
+  static const double _segGapRad = _segGapDeg * math.pi / 180;
+
+  // Each semicircle spans 180° minus the semicircle gap on each end.
+  // Effective sweep per semicircle = 180° - semiGap.
+  static const double _semiSweep = math.pi - _semiGapRad;
 
   @override
-  Widget build(BuildContext context) {
-    return Text(
-      label,
-      textAlign: TextAlign.end,
-      style: TextStyle(
-        color: color,
-        fontSize: 12,
-        fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-      ),
-    );
-  }
-}
+  void paint(Canvas canvas, Size size) {
+    final count = segmentColors.length;
+    if (count == 0) return;
+    final half = count ~/ 2; // 5
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Correctness dots (bar style, fills full width)
-// ─────────────────────────────────────────────────────────────────────────────
+    final center = Offset(size.width / 2, size.height / 2);
+    final outerR = size.width / 2 - 2;
+    final innerR = outerR * 0.58;
 
-class _CorrectnessDots extends StatelessWidget {
-  const _CorrectnessDots({
-    required this.matches,
-    required this.outcomesByMatchId,
-    required this.pickFor,
-  });
+    // Top semicircle: 9 o'clock → 3 o'clock (through 12 o'clock).
+    // Flutter angles: 9 o'clock = π. Clockwise through 12 o'clock
+    // would be negative sweep, but we go the other way:
+    // Start at π + halfSemiGap, sweep = -semiSweep... or equivalently
+    // we can think of it as starting just past 9h and sweeping CW
+    // through the top to just before 3h.
+    //
+    // Actually in Flutter positive sweep = clockwise.
+    // To go from 9h → 12h → 3h we need NEGATIVE sweep (counter-clockwise).
+    // Alternative: start just past 9h going up = start at -(π - halfGap),
+    // sweep = -(π - semiGap).
+    //
+    // Simplest: define start angles explicitly.
+    // Top half: from angle (π + halfSemiGap/2) sweeping -(semiSweep).
+    // But let's use positive sweep going CW:
+    //   Top: startAngle = -π + _semiGapRad/2, sweep = +_semiSweep
+    //   This goes from just past 9h (top side) clockwise through 12h to
+    //   just before 3h.
+    // Bottom: startAngle = 0 + _semiGapRad/2, sweep = +_semiSweep
+    //   This goes from just past 3h clockwise through 6h to just before 9h.
 
-  final List<PredictionMatch> matches;
-  final Map<String, MatchOutcome> outcomesByMatchId;
-  final PickOption Function(String) pickFor;
+    final topStart = -math.pi + _semiGapRad / 2;
+    final botStart = _semiGapRad / 2;
 
-  static bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
-    switch (pick) {
-      case PickOption.home:
-        return outcome == MatchOutcome.home;
-      case PickOption.draw:
-        return outcome == MatchOutcome.draw;
-      case PickOption.away:
-        return outcome == MatchOutcome.away;
-      case PickOption.homeDraw:
-        return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;
-      case PickOption.drawAway:
-        return outcome == MatchOutcome.draw || outcome == MatchOutcome.away;
-      case PickOption.homeAway:
-        return outcome == MatchOutcome.home || outcome == MatchOutcome.away;
-      case PickOption.none:
-        return false;
+    // Segment sweep within a semicircle (5 segments, 4 inner gaps).
+    final innerGaps = half - 1; // 4
+    final segSweep = (_semiSweep - innerGaps * _segGapRad) / half;
+
+    // Draw top semicircle segments (indices 0–4).
+    for (var i = 0; i < half && i < count; i++) {
+      final startA = topStart + i * (segSweep + _segGapRad);
+      _drawSegment(canvas, center, innerR, outerR, startA, segSweep, i);
+    }
+
+    // Draw bottom semicircle segments (indices 5–9).
+    for (var i = 0; i < half && (i + half) < count; i++) {
+      final idx = i + half;
+      final startA = botStart + i * (segSweep + _segGapRad);
+      _drawSegment(canvas, center, innerR, outerR, startA, segSweep, idx);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (matches.isEmpty) return const SizedBox.shrink();
-    return Row(
-      children: [
-        for (int i = 0; i < matches.length; i++) ...[
-          if (i > 0) const SizedBox(width: 3),
-          Expanded(child: _segment(matches[i])),
-        ],
-      ],
-    );
-  }
-
-  Widget _segment(PredictionMatch m) {
-    final outcome = outcomesByMatchId[m.id];
-    final isPending = outcome == null || outcome.isPending;
-    final isVoided = outcome?.isVoided ?? false;
-
-    Color fill;
-    Color border;
+  void _drawSegment(
+    Canvas canvas,
+    Offset center,
+    double innerR,
+    double outerR,
+    double startAngle,
+    double sweepAngle,
+    int index,
+  ) {
+    final path = _annularSector(center, innerR, outerR, startAngle, sweepAngle);
+    final isVoided = index < segmentVoided.length && segmentVoided[index];
 
     if (isVoided) {
-      fill = Colors.transparent;
-      border = CassandraColors.navBarFg.withValues(alpha: 0.15);
-    } else if (isPending) {
-      fill = Colors.transparent;
-      border = CassandraColors.navBarFg.withValues(alpha: 0.30);
-    } else {
-      final pick = pickFor(m.id);
-      final correct = _isPickCorrect(pick, outcome);
-      fill = correct ? CassandraColors.primary : CassandraColors.slate;
-      border = fill;
+      final borderPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = CassandraColors.cardBg.withValues(alpha: 0.30);
+      canvas.drawPath(path, borderPaint);
+      return;
     }
 
-    return Container(
-      height: 7,
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: border, width: 1.5),
-      ),
-    );
+    final baseColor = index < segmentColors.length
+        ? segmentColors[index]
+        : CassandraColors.cardBg;
+    final paint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = baseColor;
+    canvas.drawPath(path, paint);
+  }
+
+  Path _annularSector(
+    Offset center,
+    double innerR,
+    double outerR,
+    double startAngle,
+    double sweepAngle,
+  ) {
+    return Path()
+      ..addArc(
+        Rect.fromCircle(center: center, radius: outerR),
+        startAngle,
+        sweepAngle,
+      )
+      ..arcTo(
+        Rect.fromCircle(center: center, radius: innerR),
+        startAngle + sweepAngle,
+        -sweepAngle,
+        false,
+      )
+      ..close();
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter oldDelegate) {
+    return oldDelegate.segmentColors != segmentColors ||
+        oldDelegate.segmentVoided != segmentVoided;
   }
 }
 
@@ -1018,12 +1042,16 @@ class _CompactMatchCard extends StatelessWidget {
     required this.pick,
     required this.locked,
     required this.onPick,
+    this.outcome,
+    this.matchBreakdown,
   });
 
   final PredictionMatch match;
   final PickOption pick;
   final bool locked;
   final ValueChanged<PickOption> onPick;
+  final MatchOutcome? outcome;
+  final MatchScoreBreakdown? matchBreakdown;
 
   bool get _isLive {
     final s = match.statusShort;
@@ -1036,9 +1064,12 @@ class _CompactMatchCard extends StatelessWidget {
     return s == 'FT' || s == 'AET' || s == 'PEN';
   }
 
+  /// Match has started or finished — show live layout.
+  bool get _isStarted => _isLive || _isFT;
+
   String _centerText() {
     final hasGoals = match.homeGoals != null && match.awayGoals != null;
-    if (hasGoals && (_isLive || _isFT)) {
+    if (hasGoals && _isStarted) {
       return '${match.homeGoals}-${match.awayGoals}';
     }
     final local = match.kickoff.toLocal();
@@ -1047,13 +1078,81 @@ class _CompactMatchCard extends StatelessWidget {
     return '$h:$m';
   }
 
+  /// Determine live outcome from current score.
+  MatchOutcome get _liveOutcome {
+    if (outcome != null && outcome!.isGraded) return outcome!;
+    final hg = match.homeGoals;
+    final ag = match.awayGoals;
+    if (hg == null || ag == null) return MatchOutcome.pending;
+    if (hg > ag) return MatchOutcome.home;
+    if (hg < ag) return MatchOutcome.away;
+    return MatchOutcome.draw;
+  }
+
+  /// Is the current pick correct given the live outcome?
+  bool get _isPickCorrectNow {
+    final o = _liveOutcome;
+    if (o.isPending || o.isVoided) return false;
+    return _isPickCorrect(pick, o);
+  }
+
+  /// Win odds: what the user gains if correct.
+  double get _winOdds {
+    if (pick.isNone) return 0;
+    switch (pick) {
+      case PickOption.home:
+        return match.odds.home;
+      case PickOption.draw:
+        return match.odds.draw;
+      case PickOption.away:
+        return match.odds.away;
+      case PickOption.homeDraw:
+        return match.odds.homeDraw;
+      case PickOption.drawAway:
+        return match.odds.drawAway;
+      case PickOption.homeAway:
+        return match.odds.homeAway;
+      case PickOption.none:
+        return 0;
+    }
+  }
+
+  /// Lose odds: what the user loses if wrong.
+  double get _loseOdds {
+    if (pick.isNone) return 0;
+    // Single: penalty = complementary double chance
+    if (pick.isSingle) {
+      switch (pick) {
+        case PickOption.home:
+          return match.odds.drawAway;
+        case PickOption.draw:
+          return match.odds.homeAway;
+        case PickOption.away:
+          return match.odds.homeDraw;
+        default:
+          return 0;
+      }
+    }
+    // Double: penalty = complementary single × 2
+    switch (pick) {
+      case PickOption.homeDraw:
+        return match.odds.away * 2;
+      case PickOption.drawAway:
+        return match.odds.home * 2;
+      case PickOption.homeAway:
+        return match.odds.draw * 2;
+      default:
+        return 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final centerText = _centerText();
     final homeInitial = match.homeTeam.isNotEmpty ? match.homeTeam[0] : '?';
     final awayInitial = match.awayTeam.isNotEmpty ? match.awayTeam[0] : '?';
 
-    // Liquid Glass card: shadow esterno → ClipRRect → BackdropFilter → fill vetro
+    // Liquid Glass card
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -1074,9 +1173,9 @@ class _CompactMatchCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.70),
               border: Border(
@@ -1098,161 +1197,256 @@ class _CompactMatchCard extends StatelessWidget {
                 ),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── Logos + center ─────────────────────────────────────────
-                Row(
-                  children: [
-                    _TeamLogo(url: match.homeTeamLogo, initial: homeInitial),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isLive)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 1,
-                              ),
-                              margin: const EdgeInsets.only(bottom: 2),
-                              decoration: BoxDecoration(
-                                color: CassandraColors.primary,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                match.statusShort!,
-                                style: const TextStyle(
-                                  color: CassandraColors.onPrimary,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          Text(
-                            centerText,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: _isLive || _isFT ? 14 : 12,
-                              fontWeight: FontWeight.w700,
-                              color: _isLive
-                                  ? CassandraColors.primary
-                                  : CassandraColors.slate,
-                            ),
-                          ),
-                          if (_isFT)
-                            Text(
-                              'FT',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 8,
-                                fontWeight: FontWeight.w700,
-                                color: CassandraColors.slate.withValues(
-                                  alpha: 0.55,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    _TeamLogo(url: match.awayTeamLogo, initial: awayInitial),
-                  ],
-                ),
-
-                const SizedBox(height: 4),
-
-                // ── Team names ─────────────────────────────────────────────
-                Text(
-                  '${match.homeTeam} – ${match.awayTeam}',
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: CassandraColors.slate,
-                  ),
-                ),
-
-                // ── Kickoff date (only pre-match) ──────────────────────────
-                if (!_isLive && !_isFT) ...[
-                  const SizedBox(height: 1),
-                  Text(
-                    formatKickoff(match.kickoff),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: CassandraColors.slate.withValues(alpha: 0.60),
-                    ),
-                  ),
-                ],
-
-                // ── Spacer ─────────────────────────────────────────────────
-                const SizedBox(height: 6),
-
-                // ── Singles row (1/X/2) ────────────────────────────────────
-                Row(
-                  children: [
-                    _CompactOddsButton(
-                      label: '1',
-                      odds: match.odds.home,
-                      selected: pick == PickOption.home,
-                      locked: locked,
-                      onPressed: () => onPick(PickOption.home),
-                    ),
-                    _CompactOddsButton(
-                      label: 'X',
-                      odds: match.odds.draw,
-                      selected: pick == PickOption.draw,
-                      locked: locked,
-                      onPressed: () => onPick(PickOption.draw),
-                    ),
-                    _CompactOddsButton(
-                      label: '2',
-                      odds: match.odds.away,
-                      selected: pick == PickOption.away,
-                      locked: locked,
-                      onPressed: () => onPick(PickOption.away),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 4),
-
-                // ── Doubles row (1X/X2/12) ─────────────────────────────────
-                Row(
-                  children: [
-                    _CompactOddsButton(
-                      label: '1X',
-                      odds: match.odds.homeDraw,
-                      selected: pick == PickOption.homeDraw,
-                      locked: locked,
-                      onPressed: () => onPick(PickOption.homeDraw),
-                    ),
-                    _CompactOddsButton(
-                      label: 'X2',
-                      odds: match.odds.drawAway,
-                      selected: pick == PickOption.drawAway,
-                      locked: locked,
-                      onPressed: () => onPick(PickOption.drawAway),
-                    ),
-                    _CompactOddsButton(
-                      label: '12',
-                      odds: match.odds.homeAway,
-                      selected: pick == PickOption.homeAway,
-                      locked: locked,
-                      onPressed: () => onPick(PickOption.homeAway),
-                    ),
-                  ],
-                ),
-              ],
-            ), // Column
+            child: _isStarted
+                ? _buildLiveLayout(centerText, homeInitial, awayInitial)
+                : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
           ), // inner glass Container
         ), // BackdropFilter
       ), // ClipRRect
     ); // outer shadow Container
+  }
+
+  /// Pre-match: teams row + 6 odds buttons (2 rows of 3).
+  Widget _buildPreMatchLayout(
+    String centerText,
+    String homeInitial,
+    String awayInitial,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Logos + teams + kickoff ─────────────────────────────────
+        Row(
+          children: [
+            _TeamLogo(
+              url: match.homeTeamLogo,
+              initial: homeInitial,
+              teamName: match.homeTeam,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                match.homeTeam,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: CassandraColors.inkBlack,
+                ),
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  centerText,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: CassandraColors.slate,
+                  ),
+                ),
+                Text(
+                  formatKickoff(match.kickoff),
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: CassandraColors.slate.withValues(alpha: 0.60),
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Text(
+                match.awayTeam,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: CassandraColors.inkBlack,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _TeamLogo(
+              url: match.awayTeamLogo,
+              initial: awayInitial,
+              teamName: match.awayTeam,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── Singles row (1/X/2) ─────────────────────────────────────
+        Row(
+          children: [
+            _CompactOddsButton(
+              label: '1',
+              odds: match.odds.home,
+              selected: pick == PickOption.home,
+              locked: locked,
+              onPressed: () => onPick(PickOption.home),
+            ),
+            _CompactOddsButton(
+              label: 'X',
+              odds: match.odds.draw,
+              selected: pick == PickOption.draw,
+              locked: locked,
+              onPressed: () => onPick(PickOption.draw),
+            ),
+            _CompactOddsButton(
+              label: '2',
+              odds: match.odds.away,
+              selected: pick == PickOption.away,
+              locked: locked,
+              onPressed: () => onPick(PickOption.away),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 4),
+
+        // ── Doubles row (1X/X2/12) ─────────────────────────────────
+        Row(
+          children: [
+            _CompactOddsButton(
+              label: '1X',
+              odds: match.odds.homeDraw,
+              selected: pick == PickOption.homeDraw,
+              locked: locked,
+              onPressed: () => onPick(PickOption.homeDraw),
+            ),
+            _CompactOddsButton(
+              label: 'X2',
+              odds: match.odds.drawAway,
+              selected: pick == PickOption.drawAway,
+              locked: locked,
+              onPressed: () => onPick(PickOption.drawAway),
+            ),
+            _CompactOddsButton(
+              label: '12',
+              odds: match.odds.homeAway,
+              selected: pick == PickOption.homeAway,
+              locked: locked,
+              onPressed: () => onPick(PickOption.homeAway),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Live/FT: compact single row with teams, score, and 2 result buttons.
+  Widget _buildLiveLayout(
+    String centerText,
+    String homeInitial,
+    String awayInitial,
+  ) {
+    final liveO = _liveOutcome;
+    final isGraded = liveO.isGraded;
+    final correct = isGraded ? _isPickCorrectNow : false;
+    final hasPick = !pick.isNone;
+
+    return Row(
+      children: [
+        // ── Left: logos + teams + score ─────────────────────────────
+        _TeamLogo(
+          url: match.homeTeamLogo,
+          initial: homeInitial,
+          teamName: match.homeTeam,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${match.homeTeam} – ${match.awayTeam}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: CassandraColors.inkBlack,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  if (_isLive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: CassandraColors.primary,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        match.statusShort!,
+                        style: const TextStyle(
+                          color: CassandraColors.onPrimary,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    centerText,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: _isLive
+                          ? CassandraColors.primary
+                          : CassandraColors.inkBlack,
+                    ),
+                  ),
+                  if (_isFT) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      'FT',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: CassandraColors.slate.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        _TeamLogo(
+          url: match.awayTeamLogo,
+          initial: awayInitial,
+          teamName: match.awayTeam,
+        ),
+
+        // ── Right: 2 result buttons ────────────────────────────────
+        if (hasPick) ...[
+          const SizedBox(width: 10),
+          _LiveResultButton(
+            label: '+${formatOdds(_winOdds)}',
+            isHighlighted: isGraded && correct,
+            isWin: true,
+          ),
+          const SizedBox(width: 4),
+          _LiveResultButton(
+            label: '-${formatOdds(_loseOdds)}',
+            isHighlighted: isGraded && !correct,
+            isWin: false,
+          ),
+        ],
+      ],
+    );
   }
 }
 
@@ -1277,8 +1471,8 @@ class _CompactOddsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? CassandraColors.onPrimary : CassandraColors.slate;
-    final bg = selected ? CassandraColors.primary : Colors.transparent;
+    final fg = selected ? CassandraColors.onPrimary : CassandraColors.inkBlack;
+    final bg = selected ? CassandraColors.primary : CassandraColors.cardBg;
 
     return Expanded(
       child: Padding(
@@ -1291,13 +1485,13 @@ class _CompactOddsButton extends StatelessWidget {
             disabledForegroundColor: fg,
             disabledBackgroundColor: bg,
             side: BorderSide(
-              color: CassandraColors.primary,
-              width: selected ? 1.8 : 1.0,
+              color: CassandraColors.inkBlack,
+              width: selected ? 1.5 : 1.0,
             ),
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.symmetric(vertical: 3),
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(8),
             ),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1330,18 +1524,101 @@ class _CompactOddsButton extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Live Result Button (win/loss during live matches)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LiveResultButton extends StatelessWidget {
+  const _LiveResultButton({
+    required this.label,
+    required this.isHighlighted,
+    required this.isWin,
+  });
+
+  final String label;
+  final bool isHighlighted;
+
+  /// true = win (darkCyan when highlighted), false = loss (cherryRed).
+  final bool isWin;
+
+  @override
+  Widget build(BuildContext context) {
+    Color bg;
+    Color fg;
+
+    if (!isHighlighted) {
+      bg = CassandraColors.cardBg;
+      fg = CassandraColors.inkBlack;
+    } else if (isWin) {
+      bg = CassandraColors.darkCyan;
+      fg = CassandraColors.inkBlack;
+    } else {
+      bg = CassandraColors.primary; // cherry red
+      fg = CassandraColors.cardBg; // white smoke
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: CassandraColors.inkBlack, width: 1.0),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Team Logo
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TeamLogo extends StatelessWidget {
-  const _TeamLogo({required this.url, required this.initial});
+  const _TeamLogo({required this.url, required this.initial, this.teamName});
 
   final String? url;
   final String initial;
+  final String? teamName;
+
+  /// Bundled logo override for teams whose API logo doesn't render well.
+  static const Map<String, String> _bundledOverrides = {
+    'juventus': 'assets/logos/juventus_mark.svg',
+  };
+
+  String? _bundledAssetFor(String? name) {
+    if (name == null) return null;
+    final key = name.trim().toLowerCase();
+    for (final entry in _bundledOverrides.entries) {
+      if (key.contains(entry.key)) return entry.value;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     const size = 30.0;
+
+    // Check for bundled override first (e.g. Juventus black fill SVG).
+    final bundled = _bundledAssetFor(teamName);
+    if (bundled != null) {
+      final widget = bundled.endsWith('.svg')
+          ? SvgPicture.asset(
+              bundled,
+              width: size,
+              height: size,
+              fit: BoxFit.contain,
+            )
+          : Image.asset(
+              bundled,
+              width: size,
+              height: size,
+              fit: BoxFit.contain,
+            );
+      return SizedBox(width: size, height: size, child: widget);
+    }
+
     if (url != null && url!.isNotEmpty) {
       return SizedBox(
         width: size,

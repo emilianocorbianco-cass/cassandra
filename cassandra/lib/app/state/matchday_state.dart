@@ -237,9 +237,9 @@ class MatchdayState extends ChangeNotifier {
 
     _uiMatchdayNumber = matchdayNumber;
 
-    // AUTO-ADVANCE: primaryDone
+    // AUTO-ADVANCE: readyToAdvance (primaryDone + hold fino a mezzogiorno)
     if (allowAutoAdvance &&
-        progress.primaryDone &&
+        progress.readyToAdvance &&
         progress.isValidMatchday &&
         matchdayNumber == cassandraMatchdayCursor &&
         _autoAdvancedFromMatchday != matchdayNumber) {

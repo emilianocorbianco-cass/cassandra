@@ -125,7 +125,7 @@ class _HomeShellState extends State<HomeShell> {
 
         resolvedDoc = candidate;
         resolvedProgress = progress;
-        if (!progress.primaryDone) break;
+        if (!progress.readyToAdvance) break;
         dayNumber += 1;
       }
 
@@ -206,9 +206,9 @@ class _HomeShellState extends State<HomeShell> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFFF5EEF0), // blush caldo (leggero riflesso del primary)
-            CassandraColors.bg, // beige brand #F2EEE8
-            Color(0xFFE8DDD2), // beige più profondo per dare profondità
+            Color(0xFFF0ECEA), // blush caldo (leggero riflesso del primary)
+            CassandraColors.bg, // grigio neutro #E7E3DF
+            Color(0xFFDDD9D4), // grigio più profondo per dare profondità
           ],
           stops: [0.0, 0.45, 1.0],
         ),

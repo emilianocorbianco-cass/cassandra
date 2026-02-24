@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/cassandra_colors.dart';
 
 class TeamName extends StatelessWidget {
@@ -30,7 +31,7 @@ class TeamName extends StatelessWidget {
     'fiorentina': 'assets/logos/fiorentina.png',
     'genoa': 'assets/logos/genoa.png',
     'inter': 'assets/logos/inter.png',
-    'juventus': 'assets/logos/juventus.png',
+    'juventus': 'assets/logos/juventus_mark.svg',
     'lazio': 'assets/logos/lazio.png',
     'lecce': 'assets/logos/lecce.png',
     'milan': 'assets/logos/milan.png',
@@ -145,7 +146,14 @@ class TeamName extends StatelessWidget {
     }
     final url = rawUrl == null ? null : _normalizeLogoUrl(rawUrl);
 
-    final logoWidget = bundledAsset != null
+    final logoWidget = bundledAsset != null && bundledAsset.endsWith('.svg')
+        ? SvgPicture.asset(
+            bundledAsset,
+            width: logoSize,
+            height: logoSize,
+            fit: BoxFit.contain,
+          )
+        : bundledAsset != null
         ? Image.asset(
             bundledAsset,
             width: logoSize,
