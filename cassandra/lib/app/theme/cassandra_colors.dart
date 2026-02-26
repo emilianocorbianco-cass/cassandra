@@ -46,4 +46,17 @@ class CassandraColors {
   // ── Dividers ──────────────────────────────────────────────────────────────
   // Soft 10 % black divider line.
   static const Color dividerSoft = Color(0x1A000000);
+
+  // ── Predictions v2 palette ──────────────────────────────────────────────
+  /// Charcoal — page background for predictions.
+  static const Color charcoal = Color(0xFF344A54);
+
+  /// Ink Black v2 — hero card, footer, nav bar, selected odds.
+  static const Color inkBlackV2 = Color(0xFF01131B);
+
+  /// Bright Snow — text on dark surfaces.
+  static const Color brightSnow = Color(0xFFF6F8F9);
+
+  /// Platinum — match card background.
+  static const Color platinum = Color(0xFFECF0F2);
 }

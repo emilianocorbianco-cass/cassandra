@@ -254,57 +254,78 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ],
         ),
-        bottomNavigationBar: NavigationBarTheme(
-          data: NavigationBarThemeData(
-            backgroundColor: CassandraColors.navBarBg,
-            // Indicatore rosso semitrasparente — tab attivo distinguibile.
-            indicatorColor: CassandraColors.primary.withValues(alpha: 0.28),
-            surfaceTintColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            iconTheme: WidgetStateProperty.all(
-              const IconThemeData(color: CassandraColors.navBarFg),
-            ),
-            // Label bold sul tab selezionato.
-            labelTextStyle: WidgetStateProperty.resolveWith((states) {
-              final selected = states.contains(WidgetState.selected);
-              return TextStyle(
-                color: CassandraColors.navBarFg,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                fontSize: 11,
-              );
-            }),
-          ),
-          child: NavigationBar(
-            selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
-            destinations: [
-              NavigationDestination(
-                icon: const Icon(Icons.sports_soccer_outlined),
-                selectedIcon: const Icon(Icons.sports_soccer),
-                label: l10n.tabPredictions,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.groups_outlined),
-                selectedIcon: const Icon(Icons.groups),
-                label: l10n.tabGroup,
-              ),
-              NavigationDestination(
-                // live_tv comunica meglio di format_list_bulleted
-                icon: const Icon(Icons.live_tv_outlined),
-                selectedIcon: const Icon(Icons.live_tv),
-                label: l10n.tabLive,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.chat_bubble_outline),
-                selectedIcon: const Icon(Icons.chat_bubble),
-                label: l10n.tabChat,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.settings_outlined),
-                selectedIcon: const Icon(Icons.settings),
-                label: l10n.tabSettings,
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x44000000),
+                blurRadius: 12,
+                offset: Offset(0, -4),
               ),
             ],
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+            child: NavigationBarTheme(
+              data: NavigationBarThemeData(
+                backgroundColor: CassandraColors.inkBlackV2,
+                indicatorColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                height: 64,
+                iconTheme: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return IconThemeData(
+                    color: CassandraColors.brightSnow,
+                    size: selected ? 24 : 22,
+                  );
+                }),
+                labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return TextStyle(
+                    color: CassandraColors.brightSnow,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    fontSize: 10,
+                    height: 1.8,
+                  );
+                }),
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.alwaysShow,
+              ),
+              child: NavigationBar(
+                selectedIndex: _index,
+                onDestinationSelected: (i) => setState(() => _index = i),
+                destinations: [
+                  NavigationDestination(
+                    icon: const Icon(Icons.sports_soccer_outlined),
+                    selectedIcon: const Icon(Icons.sports_soccer),
+                    label: l10n.tabPredictions,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.groups_outlined),
+                    selectedIcon: const Icon(Icons.groups),
+                    label: l10n.tabGroup,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.live_tv_outlined),
+                    selectedIcon: const Icon(Icons.live_tv),
+                    label: l10n.tabLive,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    selectedIcon: const Icon(Icons.chat_bubble),
+                    label: l10n.tabChat,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.settings_outlined),
+                    selectedIcon: const Icon(Icons.settings),
+                    label: l10n.tabSettings,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ), // Scaffold

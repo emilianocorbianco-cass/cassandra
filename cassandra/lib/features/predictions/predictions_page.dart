@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -447,7 +446,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     // Loading guard
     if (matches.isEmpty) {
       return Scaffold(
-        backgroundColor: CassandraColors.bg,
+        backgroundColor: CassandraColors.charcoal,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -492,7 +491,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     final matchdayDateShort = _matchdayDateRangeShort(english: isEnglish);
 
     return Scaffold(
-      backgroundColor: CassandraColors.bg,
+      backgroundColor: CassandraColors.charcoal,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -564,17 +563,15 @@ class _PredictionsPageState extends State<PredictionsPage>
       bottomNavigationBar: SafeArea(
         child: Container(
           decoration: BoxDecoration(
-            color: CassandraColors.bg.withValues(alpha: 0.96),
-            border: Border(
-              top: BorderSide(
-                color: CassandraColors.primary.withValues(alpha: 0.14),
-              ),
+            color: CassandraColors.inkBlackV2,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(16),
             ),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: CassandraColors.primary.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -2),
+                color: Color(0x44000000),
+                blurRadius: 12,
+                offset: Offset(0, -4),
               ),
             ],
           ),
@@ -588,11 +585,11 @@ class _PredictionsPageState extends State<PredictionsPage>
                         ? null
                         : () => _submit(VisibilityChoice.private),
                     style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: CassandraColors.primary.withValues(alpha: 0.65),
+                      side: const BorderSide(
+                        color: CassandraColors.brightSnow,
                       ),
-                      foregroundColor: CassandraColors.primary,
-                      backgroundColor: CassandraColors.bg,
+                      foregroundColor: CassandraColors.brightSnow,
+                      backgroundColor: CassandraColors.inkBlackV2,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(26),
@@ -700,7 +697,7 @@ class _HeroScoreCard extends StatelessWidget {
   final int matchdayNumber;
   final String matchdayDateRange;
 
-  static const _fg = CassandraColors.cardBg; // white smoke #F5F5F5
+  static const _fg = CassandraColors.brightSnow;
 
   List<Color> _segmentColors() {
     return matches.map((m) {
@@ -748,15 +745,22 @@ class _HeroScoreCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
-        color: CassandraColors.inkBlack,
+        color: CassandraColors.inkBlackV2,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x44000000),
+            blurRadius: 12,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Left: title + date + ring with score ──────────────────────
           Expanded(
-            flex: 55,
+            flex: 50,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -823,74 +827,78 @@ class _HeroScoreCard extends StatelessWidget {
             ),
           ),
 
-          // ── Right: 6-line breakdown (enlarged) ────────────────────────
+          // ── Right: 6-line breakdown — left-aligned with 12 px
+          // padding from the invisible vertical center line ──────────
           Expanded(
-            flex: 45,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(height: 4),
-                // 1. "Pronostici corretti"
-                Text(
-                  isEnglish ? 'Correct picks' : 'Pronostici corretti',
-                  style: const TextStyle(
-                    color: _fg,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+            flex: 50,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 4),
+                  // 1. "Pronostici corretti"
+                  Text(
+                    isEnglish ? 'Correct picks' : 'Pronostici corretti',
+                    style: const TextStyle(
+                      color: _fg,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                // 2. X/10
-                Text(
-                  '$correctCount/$totalMatches',
-                  style: const TextStyle(
-                    color: _fg,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(height: 2),
+                  // 2. X/10
+                  Text(
+                    '$correctCount/$totalMatches',
+                    style: const TextStyle(
+                      color: _fg,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                // 3. "Punti bonus"
-                Text(
-                  isEnglish ? 'Bonus points' : 'Punti bonus',
-                  style: const TextStyle(
-                    color: _fg,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 16),
+                  // 3. "Punti bonus"
+                  Text(
+                    isEnglish ? 'Bonus points' : 'Punti bonus',
+                    style: const TextStyle(
+                      color: _fg,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                // 4. Bonus value (darkCyan +, cherry red -, white smoke 0)
-                Text(
-                  isMatchdayFinalized ? bonusSigned : '-',
-                  style: TextStyle(
-                    color: _bonusColor,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(height: 2),
+                  // 4. Bonus value (darkCyan +, cherry red -, white smoke 0)
+                  Text(
+                    isMatchdayFinalized ? bonusSigned : '-',
+                    style: TextStyle(
+                      color: _bonusColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                // 5. "Punti totali"
-                Text(
-                  isEnglish ? 'Total points' : 'Punti totali',
-                  style: const TextStyle(
-                    color: _fg,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 16),
+                  // 5. "Punti totali"
+                  Text(
+                    isEnglish ? 'Total points' : 'Punti totali',
+                    style: const TextStyle(
+                      color: _fg,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                // 6. Total value (always white smoke)
-                Text(
-                  totalPoints,
-                  style: const TextStyle(
-                    color: _fg,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(height: 2),
+                  // 6. Total value (always bright snow)
+                  Text(
+                    totalPoints,
+                    style: const TextStyle(
+                      color: _fg,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -1152,58 +1160,29 @@ class _CompactMatchCard extends StatelessWidget {
     final homeInitial = match.homeTeam.isNotEmpty ? match.homeTeam[0] : '?';
     final awayInitial = match.awayTeam.isNotEmpty ? match.awayTeam[0] : '?';
 
-    // Liquid Glass card
     return Container(
       decoration: BoxDecoration(
+        color: CassandraColors.inkBlackV2,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 20,
-            spreadRadius: -2,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 5,
-            offset: const Offset(0, 1),
+            color: Color(0x44000000),
+            blurRadius: 12,
+            offset: Offset(0, 6),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.70),
-              border: Border(
-                top: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  width: 1.0,
-                ),
-                left: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.65),
-                  width: 1.0,
-                ),
-                right: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.20),
-                  width: 0.5,
-                ),
-                bottom: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: _isStarted
-                ? _buildLiveLayout(centerText, homeInitial, awayInitial)
-                : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
-          ), // inner glass Container
-        ), // BackdropFilter
-      ), // ClipRRect
-    ); // outer shadow Container
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: CassandraColors.platinum,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: _isStarted
+            ? _buildLiveLayout(centerText, homeInitial, awayInitial)
+            : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
+      ),
+    );
   }
 
   /// Pre-match: teams row + 6 odds buttons (2 rows of 3).
@@ -1232,7 +1211,7 @@ class _CompactMatchCard extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: CassandraColors.inkBlack,
+                  color: CassandraColors.inkBlackV2,
                 ),
               ),
             ),
@@ -1265,7 +1244,7 @@ class _CompactMatchCard extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: CassandraColors.inkBlack,
+                  color: CassandraColors.inkBlackV2,
                 ),
               ),
             ),
@@ -1276,6 +1255,14 @@ class _CompactMatchCard extends StatelessWidget {
               teamName: match.awayTeam,
             ),
           ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── Charcoal divider ─────────────────────────────────────────
+        Container(
+          height: 1,
+          color: CassandraColors.charcoal,
         ),
 
         const SizedBox(height: 8),
@@ -1371,7 +1358,7 @@ class _CompactMatchCard extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: CassandraColors.inkBlack,
+                  color: CassandraColors.inkBlackV2,
                 ),
               ),
               const SizedBox(height: 2),
@@ -1404,7 +1391,7 @@ class _CompactMatchCard extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       color: _isLive
                           ? CassandraColors.primary
-                          : CassandraColors.inkBlack,
+                          : CassandraColors.inkBlackV2,
                     ),
                   ),
                   if (_isFT) ...[
@@ -1471,8 +1458,12 @@ class _CompactOddsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? CassandraColors.onPrimary : CassandraColors.inkBlack;
-    final bg = selected ? CassandraColors.primary : CassandraColors.cardBg;
+    final fg = selected
+        ? CassandraColors.brightSnow
+        : CassandraColors.inkBlackV2;
+    final bg = selected
+        ? CassandraColors.inkBlackV2
+        : CassandraColors.platinum;
 
     return Expanded(
       child: Padding(
@@ -1485,7 +1476,7 @@ class _CompactOddsButton extends StatelessWidget {
             disabledForegroundColor: fg,
             disabledBackgroundColor: bg,
             side: BorderSide(
-              color: CassandraColors.inkBlack,
+              color: CassandraColors.inkBlackV2,
               width: selected ? 1.5 : 1.0,
             ),
             padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1546,14 +1537,14 @@ class _LiveResultButton extends StatelessWidget {
     Color fg;
 
     if (!isHighlighted) {
-      bg = CassandraColors.cardBg;
-      fg = CassandraColors.inkBlack;
+      bg = CassandraColors.platinum;
+      fg = CassandraColors.inkBlackV2;
     } else if (isWin) {
       bg = CassandraColors.darkCyan;
-      fg = CassandraColors.inkBlack;
+      fg = CassandraColors.inkBlackV2;
     } else {
       bg = CassandraColors.primary; // cherry red
-      fg = CassandraColors.cardBg; // white smoke
+      fg = CassandraColors.brightSnow;
     }
 
     return Container(
@@ -1561,7 +1552,7 @@ class _LiveResultButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: CassandraColors.inkBlack, width: 1.0),
+        border: Border.all(color: CassandraColors.inkBlackV2, width: 1.0),
       ),
       child: Text(
         label,
