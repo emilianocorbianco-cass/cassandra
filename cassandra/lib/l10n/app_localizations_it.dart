@@ -775,7 +775,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get tabGroup => 'Gruppo';
 
   @override
-  String get tabLive => 'Live';
+  String get tabLive => 'Livescore';
 
   @override
   String get tabSettings => 'Settings';

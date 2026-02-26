@@ -1538,7 +1538,7 @@ abstract class AppLocalizations {
   /// No description provided for @tabLive.
   ///
   /// In en, this message translates to:
-  /// **'Live'**
+  /// **'Livescore'**
   String get tabLive;
 
   /// No description provided for @tabSettings.
