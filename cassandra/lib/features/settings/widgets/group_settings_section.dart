@@ -1,4 +1,5 @@
 import 'package:cassandra/app/state/app_state.dart';
+import 'package:cassandra/features/group/group_hub_page.dart';
 import 'package:cassandra/features/group/widgets/group_image_picker.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:cassandra/services/firestore/models/group_document.dart';
@@ -122,6 +123,35 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
                 value: app.groupAdminApproval,
                 onChanged: (value) {
                   app.updateGroupAdminApproval(value);
+                },
+              ),
+              if (app.firestoreGroupIds.length >= 2) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.swap_horiz),
+                  title: Text(l10n.settingsSwitchGroup),
+                  onTap: () {
+                    Navigator.of(context, rootNavigator: true).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => const GroupHubPage(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.preview, color: Colors.orange),
+                title: const Text(
+                  'Test: Group Hub Page',
+                  style: TextStyle(color: Colors.orange),
+                ),
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(
+                      builder: (_) => const GroupHubPage(),
+                    ),
+                  );
                 },
               ),
               if (app.firestoreService == null) ...[

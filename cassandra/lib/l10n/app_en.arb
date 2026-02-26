@@ -14,6 +14,15 @@
   "loginDifferentAccountContinue": "Continue with this account",
   "loginDifferentAccountCancelled": "Sign-in cancelled. Press Sign in again if you want to retry.",
   "loginPrivacyNotice": "We only use what's strictly necessary to identify you.",
+  "loginAccountConflictTitle": "Account already exists",
+  "loginAccountConflictBody": "An account with {email} already exists using {provider}. Sign in with {provider} first to link your accounts.",
+  "@loginAccountConflictBody": {
+    "placeholders": {
+      "email": {},
+      "provider": {}
+    }
+  },
+  "loginAccountConflictLink": "Sign in and link",
   "profileSetupTitle": "Complete your profile",
   "profileSetupSubtitle": "Set your details so Cassandra can recognize you instantly.",
   "profileSetupRememberMe": "Remember me on this device",
@@ -583,5 +592,16 @@
   "settingsDiagErrorTitle": "Error",
   "commonVersusShort": "vs",
   "predictionsDoubleChance": "Double chance",
-  "predictionsClearPick": "Clear pick"
+  "predictionsClearPick": "Clear pick",
+  "groupHubTitle": "Choose your group",
+  "groupHubSubtitle": "Select a group to enter",
+  "groupHubCreateGroup": "Create group",
+  "groupHubJoinGroup": "Join group",
+  "groupHubMemberCount": "{count, plural, =1{1 member} other{{count} members}}",
+  "@groupHubMemberCount": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "settingsSwitchGroup": "Switch group"
 }

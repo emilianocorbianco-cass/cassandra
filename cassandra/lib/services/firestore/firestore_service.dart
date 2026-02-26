@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -233,6 +234,7 @@ class FirestoreService {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'memberCount': 0,
+        'competitions': ['serie-a'],
       }),
       operation: 'createGroup',
     );
@@ -259,6 +261,26 @@ class FirestoreService {
     );
     if (!doc.exists) return null;
     return GroupDocument.fromFirestore(doc);
+  }
+
+  /// Fetches multiple [GroupDocument]s by their IDs in batch.
+  /// Firestore `whereIn` supports up to 30 IDs per query, so we chunk
+  /// automatically.
+  Future<List<GroupDocument>> getGroups(List<String> groupIds) async {
+    if (groupIds.isEmpty) return const [];
+    final results = <GroupDocument>[];
+    for (var i = 0; i < groupIds.length; i += 30) {
+      final chunk = groupIds.sublist(i, min(i + 30, groupIds.length));
+      final snap = await _withTimeout(
+        _db
+            .collection('groups')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get(),
+        operation: 'getGroups',
+      );
+      results.addAll(snap.docs.map(GroupDocument.fromFirestore));
+    }
+    return results;
   }
 
   Future<void> updateGroupImageUrl({
@@ -544,39 +566,6 @@ class FirestoreService {
               .map(GroupMemberDocument.fromFirestore)
               .toList(growable: false),
         );
-  }
-
-  Future<Map<String, String>> getUserPhotoUrls(List<String> uids) async {
-    final clean = uids
-        .map((uid) => uid.trim())
-        .where((uid) => uid.isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-    if (clean.isEmpty) return const {};
-
-    final out = <String, String>{};
-    for (final uid in clean) {
-      try {
-        final doc = await _withTimeout(
-          _db.collection('users').doc(uid).get(),
-          operation: 'getUserPhotoUrls',
-        );
-        if (!doc.exists) continue;
-        final data = doc.data();
-        final photo = (data?['photoUrl'] as String?)?.trim() ?? '';
-        if (photo.isEmpty) continue;
-        out[doc.id] = photo;
-      } catch (_) {
-        // Some profiles may be unreadable by security rules (e.g. not self).
-        // Ignore and continue with available member-level photoUrl data.
-        if (kDebugMode) {
-          debugPrint(
-            '[group-members] failed loading fallback photo for uid=$uid',
-          );
-        }
-      }
-    }
-    return out;
   }
 
   Future<bool> isInviteCodeTaken(String code) async {

@@ -9,6 +9,7 @@ class GroupDocument {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int memberCount;
+  final List<String> competitions;
 
   const GroupDocument({
     required this.id,
@@ -19,12 +20,17 @@ class GroupDocument {
     required this.createdAt,
     required this.updatedAt,
     required this.memberCount,
+    this.competitions = const ['serie-a'],
   });
 
   factory GroupDocument.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final d = doc.data()!;
+    final rawCompetitions = d['competitions'];
+    final competitions = rawCompetitions is List
+        ? rawCompetitions.cast<String>()
+        : const <String>['serie-a'];
     return GroupDocument(
       id: doc.id,
       name: d['name'] as String? ?? '',
@@ -36,6 +42,7 @@ class GroupDocument {
       // Use num? → toInt() so Firestore double values (e.g. 1.0 from a Cloud
       // Function) are accepted without a TypeError.
       memberCount: (d['memberCount'] as num?)?.toInt() ?? 0,
+      competitions: competitions,
     );
   }
 }

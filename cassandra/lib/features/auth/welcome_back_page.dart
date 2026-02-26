@@ -6,7 +6,9 @@ import '../../app/navigation/home_shell.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/auth/auth_service.dart';
 import '../../services/notifications/push_notifications_service.dart';
+import '../group/group_hub_page.dart';
 import 'profile_setup_page.dart';
 import '../profile/widgets/profile_image_picker.dart';
 import 'login_page.dart';
@@ -35,9 +37,14 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
     await PushNotificationsService.instance.initializeForAppState(app);
     if (!mounted) return;
 
-    final destination = app.needsProfileSetup
-        ? const ProfileSetupPage()
-        : const HomeShell();
+    Widget destination;
+    if (app.needsProfileSetup) {
+      destination = const ProfileSetupPage();
+    } else if (app.firestoreGroupIds.length >= 2) {
+      destination = const GroupHubPage();
+    } else {
+      destination = const HomeShell();
+    }
     Navigator.of(
       context,
     ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
@@ -55,35 +62,34 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
     final provider = app.rememberedAuthProvider;
     if (auth == null || provider == null) return _resultUnavailable;
 
+    AuthSignInResult result;
     if (provider == 'google') {
-      final credential = await auth.signInWithGoogle();
-      final user = credential?.user;
-      if (user == null) return _resultCancelled;
-      if (!_isExpectedUid(user.uid)) {
-        await auth.signOut();
-        return _resultMismatch;
-      }
-      await app.setRememberedAuthProvider('google');
-      app.setProfileFromFirebaseUser(user);
-      await _completeSignInFlow(user.uid);
-      return _resultSuccess;
+      result = await auth.signInWithGoogle();
+    } else if (provider == 'apple') {
+      result = await auth.signInWithApple();
+    } else {
+      return _resultUnavailable;
     }
 
-    if (provider == 'apple') {
-      final credential = await auth.signInWithApple();
-      final user = credential?.user;
-      if (user == null) return _resultCancelled;
-      if (!_isExpectedUid(user.uid)) {
-        await auth.signOut();
-        return _resultMismatch;
-      }
-      await app.setRememberedAuthProvider('apple');
-      app.setProfileFromFirebaseUser(user);
-      await _completeSignInFlow(user.uid);
-      return _resultSuccess;
+    switch (result) {
+      case AuthSignInCancelled():
+        return _resultCancelled;
+      case AuthSignInAccountConflict():
+        // Conflict is unexpected on welcome-back (user previously signed in
+        // successfully with this provider). Treat as unavailable.
+        return _resultUnavailable;
+      case AuthSignInSuccess():
+        final user = result.credential.user;
+        if (user == null) return _resultCancelled;
+        if (!_isExpectedUid(user.uid)) {
+          await auth.signOut();
+          return _resultMismatch;
+        }
+        await app.setRememberedAuthProvider(provider);
+        app.setProfileFromFirebaseUser(user);
+        await _completeSignInFlow(user.uid);
+        return _resultSuccess;
     }
-
-    return _resultUnavailable;
   }
 
   Future<bool> _verifyDeviceOwner(String reason) async {

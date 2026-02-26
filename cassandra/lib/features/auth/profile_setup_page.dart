@@ -4,6 +4,7 @@ import '../../app/navigation/home_shell.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
+import '../group/group_hub_page.dart';
 import '../profile/widgets/profile_image_picker.dart';
 
 class ProfileSetupPage extends StatefulWidget {
@@ -77,9 +78,13 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       await app.updateProfilePhotoPath(_photoPath);
       await app.completeProfileSetup(rememberMe: _rememberMe);
       if (!mounted) return;
+
+      final destination = app.firestoreGroupIds.length >= 2
+          ? const GroupHubPage()
+          : const HomeShell();
       Navigator.of(
         context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+      ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

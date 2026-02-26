@@ -76,7 +76,6 @@ class _GroupPageState extends State<GroupPage> {
   StreamSubscription<List<GroupMemberDocument>>? _firestoreMembersSub;
   StreamSubscription<List<PicksDocument>>? _firestoreSeasonPicksSub;
   StreamSubscription<MatchdayDocument?>? _firestoreMatchdaySub;
-  int _firestoreMembersRevision = 0;
   final Set<int> _hydratedSeasonMatchdayDays = <int>{};
   bool _seasonHistoryHydrationInFlight = false;
   bool _seasonHistoryHydrationQueued = false;
@@ -329,48 +328,26 @@ class _GroupPageState extends State<GroupPage> {
     _firestoreMembersSub = fs
         .streamGroupMembers(groupId)
         .listen(
-          (docs) async {
-            final revision = ++_firestoreMembersRevision;
-            try {
-              final missingPhotoUids = docs
-                  .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
-                  .map((d) => d.uid.trim())
-                  .where((uid) => uid.isNotEmpty)
-                  .toList(growable: false);
-              final userPhotoUrls = missingPhotoUids.isEmpty
-                  ? const <String, String>{}
-                  : await fs.getUserPhotoUrls(missingPhotoUids);
-
-              if (!mounted || revision != _firestoreMembersRevision) return;
-
-              final members = docs
-                  .map(
-                    (d) => GroupMember(
-                      id: d.uid,
-                      displayName: d.displayName,
-                      teamName: d.teamName,
-                      avatarSeed: d.avatarSeed,
-                      favoriteTeam: d.favoriteTeam,
-                      photoUrl: () {
-                        final direct = (d.photoUrl ?? '').trim();
-                        if (direct.isNotEmpty) return direct;
-                        final fallback = (userPhotoUrls[d.uid] ?? '').trim();
-                        if (_isPortableImageRef(fallback)) return fallback;
-                        return null;
-                      }(),
-                    ),
-                  )
-                  .toList(growable: false);
-
-              setState(() {
-                _firestoreMembers = members;
-              });
-              _recomputeFirestoreDerived(appState);
-            } catch (error, stackTrace) {
-              if (revision == _firestoreMembersRevision) {
-                _handleFirestoreRealtimeError(appState, error, stackTrace);
-              }
-            }
+          (docs) {
+            if (!mounted) return;
+            final members = docs
+                .map(
+                  (d) => GroupMember(
+                    id: d.uid,
+                    displayName: d.displayName,
+                    teamName: d.teamName,
+                    avatarSeed: d.avatarSeed,
+                    favoriteTeam: d.favoriteTeam,
+                    photoUrl: (d.photoUrl ?? '').trim().isEmpty
+                        ? null
+                        : d.photoUrl,
+                  ),
+                )
+                .toList(growable: false);
+            setState(() {
+              _firestoreMembers = members;
+            });
+            _recomputeFirestoreDerived(appState);
           },
           onError: (Object error, StackTrace stackTrace) {
             _handleFirestoreRealtimeError(appState, error, stackTrace);
@@ -409,15 +386,7 @@ class _GroupPageState extends State<GroupPage> {
         );
   }
 
-  static bool _isPortableImageRef(String value) {
-    final lower = value.trim().toLowerCase();
-    return lower.startsWith('http://') ||
-        lower.startsWith('https://') ||
-        lower.startsWith('data:image/');
-  }
-
   void _cancelFirestoreRealtime() {
-    _firestoreMembersRevision++;
     _firestoreRevealTimer?.cancel();
     _firestoreRevealTimer = null;
     _firestoreMembersSub?.cancel();

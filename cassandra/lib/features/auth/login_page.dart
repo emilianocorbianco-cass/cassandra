@@ -6,7 +6,9 @@ import '../../app/navigation/home_shell.dart';
 import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../services/auth/auth_service.dart';
 import '../../services/notifications/push_notifications_service.dart';
+import '../group/group_hub_page.dart';
 import 'profile_setup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -84,6 +86,85 @@ class _LoginPageState extends State<LoginPage> {
     return true;
   }
 
+  Future<void> _showAccountConflictDialog(
+    AuthSignInAccountConflict conflict,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final providerLabel = conflict.existingProvider == 'google'
+        ? l10n.loginSignInGoogle
+        : l10n.loginSignInApple;
+
+    final shouldLink = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.loginAccountConflictTitle),
+        content: Text(
+          l10n.loginAccountConflictBody(conflict.email, providerLabel),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.settingsCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.loginAccountConflictLink),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLink != true || !mounted) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final app = CassandraScope.of(context);
+      final authService = app.authService;
+      if (authService == null) return;
+
+      // Sign in with the existing provider first.
+      AuthSignInResult existingResult;
+      if (conflict.existingProvider == 'google') {
+        existingResult = await authService.signInWithGoogle();
+      } else {
+        existingResult = await authService.signInWithApple();
+      }
+
+      if (existingResult is! AuthSignInSuccess) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = l10n.loginSignInError;
+          });
+        }
+        return;
+      }
+
+      // Link the pending credential to the existing account.
+      await authService.linkPendingCredential(conflict.pendingCredential);
+
+      final accepted = await _acceptSignedInUser(
+        provider: conflict.existingProvider,
+        user: existingResult.credential.user,
+      );
+      if (!accepted && mounted) {
+        setState(() => _loading = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = l10n.loginSignInError;
+        });
+      }
+    }
+  }
+
   Future<void> _goAfterSignIn(String uid) async {
     final app = CassandraScope.of(context);
     await app.hydrateProfileFromFirestore(uid);
@@ -91,9 +172,14 @@ class _LoginPageState extends State<LoginPage> {
     await PushNotificationsService.instance.initializeForAppState(app);
     if (!mounted) return;
 
-    final Widget destination = app.needsProfileSetup
-        ? const ProfileSetupPage()
-        : const HomeShell();
+    Widget destination;
+    if (app.needsProfileSetup) {
+      destination = const ProfileSetupPage();
+    } else if (app.firestoreGroupIds.length >= 2) {
+      destination = const GroupHubPage();
+    } else {
+      destination = const HomeShell();
+    }
 
     Navigator.of(
       context,
@@ -111,20 +197,25 @@ class _LoginPageState extends State<LoginPage> {
       final authService = app.authService;
       if (authService == null) return;
 
-      final credential = await authService.signInWithGoogle();
-      if (credential == null) {
-        // utente ha annullato
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-
-      final user = credential.user;
-      final accepted = await _acceptSignedInUser(
-        provider: 'google',
-        user: user,
-      );
-      if (!accepted && mounted) {
-        setState(() => _loading = false);
+      final result = await authService.signInWithGoogle();
+      switch (result) {
+        case AuthSignInCancelled():
+          if (mounted) setState(() => _loading = false);
+          return;
+        case AuthSignInAccountConflict():
+          if (mounted) {
+            setState(() => _loading = false);
+            await _showAccountConflictDialog(result);
+          }
+          return;
+        case AuthSignInSuccess():
+          final accepted = await _acceptSignedInUser(
+            provider: 'google',
+            user: result.credential.user,
+          );
+          if (!accepted && mounted) {
+            setState(() => _loading = false);
+          }
       }
     } catch (e) {
       if (mounted) {
@@ -148,16 +239,25 @@ class _LoginPageState extends State<LoginPage> {
       final authService = app.authService;
       if (authService == null) return;
 
-      final credential = await authService.signInWithApple();
-      if (credential == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-
-      final user = credential.user;
-      final accepted = await _acceptSignedInUser(provider: 'apple', user: user);
-      if (!accepted && mounted) {
-        setState(() => _loading = false);
+      final result = await authService.signInWithApple();
+      switch (result) {
+        case AuthSignInCancelled():
+          if (mounted) setState(() => _loading = false);
+          return;
+        case AuthSignInAccountConflict():
+          if (mounted) {
+            setState(() => _loading = false);
+            await _showAccountConflictDialog(result);
+          }
+          return;
+        case AuthSignInSuccess():
+          final accepted = await _acceptSignedInUser(
+            provider: 'apple',
+            user: result.credential.user,
+          );
+          if (!accepted && mounted) {
+            setState(() => _loading = false);
+          }
       }
     } catch (e) {
       if (mounted) {

@@ -481,28 +481,15 @@ class GroupState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
-    final missingPhotoUids = docs
-        .where((d) => !(d.photoUrl?.trim().isNotEmpty ?? false))
-        .map((d) => d.uid)
-        .where((uid) => uid.trim().isNotEmpty)
-        .toList(growable: false);
-    final userPhotoUrls = missingPhotoUids.isEmpty
-        ? const <String, String>{}
-        : await fs.getUserPhotoUrls(missingPhotoUids);
     return docs.map((d) {
-      final directPhoto = (d.photoUrl ?? '').trim();
-      final fallbackPhoto = (userPhotoUrls[d.uid] ?? '').trim();
-      final fallbackPortable =
-          fallbackPhoto.isNotEmpty && _looksLikePortableImageRef(fallbackPhoto)
-          ? fallbackPhoto
-          : null;
+      final photo = (d.photoUrl ?? '').trim();
       return GroupMember(
         id: d.uid,
         displayName: d.displayName,
         teamName: d.teamName,
         avatarSeed: d.avatarSeed,
         favoriteTeam: d.favoriteTeam,
-        photoUrl: directPhoto.isNotEmpty ? directPhoto : fallbackPortable,
+        photoUrl: photo.isEmpty ? null : photo,
       );
     }).toList();
   }
