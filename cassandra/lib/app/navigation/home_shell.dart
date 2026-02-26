@@ -198,23 +198,10 @@ class _HomeShellState extends State<HomeShell> {
     final l10n = AppLocalizations.of(context)!;
     final app = CassandraScope.of(context);
 
-    // Liquid Glass: gradient background su cui le card vetro si appoggiano.
-    // Solo questo Scaffold è transparent — le pagine pushate usano il tema.
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF0ECEA), // blush caldo (leggero riflesso del primary)
-            CassandraColors.bg, // grigio neutro #E7E3DF
-            Color(0xFFDDD9D4), // grigio più profondo per dare profondità
-          ],
-          stops: [0.0, 0.45, 1.0],
-        ),
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
+    // Charcoal è il primo layer: sfondo unico dell'intera app.
+    // Le card e gli altri elementi si appoggiano sopra.
+    return Scaffold(
+        backgroundColor: CassandraColors.charcoal,
         // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
         body: Column(
           children: [
@@ -328,7 +315,6 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ),
         ),
-      ), // Scaffold
-    ); // DecoratedBox
+    ); // Scaffold
   }
 }

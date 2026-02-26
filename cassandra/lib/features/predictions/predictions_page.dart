@@ -511,7 +511,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     // Loading guard
     if (matches.isEmpty) {
       return Scaffold(
-        backgroundColor: CassandraColors.charcoal,
+        backgroundColor: Colors.transparent,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
