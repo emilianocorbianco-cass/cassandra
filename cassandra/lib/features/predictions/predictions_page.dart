@@ -70,6 +70,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   Timer? _lockRefreshTimer;
   DateTime? _lockRefreshTarget;
   final Map<String, PickOption> _picks = {};
+  bool _submitted = false;
 
   @override
   void initState() {
@@ -144,30 +145,14 @@ class _PredictionsPageState extends State<PredictionsPage>
     });
   }
 
-  /// Returns "20 Febbraio → 23 Febbraio" (no weekday, full month name).
-  String _matchdayDateRangeShort({required bool english}) {
-    if (matches.isEmpty) return '';
-    final days =
-        matches
-            .map((m) => m.kickoff.toLocal())
-            .map((dt) => DateTime(dt.year, dt.month, dt.day))
-            .toSet()
-            .toList()
-          ..sort((a, b) => a.compareTo(b));
-    if (days.isEmpty) return '';
-    String fmt(DateTime d) {
-      final month = english
-          ? englishMonthName(d.month)
-          : italianMonthName(d.month);
-      return '${d.day} $month';
-    }
-
-    if (days.length == 1) return fmt(days.first);
-    return '${fmt(days.first)} → ${fmt(days.last)}';
-  }
-
   void _setPick(String matchId, PickOption pick) {
     final l10n = AppLocalizations.of(context)!;
+    if (_submitted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.predictionsAlreadySubmitted)),
+      );
+      return;
+    }
     final PredictionMatch? match = matches.cast<PredictionMatch?>().firstWhere(
       (m) => m?.id == matchId,
       orElse: () => null,
@@ -180,6 +165,86 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
     setState(() => _picks[matchId] = pick);
     CassandraScope.of(context).setCurrentUserPick(matchId, pick);
+
+    // Auto-show submit confirmation when all picks are made
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _submitted) return;
+      if (_pickedCount == matches.length) {
+        _showSubmitConfirmation();
+      }
+    });
+  }
+
+  Future<void> _showSubmitConfirmation() async {
+    final l10n = AppLocalizations.of(context)!;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: CassandraColors.brightSnow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Text(
+            l10n.predictionsConfirmSubmit,
+            style: const TextStyle(
+              color: CassandraColors.inkBlackV2,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.spaceEvenly,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              style: TextButton.styleFrom(
+                foregroundColor: CassandraColors.inkBlackV2,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+              child: Text(
+                l10n.predictionsConfirmNo,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: CassandraColors.inkBlackV2,
+                foregroundColor: CassandraColors.brightSnow,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                l10n.predictionsConfirmYes,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (result == true) {
+      await _submit(VisibilityChoice.public);
+      if (mounted) {
+        setState(() => _submitted = true);
+      }
+    }
   }
 
   Future<bool> _confirmSubmitIfMissing(int missing) async {
@@ -488,8 +553,6 @@ class _PredictionsPageState extends State<PredictionsPage>
               ? '+${dayScore.bonusPoints}'
               : '${dayScore.bonusPoints}');
 
-    final matchdayDateShort = _matchdayDateRangeShort(english: isEnglish);
-
     return Scaffold(
       backgroundColor: CassandraColors.charcoal,
       body: SafeArea(
@@ -502,7 +565,7 @@ class _PredictionsPageState extends State<PredictionsPage>
 
             // ── Hero score card ────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
               child: _HeroScoreCard(
                 dayScore: dayScore,
                 matches: scoringMatches,
@@ -512,7 +575,6 @@ class _PredictionsPageState extends State<PredictionsPage>
                 bonusSigned: bonusSigned,
                 isEnglish: isEnglish,
                 matchdayNumber: _effectiveMatchdayNumber,
-                matchdayDateRange: matchdayDateShort,
               ),
             ),
 
@@ -559,81 +621,6 @@ class _PredictionsPageState extends State<PredictionsPage>
         ),
       ),
 
-      // ── Bottom save bar ────────────────────────────────────────────────────
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: CassandraColors.inkBlackV2,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(16),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x44000000),
-                blurRadius: 12,
-                offset: Offset(0, -4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _locked
-                        ? null
-                        : () => _submit(VisibilityChoice.private),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                        color: CassandraColors.brightSnow,
-                      ),
-                      foregroundColor: CassandraColors.brightSnow,
-                      backgroundColor: CassandraColors.inkBlackV2,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                    ),
-                    icon: const Icon(Icons.visibility_off_outlined, size: 18),
-                    label: Text(
-                      l10n.predictionsSubmitWithoutShowing,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _locked
-                        ? null
-                        : () => _submit(VisibilityChoice.public),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: CassandraColors.primary,
-                      foregroundColor: CassandraColors.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                    ),
-                    icon: const Icon(Icons.visibility_outlined, size: 18),
-                    label: Text(
-                      l10n.predictionsSubmitAndShow,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -684,7 +671,6 @@ class _HeroScoreCard extends StatelessWidget {
     required this.bonusSigned,
     required this.isEnglish,
     required this.matchdayNumber,
-    required this.matchdayDateRange,
   });
 
   final DayScoreBreakdown dayScore;
@@ -695,7 +681,6 @@ class _HeroScoreCard extends StatelessWidget {
   final String bonusSigned;
   final bool isEnglish;
   final int matchdayNumber;
-  final String matchdayDateRange;
 
   static const _fg = CassandraColors.brightSnow;
 
@@ -740,7 +725,7 @@ class _HeroScoreCard extends StatelessWidget {
 
     final matchdayTitle = isEnglish
         ? 'Matchday $matchdayNumber'
-        : 'Giornata $matchdayNumber';
+        : '$matchdayNumber Giornata';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
@@ -758,7 +743,7 @@ class _HeroScoreCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Left: title + date + ring with score ──────────────────────
+          // ── Left: title + ring with score ──────────────────────────
           Expanded(
             flex: 50,
             child: Column(
@@ -773,19 +758,6 @@ class _HeroScoreCard extends StatelessWidget {
                     letterSpacing: -0.3,
                   ),
                 ),
-                if (matchdayDateRange.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    matchdayDateRange,
-                    style: const TextStyle(
-                      color: _fg,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
                 const SizedBox(height: 12),
                 // Ring with "punti live" + score in center
                 SizedBox(
@@ -827,12 +799,12 @@ class _HeroScoreCard extends StatelessWidget {
             ),
           ),
 
-          // ── Right: 6-line breakdown — left-aligned with 12 px
+          // ── Right: 6-line breakdown — left-aligned with 16 px
           // padding from the invisible vertical center line ──────────
           Expanded(
             flex: 50,
             child: Padding(
-              padding: const EdgeInsets.only(left: 12),
+              padding: const EdgeInsets.only(left: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -868,7 +840,7 @@ class _HeroScoreCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  // 4. Bonus value (darkCyan +, cherry red -, white smoke 0)
+                  // 4. Bonus value
                   Text(
                     isMatchdayFinalized ? bonusSigned : '-',
                     style: TextStyle(
@@ -883,18 +855,18 @@ class _HeroScoreCard extends StatelessWidget {
                     isEnglish ? 'Total points' : 'Punti totali',
                     style: const TextStyle(
                       color: _fg,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  // 6. Total value (always bright snow)
+                  // 6. Total value
                   Text(
                     totalPoints,
                     style: const TextStyle(
                       color: _fg,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
@@ -1215,25 +1187,13 @@ class _CompactMatchCard extends StatelessWidget {
                 ),
               ),
             ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  centerText,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: CassandraColors.slate,
-                  ),
-                ),
-                Text(
-                  formatKickoff(match.kickoff),
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: CassandraColors.slate.withValues(alpha: 0.60),
-                  ),
-                ),
-              ],
+            Text(
+              formatKickoff(match.kickoff),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: CassandraColors.inkBlackV2,
+              ),
             ),
             Expanded(
               child: Text(
@@ -1267,7 +1227,7 @@ class _CompactMatchCard extends StatelessWidget {
 
         const SizedBox(height: 8),
 
-        // ── Singles row (1/X/2) ─────────────────────────────────────
+        // ── All 6 odds on one row ──────────────────────────────────
         Row(
           children: [
             _CompactOddsButton(
@@ -1291,14 +1251,6 @@ class _CompactMatchCard extends StatelessWidget {
               locked: locked,
               onPressed: () => onPick(PickOption.away),
             ),
-          ],
-        ),
-
-        const SizedBox(height: 4),
-
-        // ── Doubles row (1X/X2/12) ─────────────────────────────────
-        Row(
-          children: [
             _CompactOddsButton(
               label: '1X',
               odds: match.odds.homeDraw,
@@ -1463,11 +1415,11 @@ class _CompactOddsButton extends StatelessWidget {
         : CassandraColors.inkBlackV2;
     final bg = selected
         ? CassandraColors.inkBlackV2
-        : CassandraColors.platinum;
+        : CassandraColors.brightSnow;
 
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 1.5),
         child: OutlinedButton(
           onPressed: locked ? null : onPressed,
           style: OutlinedButton.styleFrom(
@@ -1477,7 +1429,7 @@ class _CompactOddsButton extends StatelessWidget {
             disabledBackgroundColor: bg,
             side: BorderSide(
               color: CassandraColors.inkBlackV2,
-              width: selected ? 1.5 : 1.0,
+              width: selected ? 1.5 : 0.8,
             ),
             padding: const EdgeInsets.symmetric(vertical: 3),
             elevation: 0,
@@ -1494,7 +1446,7 @@ class _CompactOddsButton extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: fg,
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1502,7 +1454,7 @@ class _CompactOddsButton extends StatelessWidget {
                 formatOdds(odds),
                 style: TextStyle(
                   color: fg,
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: FontWeight.w700,
                 ),
               ),

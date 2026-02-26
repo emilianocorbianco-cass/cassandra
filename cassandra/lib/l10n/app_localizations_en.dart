@@ -1015,6 +1015,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsSubmitAndShow => 'Submit and show';
 
   @override
+  String get predictionsConfirmSubmit => 'Do you want to submit?';
+
+  @override
+  String get predictionsConfirmYes => 'Yes';
+
+  @override
+  String get predictionsConfirmNo => 'No';
+
+  @override
+  String get predictionsAlreadySubmitted => 'Picks already submitted for this matchday.';
+
+  @override
   String get commonNoDataAvailable => 'No data available';
 
   @override

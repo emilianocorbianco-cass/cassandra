@@ -1931,6 +1931,30 @@ abstract class AppLocalizations {
   /// **'Submit and show'**
   String get predictionsSubmitAndShow;
 
+  /// No description provided for @predictionsConfirmSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Do you want to submit?'**
+  String get predictionsConfirmSubmit;
+
+  /// No description provided for @predictionsConfirmYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get predictionsConfirmYes;
+
+  /// No description provided for @predictionsConfirmNo.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get predictionsConfirmNo;
+
+  /// No description provided for @predictionsAlreadySubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Picks already submitted for this matchday.'**
+  String get predictionsAlreadySubmitted;
+
   /// No description provided for @commonNoDataAvailable.
   ///
   /// In en, this message translates to:

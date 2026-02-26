@@ -1015,6 +1015,18 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsSubmitAndShow => 'Invia e mostra';
 
   @override
+  String get predictionsConfirmSubmit => 'Vuoi inviare?';
+
+  @override
+  String get predictionsConfirmYes => 'Sì';
+
+  @override
+  String get predictionsConfirmNo => 'No';
+
+  @override
+  String get predictionsAlreadySubmitted => 'Pronostici già inviati per questa giornata.';
+
+  @override
   String get commonNoDataAvailable => 'Nessun dato disponibile';
 
   @override
