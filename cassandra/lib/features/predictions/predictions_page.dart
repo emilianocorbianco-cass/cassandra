@@ -553,81 +553,67 @@ class _PredictionsPageState extends State<PredictionsPage>
               ? '+${dayScore.bonusPoints}'
               : '${dayScore.bonusPoints}');
 
-    // Hero card height estimate for scroll spacer:
-    // outer padding 8 + container padding 34 + title ~24 + gap 10 + ring 140 = 216
-    const heroCardHeight = 220.0;
-
     return Scaffold(
       backgroundColor: CassandraColors.charcoal,
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Demo banner
             if (!usingRealFixturesNow)
               DemoBanner(label: l10n.predictionsSampleDataBanner),
 
-            // ── Stack: match cards scroll under hero card ─────────────────
-            Expanded(
-              child: Stack(
-                children: [
-                  // Bottom layer: scrollable match list
-                  CustomScrollView(
-                    slivers: [
-                      // Spacer so first card starts below hero card
-                      const SliverToBoxAdapter(
-                        child: SizedBox(height: heroCardHeight),
-                      ),
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate((ctx, i) {
-                            final match = matches[i];
-                            final pick = _pickFor(match.id);
-                            final outcome = scoreOutcomesByMatchId[match.id];
-                            final breakdown = dayScore.matchBreakdowns
-                                .cast<MatchScoreBreakdown?>()
-                                .firstWhere(
-                                  (b) => b?.matchId == match.id,
-                                  orElse: () => null,
-                                );
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _CompactMatchCard(
-                                match: match,
-                                pick: pick,
-                                locked: _locked,
-                                onPick: (p) => _setPick(match.id, p),
-                                outcome: outcome,
-                                matchBreakdown: breakdown,
-                              ),
-                            );
-                          }, childCount: matches.length),
-                        ),
-                      ),
-                      if (standings.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: SerieAStandingsTable(standings: standings),
-                        ),
-                      const SliverPadding(
-                        padding: EdgeInsets.only(bottom: 16),
-                      ),
-                    ],
-                  ),
+            // ── Hero score card ────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: _HeroScoreCard(
+                dayScore: dayScore,
+                matches: scoringMatches,
+                outcomesByMatchId: scoreOutcomesByMatchId,
+                pickFor: _pickFor,
+                isMatchdayFinalized: isMatchdayFinalized,
+                bonusSigned: bonusSigned,
+                isEnglish: isEnglish,
+                matchdayNumber: _effectiveMatchdayNumber,
+              ),
+            ),
 
-                  // Top layer: hero card (fixed, cards scroll behind it)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                    child: _HeroScoreCard(
-                      dayScore: dayScore,
-                      matches: scoringMatches,
-                      outcomesByMatchId: scoreOutcomesByMatchId,
-                      pickFor: _pickFor,
-                      isMatchdayFinalized: isMatchdayFinalized,
-                      bonusSigned: bonusSigned,
-                      isEnglish: isEnglish,
-                      matchdayNumber: _effectiveMatchdayNumber,
+            // ── Match grid + classifica ────────────────────────────────────
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate((ctx, i) {
+                        final match = matches[i];
+                        final pick = _pickFor(match.id);
+                        final outcome = scoreOutcomesByMatchId[match.id];
+                        final breakdown = dayScore.matchBreakdowns
+                            .cast<MatchScoreBreakdown?>()
+                            .firstWhere(
+                              (b) => b?.matchId == match.id,
+                              orElse: () => null,
+                            );
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _CompactMatchCard(
+                            match: match,
+                            pick: pick,
+                            locked: _locked,
+                            onPick: (p) => _setPick(match.id, p),
+                            outcome: outcome,
+                            matchBreakdown: breakdown,
+                          ),
+                        );
+                      }, childCount: matches.length),
                     ),
                   ),
+                  if (standings.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: SerieAStandingsTable(standings: standings),
+                    ),
+                  const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
                 ],
               ),
             ),
@@ -922,7 +908,7 @@ class _RingPainter extends CustomPainter {
 
     final center = Offset(size.width / 2, size.height / 2);
     final outerR = size.width / 2 - 2;
-    final innerR = outerR * 0.50;
+    final innerR = outerR * 0.58;
 
     // Top semicircle: 9 o'clock → 3 o'clock (through 12 o'clock).
     // Flutter angles: 9 o'clock = π. Clockwise through 12 o'clock
