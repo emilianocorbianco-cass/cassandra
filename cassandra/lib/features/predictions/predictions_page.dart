@@ -574,9 +574,9 @@ class _PredictionsPageState extends State<PredictionsPage>
                   // Layer 1: scrollable match cards
                   CustomScrollView(
                     slivers: [
-                      // Spacer so cards start below the hero card
+                      // Spacer so cards start below the hero card (+10 gap)
                       const SliverToBoxAdapter(
-                        child: SizedBox(height: heroAreaHeight + 8),
+                        child: SizedBox(height: heroAreaHeight + 18),
                       ),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
@@ -617,13 +617,15 @@ class _PredictionsPageState extends State<PredictionsPage>
                   ),
 
                   // Layer 2: hero card pinned on top — cards scroll under it
+                  // Charcoal layer extends 60px above to blend with the
+                  // HomeShell charcoal background (no visible seam).
                   Positioned(
-                    top: 0,
+                    top: -60,
                     left: 0,
                     right: 0,
                     child: Container(
                       color: CassandraColors.charcoal,
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      padding: const EdgeInsets.fromLTRB(12, 64, 12, 4),
                       child: _HeroScoreCard(
                         dayScore: dayScore,
                         matches: scoringMatches,
