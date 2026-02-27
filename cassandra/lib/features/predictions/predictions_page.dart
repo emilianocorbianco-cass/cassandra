@@ -724,7 +724,7 @@ class _HeroScoreCard extends StatelessWidget {
 
     final matchdayTitle = isEnglish
         ? 'Matchday $matchdayNumber'
-        : '$matchdayNumber Giornata';
+        : 'Giornata $matchdayNumber';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
@@ -798,12 +798,12 @@ class _HeroScoreCard extends StatelessWidget {
             ),
           ),
 
-          // ── Right: 6-line breakdown — left-aligned with 16 px
+          // ── Right: 6-line breakdown — left-aligned with 8 px
           // padding from the invisible vertical center line ──────────
           Expanded(
             flex: 50,
             child: Padding(
-              padding: const EdgeInsets.only(left: 16),
+              padding: const EdgeInsets.only(left: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
