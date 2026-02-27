@@ -553,8 +553,12 @@ class _PredictionsPageState extends State<PredictionsPage>
               ? '+${dayScore.bonusPoints}'
               : '${dayScore.bonusPoints}');
 
+    // Hero card height: padding(4+4) + container padding(18+16)
+    // + title(~24) + gap(10) + ring(140) ≈ 216
+    const heroAreaHeight = 216.0;
+
     return Scaffold(
-      backgroundColor: CassandraColors.charcoal,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -563,57 +567,75 @@ class _PredictionsPageState extends State<PredictionsPage>
             if (!usingRealFixturesNow)
               DemoBanner(label: l10n.predictionsSampleDataBanner),
 
-            // ── Hero score card ────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-              child: _HeroScoreCard(
-                dayScore: dayScore,
-                matches: scoringMatches,
-                outcomesByMatchId: scoreOutcomesByMatchId,
-                pickFor: _pickFor,
-                isMatchdayFinalized: isMatchdayFinalized,
-                bonusSigned: bonusSigned,
-                isEnglish: isEnglish,
-                matchdayNumber: _effectiveMatchdayNumber,
-              ),
-            ),
-
-            // ── Match grid + classifica ────────────────────────────────────
+            // ── Stack: hero card pinned on top, match cards scroll under ──
             Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((ctx, i) {
-                        final match = matches[i];
-                        final pick = _pickFor(match.id);
-                        final outcome = scoreOutcomesByMatchId[match.id];
-                        final breakdown = dayScore.matchBreakdowns
-                            .cast<MatchScoreBreakdown?>()
-                            .firstWhere(
-                              (b) => b?.matchId == match.id,
-                              orElse: () => null,
+              child: Stack(
+                children: [
+                  // Layer 1: scrollable match cards
+                  CustomScrollView(
+                    slivers: [
+                      // Spacer so cards start below the hero card
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: heroAreaHeight + 8),
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate((ctx, i) {
+                            final match = matches[i];
+                            final pick = _pickFor(match.id);
+                            final outcome =
+                                scoreOutcomesByMatchId[match.id];
+                            final breakdown = dayScore.matchBreakdowns
+                                .cast<MatchScoreBreakdown?>()
+                                .firstWhere(
+                                  (b) => b?.matchId == match.id,
+                                  orElse: () => null,
+                                );
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _CompactMatchCard(
+                                match: match,
+                                pick: pick,
+                                locked: _locked,
+                                onPick: (p) => _setPick(match.id, p),
+                                outcome: outcome,
+                                matchBreakdown: breakdown,
+                              ),
                             );
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _CompactMatchCard(
-                            match: match,
-                            pick: pick,
-                            locked: _locked,
-                            onPick: (p) => _setPick(match.id, p),
-                            outcome: outcome,
-                            matchBreakdown: breakdown,
-                          ),
-                        );
-                      }, childCount: matches.length),
+                          }, childCount: matches.length),
+                        ),
+                      ),
+                      if (standings.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: SerieAStandingsTable(standings: standings),
+                        ),
+                      const SliverPadding(
+                        padding: EdgeInsets.only(bottom: 16),
+                      ),
+                    ],
+                  ),
+
+                  // Layer 2: hero card pinned on top — cards scroll under it
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      color: CassandraColors.charcoal,
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      child: _HeroScoreCard(
+                        dayScore: dayScore,
+                        matches: scoringMatches,
+                        outcomesByMatchId: scoreOutcomesByMatchId,
+                        pickFor: _pickFor,
+                        isMatchdayFinalized: isMatchdayFinalized,
+                        bonusSigned: bonusSigned,
+                        isEnglish: isEnglish,
+                        matchdayNumber: _effectiveMatchdayNumber,
+                      ),
                     ),
                   ),
-                  if (standings.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: SerieAStandingsTable(standings: standings),
-                    ),
-                  const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
                 ],
               ),
             ),
