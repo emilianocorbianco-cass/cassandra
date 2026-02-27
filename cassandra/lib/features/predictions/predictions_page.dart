@@ -1059,23 +1059,9 @@ class _CompactMatchCard extends StatelessWidget {
     return '$h:$m';
   }
 
-  /// Determine live outcome from current score.
-  MatchOutcome get _liveOutcome {
-    if (outcome != null && outcome!.isGraded) return outcome!;
-    final hg = match.homeGoals;
-    final ag = match.awayGoals;
-    if (hg == null || ag == null) return MatchOutcome.pending;
-    if (hg > ag) return MatchOutcome.home;
-    if (hg < ag) return MatchOutcome.away;
-    return MatchOutcome.draw;
-  }
 
-  /// Is the current pick correct given the live outcome?
-  bool get _isPickCorrectNow {
-    final o = _liveOutcome;
-    if (o.isPending || o.isVoided) return false;
-    return _isPickCorrect(pick, o);
-  }
+
+
 
   /// Win odds: what the user gains if correct.
   double get _winOdds {
@@ -1151,11 +1137,9 @@ class _CompactMatchCard extends StatelessWidget {
           color: CassandraColors.platinum,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: _isStarted
-            ? _buildLiveLayout(centerText, homeInitial, awayInitial)
-            : locked
-                ? _buildPostLockLayout(homeInitial, awayInitial)
-                : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
+        child: locked
+            ? _buildPostLockLayout(homeInitial, awayInitial)
+            : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
       ),
     );
   }
@@ -1342,7 +1326,7 @@ class _CompactMatchCard extends StatelessWidget {
         ),
         const SizedBox(width: 4),
 
-        // ── Center: team rows with logos, names, scores ─────────────
+        // ── Center: team rows with logos + names ─────────────────────
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1368,15 +1352,6 @@ class _CompactMatchCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (_isStarted)
-                    Text(
-                      '${match.homeGoals ?? 0}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: CassandraColors.inkBlackV2,
-                      ),
-                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -1401,20 +1376,38 @@ class _CompactMatchCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (_isStarted)
-                    Text(
-                      '${match.awayGoals ?? 0}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: CassandraColors.inkBlackV2,
-                      ),
-                    ),
                 ],
               ),
             ],
           ),
         ),
+
+        // ── Scores (only after kickoff), centered ────────────────────
+        if (_isStarted) ...[
+          const SizedBox(width: 6),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${match.homeGoals ?? 0}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: CassandraColors.inkBlackV2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${match.awayGoals ?? 0}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: CassandraColors.inkBlackV2,
+                ),
+              ),
+            ],
+          ),
+        ],
 
         // ── Right: 2 pick bubbles ──────────────────────────────────
         if (hasPick) ...[
@@ -1433,115 +1426,6 @@ class _CompactMatchCard extends StatelessWidget {
     );
   }
 
-  /// Live/FT: compact single row with teams, score, and 2 result buttons.
-  Widget _buildLiveLayout(
-    String centerText,
-    String homeInitial,
-    String awayInitial,
-  ) {
-    final liveO = _liveOutcome;
-    final isGraded = liveO.isGraded;
-    final correct = isGraded ? _isPickCorrectNow : false;
-    final hasPick = !pick.isNone;
-
-    return Row(
-      children: [
-        // ── Left: logos + teams + score ─────────────────────────────
-        _TeamLogo(
-          url: match.homeTeamLogo,
-          initial: homeInitial,
-          teamName: match.homeTeam,
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${match.homeTeam} – ${match.awayTeam}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: CassandraColors.inkBlackV2,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  if (_isLive)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: CassandraColors.primary,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        match.statusShort!,
-                        style: const TextStyle(
-                          color: CassandraColors.onPrimary,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  Text(
-                    centerText,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: _isLive
-                          ? CassandraColors.primary
-                          : CassandraColors.inkBlackV2,
-                    ),
-                  ),
-                  if (_isFT) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      'FT',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: CassandraColors.slate.withValues(alpha: 0.55),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 6),
-        _TeamLogo(
-          url: match.awayTeamLogo,
-          initial: awayInitial,
-          teamName: match.awayTeam,
-        ),
-
-        // ── Right: 2 result buttons ────────────────────────────────
-        if (hasPick) ...[
-          const SizedBox(width: 10),
-          _LiveResultButton(
-            label: '+${formatOdds(_winOdds)}',
-            isHighlighted: isGraded && correct,
-            isWin: true,
-          ),
-          const SizedBox(width: 4),
-          _LiveResultButton(
-            label: '-${formatOdds(_loseOdds)}',
-            isHighlighted: isGraded && !correct,
-            isWin: false,
-          ),
-        ],
-      ],
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1616,54 +1500,6 @@ class _CompactOddsButton extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Live Result Button (win/loss during live matches)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _LiveResultButton extends StatelessWidget {
-  const _LiveResultButton({
-    required this.label,
-    required this.isHighlighted,
-    required this.isWin,
-  });
-
-  final String label;
-  final bool isHighlighted;
-
-  /// true = win (darkCyan when highlighted), false = loss (cherryRed).
-  final bool isWin;
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg;
-    Color fg;
-
-    if (!isHighlighted) {
-      bg = CassandraColors.platinum;
-      fg = CassandraColors.inkBlackV2;
-    } else if (isWin) {
-      bg = CassandraColors.darkCyan;
-      fg = CassandraColors.inkBlackV2;
-    } else {
-      bg = CassandraColors.primary; // cherry red
-      fg = CassandraColors.brightSnow;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: CassandraColors.inkBlackV2, width: 1.0),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }
