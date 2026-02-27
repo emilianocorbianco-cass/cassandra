@@ -922,7 +922,7 @@ class _RingPainter extends CustomPainter {
   final List<bool> segmentVoided;
 
   // Gap between each of the 10 segments (uniform).
-  static const double _gapDeg = 3.5;
+  static const double _gapDeg = 2.5;
   static const double _gapRad = _gapDeg * math.pi / 180;
 
   @override
