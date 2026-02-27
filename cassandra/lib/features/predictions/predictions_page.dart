@@ -122,7 +122,11 @@ class _PredictionsPageState extends State<PredictionsPage>
       : matches.map((m) => m.kickoff).reduce((a, b) => a.isBefore(b) ? a : b);
   DateTime? get _lockTime =>
       _firstKickoff?.subtract(const Duration(minutes: 30));
-  bool get _locked => _lockTime != null && DateTime.now().isAfter(_lockTime!);
+  bool get _locked {
+    final override = CassandraScope.of(context).debugLockOverride;
+    if (override != null) return override;
+    return _lockTime != null && DateTime.now().isAfter(_lockTime!);
+  }
 
   void _scheduleLockRefreshIfNeeded() {
     final lockTime = _lockTime;
@@ -1149,7 +1153,9 @@ class _CompactMatchCard extends StatelessWidget {
         ),
         child: _isStarted
             ? _buildLiveLayout(centerText, homeInitial, awayInitial)
-            : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
+            : locked
+                ? _buildPostLockLayout(homeInitial, awayInitial)
+                : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
       ),
     );
   }
@@ -1271,6 +1277,156 @@ class _CompactMatchCard extends StatelessWidget {
             ),
           ],
         ),
+      ],
+    );
+  }
+
+  /// Opposing pick label: single ↔ double chance complement.
+  String _opposingPickLabel() {
+    switch (pick) {
+      case PickOption.home:
+        return 'X2';
+      case PickOption.draw:
+        return '12';
+      case PickOption.away:
+        return '1X';
+      case PickOption.homeDraw:
+        return '2';
+      case PickOption.drawAway:
+        return '1';
+      case PickOption.homeAway:
+        return 'X';
+      case PickOption.none:
+        return '-';
+    }
+  }
+
+  /// Post-lock: status | teams + score | 2 pick bubbles.
+  Widget _buildPostLockLayout(
+    String homeInitial,
+    String awayInitial,
+  ) {
+    final hasPick = !pick.isNone;
+    final kickoff = match.kickoff.toLocal();
+    final dateStr =
+        '${kickoff.day.toString().padLeft(2, '0')}/${kickoff.month.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${kickoff.hour.toString().padLeft(2, '0')}:${kickoff.minute.toString().padLeft(2, '0')}';
+
+    return Row(
+      children: [
+        // ── Left: date/time ────────────────────────────────────────
+        SizedBox(
+          width: 50,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                dateStr,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: CassandraColors.inkBlackV2,
+                ),
+              ),
+              Text(
+                timeStr,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: CassandraColors.inkBlackV2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 4),
+
+        // ── Center: team rows with logos, names, scores ─────────────
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Home team row
+              Row(
+                children: [
+                  _TeamLogo(
+                    url: match.homeTeamLogo,
+                    initial: homeInitial,
+                    teamName: match.homeTeam,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      match.homeTeam,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: CassandraColors.inkBlackV2,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${match.homeGoals ?? 0}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: CassandraColors.inkBlackV2,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              // Away team row
+              Row(
+                children: [
+                  _TeamLogo(
+                    url: match.awayTeamLogo,
+                    initial: awayInitial,
+                    teamName: match.awayTeam,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      match.awayTeam,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: CassandraColors.inkBlackV2,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${match.awayGoals ?? 0}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: CassandraColors.inkBlackV2,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // ── Right: 2 pick bubbles ──────────────────────────────────
+        if (hasPick) ...[
+          const SizedBox(width: 8),
+          _PostLockPickBubble(
+            label: pick.label,
+            odds: _winOdds,
+          ),
+          const SizedBox(width: 4),
+          _PostLockPickBubble(
+            label: _opposingPickLabel(),
+            odds: _loseOdds,
+          ),
+        ],
       ],
     );
   }
@@ -1506,6 +1662,51 @@ class _LiveResultButton extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Post-Lock Pick Bubble (non-interactive, snow white)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PostLockPickBubble extends StatelessWidget {
+  const _PostLockPickBubble({required this.label, required this.odds});
+
+  final String label;
+  final double odds;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      decoration: BoxDecoration(
+        color: CassandraColors.brightSnow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: CassandraColors.inkBlackV2, width: 1.0),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: CassandraColors.inkBlackV2,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            formatOdds(odds),
+            style: const TextStyle(
+              color: CassandraColors.inkBlackV2,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

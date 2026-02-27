@@ -591,6 +591,10 @@ class AppState extends ChangeNotifier {
 
   int _demoSeed;
 
+  /// Debug override for lock state: null = natural, true = forced lock,
+  /// false = forced unlock. Not persisted.
+  bool? _debugLockOverride;
+
   // ===== GRUPPO (delegated to GroupState) =====
 
   String? get groupName => groupState.groupName;
@@ -726,6 +730,13 @@ class AppState extends ChangeNotifier {
   String? get devicePushToken => _devicePushToken;
 
   int get demoSeed => _demoSeed;
+
+  bool? get debugLockOverride => _debugLockOverride;
+
+  void setDebugLockOverride(bool? value) {
+    _debugLockOverride = value;
+    notifyListeners();
+  }
 
   Locale? get localeOverride => localeForLanguage(_language);
 

@@ -182,6 +182,77 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 32),
+                        // ── Debug: mock lock state ───────────────
+                        Text(
+                          'Debug',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade800,
+                                  side: BorderSide(
+                                    color: app.debugLockOverride == false
+                                        ? Colors.orange.shade800
+                                        : Colors.grey.shade400,
+                                    width: app.debugLockOverride == false
+                                        ? 2
+                                        : 1,
+                                  ),
+                                ),
+                                onPressed: () =>
+                                    app.setDebugLockOverride(false),
+                                child: const Text('Pre-lock'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade800,
+                                  side: BorderSide(
+                                    color: app.debugLockOverride == true
+                                        ? Colors.orange.shade800
+                                        : Colors.grey.shade400,
+                                    width: app.debugLockOverride == true
+                                        ? 2
+                                        : 1,
+                                  ),
+                                ),
+                                onPressed: () =>
+                                    app.setDebugLockOverride(true),
+                                child: const Text('Post-lock'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.grey.shade600,
+                                  side: BorderSide(
+                                    color: app.debugLockOverride == null
+                                        ? Colors.orange.shade800
+                                        : Colors.grey.shade400,
+                                    width: app.debugLockOverride == null
+                                        ? 2
+                                        : 1,
+                                  ),
+                                ),
+                                onPressed: () =>
+                                    app.setDebugLockOverride(null),
+                                child: const Text('Natural'),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
             ),
