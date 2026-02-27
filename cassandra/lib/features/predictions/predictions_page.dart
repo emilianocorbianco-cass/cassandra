@@ -931,7 +931,7 @@ class _RingPainter extends CustomPainter {
     if (count == 0) return;
 
     final center = Offset(size.width / 2, size.height / 2);
-    const thickness = 22.0;
+    const thickness = 19.0;
     final outerR = size.width / 2 * 1.10;
     final innerR = outerR - thickness;
 
