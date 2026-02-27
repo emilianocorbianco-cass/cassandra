@@ -616,8 +616,19 @@ class _PredictionsPageState extends State<PredictionsPage>
                     ],
                   ),
 
-                  // Layer 2: hero card pinned on top — cards scroll under it.
-                  // No charcoal wrapper: HomeShell provides the unified bg.
+                  // Layer 2: charcoal mask — hides cards at hero card center.
+                  // Same colour as HomeShell bg so it's invisible.
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: heroAreaHeight / 2,
+                    child: const ColoredBox(
+                      color: CassandraColors.charcoal,
+                    ),
+                  ),
+
+                  // Layer 3: hero card pinned on top.
                   Positioned(
                     top: 0,
                     left: 12,
