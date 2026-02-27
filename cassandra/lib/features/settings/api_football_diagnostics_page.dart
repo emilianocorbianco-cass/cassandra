@@ -6,6 +6,7 @@ import '../../app/state/cassandra_scope.dart';
 import '../../features/predictions/models/formatters.dart';
 import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
+import '../../app/theme/cassandra_colors.dart';
 
 class ApiFootballDiagnosticsPage extends StatefulWidget {
   const ApiFootballDiagnosticsPage({super.key});
@@ -187,6 +188,105 @@ class _ApiFootballDiagnosticsPageState
                 );
               }),
 
+              // ── Odds diagnostic ──────────────────────────────────────
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Quote Diagnostics',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Builder(builder: (ctx) {
+                final app = CassandraScope.of(ctx);
+                final isReal = app.cachedPredictionMatchesAreReal;
+                final updatedAt = app.cachedPredictionMatchesUpdatedAt;
+                final cachedMatches = app.cachedPredictionMatches;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _OddsDiagRow(
+                      label: 'Fonte dati',
+                      value: isReal ? 'Firestore (reale)' : 'Mock / Demo',
+                      valueColor: isReal
+                          ? Colors.green.shade700
+                          : Colors.orange.shade700,
+                    ),
+                    _OddsDiagRow(
+                      label: 'Cache updatedAt',
+                      value: updatedAt != null
+                          ? formatKickoff(updatedAt)
+                          : 'n/a',
+                    ),
+                    _OddsDiagRow(
+                      label: 'Matches in cache',
+                      value: cachedMatches != null
+                          ? '${cachedMatches.length}'
+                          : 'null',
+                    ),
+                    _OddsDiagRow(
+                      label: 'Matchday cursor',
+                      value: '${app.cassandraMatchdayCursor}',
+                    ),
+                    _OddsDiagRow(
+                      label: 'Season key',
+                      value: app.currentSeasonKey,
+                    ),
+                    const SizedBox(height: 8),
+                    if (data.matches.isNotEmpty)
+                      ...data.matches.map((m) {
+                        final o = m.odds;
+                        return Card(
+                          color: CassandraColors.brightSnow,
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${m.homeTeam} vs ${m.awayTeam}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'ID: ${m.id}  •  Kickoff: ${formatKickoff(m.kickoff)}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    _OddsBadge(label: '1', value: o.home),
+                                    _OddsBadge(label: 'X', value: o.draw),
+                                    _OddsBadge(label: '2', value: o.away),
+                                    const SizedBox(width: 8),
+                                    _OddsBadge(label: '1X', value: o.homeDraw),
+                                    _OddsBadge(label: 'X2', value: o.drawAway),
+                                    _OddsBadge(label: '12', value: o.homeAway),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    if (data.matches.isEmpty)
+                      Text(
+                        'Nessuna partita nel documento Firestore.',
+                        style: TextStyle(
+                          color: Colors.orange.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                );
+              }),
+
               // ── Dev: seed mock group members ────────────────────────────
               const SizedBox(height: 24),
               const Divider(),
@@ -255,4 +355,93 @@ class _BackendDiagData {
     this.updatedAt,
     this.errorMessage,
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Odds diagnostic helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OddsDiagRow extends StatelessWidget {
+  const _OddsDiagRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                color: valueColor ?? Colors.black87,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OddsBadge extends StatelessWidget {
+  const _OddsBadge({required this.label, required this.value});
+
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        decoration: BoxDecoration(
+          color: CassandraColors.platinum,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: CassandraColors.inkBlackV2.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: CassandraColors.inkBlackV2,
+              ),
+            ),
+            Text(
+              formatOdds(value),
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: CassandraColors.inkBlackV2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
