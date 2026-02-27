@@ -616,16 +616,14 @@ class _PredictionsPageState extends State<PredictionsPage>
                     ],
                   ),
 
-                  // Layer 2: hero card pinned on top — cards scroll under it
-                  // Charcoal layer extends 60px above to blend with the
-                  // HomeShell charcoal background (no visible seam).
+                  // Layer 2: hero card pinned on top — cards scroll under it.
+                  // No charcoal wrapper: HomeShell provides the unified bg.
                   Positioned(
-                    top: -60,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      color: CassandraColors.charcoal,
-                      padding: const EdgeInsets.fromLTRB(12, 64, 12, 4),
+                    top: 0,
+                    left: 12,
+                    right: 12,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 4),
                       child: _HeroScoreCard(
                         dayScore: dayScore,
                         matches: scoringMatches,
