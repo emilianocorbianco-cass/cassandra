@@ -803,7 +803,7 @@ class _HeroScoreCard extends StatelessWidget {
           Expanded(
             flex: 50,
             child: Padding(
-              padding: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.only(left: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -898,8 +898,9 @@ class _RingPainter extends CustomPainter {
     if (count == 0) return;
 
     final center = Offset(size.width / 2, size.height / 2);
-    final outerR = size.width / 2 - 1;
-    final innerR = outerR * 0.62;
+    const thickness = 26.0;
+    final outerR = size.width / 2;
+    final innerR = outerR - thickness;
 
     // Single ring: 10 equal segments, 10 equal gaps.
     // Total gap = count * _gapRad. Remaining arc shared equally.
