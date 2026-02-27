@@ -772,7 +772,7 @@ class _HeroScoreCard extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            isEnglish ? 'live points' : 'punti live',
+                            isEnglish ? 'Live points' : 'Punti live',
                             style: const TextStyle(
                               color: _fg,
                               fontSize: 12,
@@ -888,67 +888,31 @@ class _RingPainter extends CustomPainter {
   final List<Color> segmentColors;
   final List<bool> segmentVoided;
 
-  // Gap between the two semicircles (at 3h and 9h).
-  static const double _semiGapDeg = 6.0;
-  static const double _semiGapRad = _semiGapDeg * math.pi / 180;
-
-  // Gap between segments within a semicircle.
-  static const double _segGapDeg = 3.0;
-  static const double _segGapRad = _segGapDeg * math.pi / 180;
-
-  // Each semicircle spans 180° minus the semicircle gap on each end.
-  // Effective sweep per semicircle = 180° - semiGap.
-  static const double _semiSweep = math.pi - _semiGapRad;
+  // Gap between each of the 10 segments (uniform).
+  static const double _gapDeg = 3.5;
+  static const double _gapRad = _gapDeg * math.pi / 180;
 
   @override
   void paint(Canvas canvas, Size size) {
     final count = segmentColors.length;
     if (count == 0) return;
-    final half = count ~/ 2; // 5
 
     final center = Offset(size.width / 2, size.height / 2);
-    final outerR = size.width / 2 - 2;
-    final innerR = outerR * 0.58;
+    final outerR = size.width / 2 - 1;
+    final innerR = outerR * 0.62;
 
-    // Top semicircle: 9 o'clock → 3 o'clock (through 12 o'clock).
-    // Flutter angles: 9 o'clock = π. Clockwise through 12 o'clock
-    // would be negative sweep, but we go the other way:
-    // Start at π + halfSemiGap, sweep = -semiSweep... or equivalently
-    // we can think of it as starting just past 9h and sweeping CW
-    // through the top to just before 3h.
-    //
-    // Actually in Flutter positive sweep = clockwise.
-    // To go from 9h → 12h → 3h we need NEGATIVE sweep (counter-clockwise).
-    // Alternative: start just past 9h going up = start at -(π - halfGap),
-    // sweep = -(π - semiGap).
-    //
-    // Simplest: define start angles explicitly.
-    // Top half: from angle (π + halfSemiGap/2) sweeping -(semiSweep).
-    // But let's use positive sweep going CW:
-    //   Top: startAngle = -π + _semiGapRad/2, sweep = +_semiSweep
-    //   This goes from just past 9h (top side) clockwise through 12h to
-    //   just before 3h.
-    // Bottom: startAngle = 0 + _semiGapRad/2, sweep = +_semiSweep
-    //   This goes from just past 3h clockwise through 6h to just before 9h.
+    // Single ring: 10 equal segments, 10 equal gaps.
+    // Total gap = count * _gapRad. Remaining arc shared equally.
+    final segSweep = (2 * math.pi - count * _gapRad) / count;
 
-    final topStart = -math.pi + _semiGapRad / 2;
-    final botStart = _semiGapRad / 2;
+    // 12 o'clock = -π/2 in Flutter. The gap between segment 9 (last)
+    // and segment 0 (first) is centred on 12 o'clock.
+    // Segment 0 starts at: -π/2 + halfGap
+    final startOffset = -math.pi / 2 + _gapRad / 2;
 
-    // Segment sweep within a semicircle (5 segments, 4 inner gaps).
-    final innerGaps = half - 1; // 4
-    final segSweep = (_semiSweep - innerGaps * _segGapRad) / half;
-
-    // Draw top semicircle segments (indices 0–4).
-    for (var i = 0; i < half && i < count; i++) {
-      final startA = topStart + i * (segSweep + _segGapRad);
+    for (var i = 0; i < count; i++) {
+      final startA = startOffset + i * (segSweep + _gapRad);
       _drawSegment(canvas, center, innerR, outerR, startA, segSweep, i);
-    }
-
-    // Draw bottom semicircle segments (indices 5–9).
-    for (var i = 0; i < half && (i + half) < count; i++) {
-      final idx = i + half;
-      final startA = botStart + i * (segSweep + _segGapRad);
-      _drawSegment(canvas, center, innerR, outerR, startA, segSweep, idx);
     }
   }
 
