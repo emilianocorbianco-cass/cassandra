@@ -1368,14 +1368,15 @@ class _CompactMatchCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Text(
-                    '${match.homeGoals ?? 0}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: CassandraColors.inkBlackV2,
+                  if (_isStarted)
+                    Text(
+                      '${match.homeGoals ?? 0}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: CassandraColors.inkBlackV2,
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -1393,21 +1394,22 @@ class _CompactMatchCard extends StatelessWidget {
                       match.awayTeam,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: CassandraColors.inkBlackV2,
                       ),
                     ),
                   ),
-                  Text(
-                    '${match.awayGoals ?? 0}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: CassandraColors.inkBlackV2,
+                  if (_isStarted)
+                    Text(
+                      '${match.awayGoals ?? 0}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: CassandraColors.inkBlackV2,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],
@@ -1680,11 +1682,11 @@ class _PostLockPickBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 50,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      width: 55,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
       decoration: BoxDecoration(
         color: CassandraColors.brightSnow,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(9),
         border: Border.all(color: CassandraColors.inkBlackV2, width: 1.0),
       ),
       child: Column(
@@ -1694,7 +1696,7 @@ class _PostLockPickBubble extends StatelessWidget {
             label,
             style: const TextStyle(
               color: CassandraColors.inkBlackV2,
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -1702,7 +1704,7 @@ class _PostLockPickBubble extends StatelessWidget {
             formatOdds(odds),
             style: const TextStyle(
               color: CassandraColors.inkBlackV2,
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
           ),
