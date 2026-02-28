@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,8 @@ import '../../services/firestore/models/group_document.dart';
 import '../../services/firestore/models/picks_document.dart';
 import '../../services/auth/auth_service.dart';
 import '../../services/firestore/firestore_service.dart';
+import '../../services/notifications/push_notifications_service.dart';
+import '../../services/storage/storage_service.dart';
 import 'dart:async';
 import '../../features/predictions/models/pick_option.dart';
 
@@ -53,6 +56,10 @@ class AppState extends ChangeNotifier {
   static const _kProfileDisplayName = StorageKeys.profileDisplayNameV1;
   static const _kProfileEmail = StorageKeys.profileEmailV1;
   static const _kProfilePhotoUrl = StorageKeys.profilePhotoUrlV1;
+  static const _kProfileLocalUpdatedAtMs =
+      StorageKeys.profileLocalUpdatedAtMsV1;
+  static const _kProfileLocalFieldUpdatedAtMs =
+      StorageKeys.profileLocalFieldUpdatedAtMsV1;
   static const _kRememberMeEnabled = StorageKeys.rememberMeEnabledV1;
   static const _kRememberedUid = StorageKeys.rememberedUidV1;
   static const _kRememberedHandle = StorageKeys.rememberedHandleV1;
@@ -66,6 +73,13 @@ class AppState extends ChangeNotifier {
   static const _kLanguage = StorageKeys.language;
   static const _kDefaultVisibility = StorageKeys.defaultVisibility;
   static const _kThemeMode = StorageKeys.themeMode;
+
+  static const _kProfileFieldDisplayName = 'displayName';
+  static const _kProfileFieldTeamName = 'teamName';
+  static const _kProfileFieldFavoriteTeam = 'favoriteTeam';
+  static const _kProfileFieldPhotoUrl = 'photoUrl';
+  static const _kProfileFieldLanguage = 'language';
+  static const _kProfileFieldDefaultVisibility = 'defaultVisibility';
 
   // ---------------------------------------------------------------------------
   // Pure parsing helpers (extracted for testability)
@@ -85,6 +99,7 @@ class AppState extends ChangeNotifier {
   // Key strings duplicated from PredictionState for scoped key generation.
   static const _kCurrentUserPicksByMatchday =
       StorageKeys.currentUserPicksByMatchdayV1;
+  static const _kPendingPicksOutbox = StorageKeys.pendingPicksOutboxV1;
   static const _kPredictionOutcomesByMatchday =
       StorageKeys.predictionOutcomesByMatchdayV1;
   static const _kMatchdayMatchesByDayV1 = StorageKeys.matchdayMatchesByDayV1;
@@ -121,6 +136,8 @@ class AppState extends ChangeNotifier {
 
   String get _kFirestoreMigrationV1DoneScoped =>
       _scopedHistoryKey(_kFirestoreMigrationV1Done);
+  String get _kPendingPicksOutboxScoped =>
+      _scopedHistoryKey(_kPendingPicksOutbox);
 
   static const UserProfile _defaultProfile = UserProfile(
     id: '',
@@ -132,77 +149,297 @@ class AppState extends ChangeNotifier {
 
   AuthService? _authService;
   FirestoreService? _firestoreService;
+  StorageService? _storageService;
+  StreamSubscription<User?>? _authStateSubscription;
+  StreamSubscription<User?>? _idTokenSubscription;
+  String? _lastAuthBootstrapUid;
 
   AuthService? get authService => _authService;
   FirestoreService? get firestoreService => _firestoreService;
+  StorageService? get storageService => _storageService;
 
   void setAuthService(AuthService service) {
+    if (identical(_authService, service)) return;
+    _authStateSubscription?.cancel();
+    _idTokenSubscription?.cancel();
     _authService = service;
+    _bindAuthReconciliationStreams(service);
   }
 
   void setFirestoreService(FirestoreService service) {
     _firestoreService = service;
+    final currentUser = _authService?.currentUser;
+    if (currentUser != null) {
+      _handleAuthStreamEvent(currentUser);
+    }
+  }
+
+  void setStorageService(StorageService service) {
+    _storageService = service;
+  }
+
+  void _bindAuthReconciliationStreams(AuthService service) {
+    _authStateSubscription = service.authStateChanges.listen(
+      (user) => _handleAuthStreamEvent(user),
+      onError: (Object error, StackTrace stackTrace) {
+        _recordBackendError(error, stackTrace);
+      },
+    );
+    _idTokenSubscription = service.idTokenChanges.listen(
+      (user) => _handleAuthStreamEvent(user),
+      onError: (Object error, StackTrace stackTrace) {
+        _recordBackendError(error, stackTrace);
+      },
+    );
+
+    // Bootstrap immediately from current auth state to avoid startup races.
+    _handleAuthStreamEvent(service.currentUser);
+  }
+
+  void _handleAuthStreamEvent(User? user) {
+    final incomingUid = user?.uid.trim() ?? '';
+    if (incomingUid.isEmpty) {
+      unawaited(_applySignedOutAuthStateIfNeeded());
+      return;
+    }
+    if (_profile.id.trim() != incomingUid) {
+      setProfileFromFirebaseUser(user!);
+    }
+    if (_lastAuthBootstrapUid == incomingUid) {
+      return;
+    }
+    _lastAuthBootstrapUid = incomingUid;
+    unawaited(_runPostAuthBootstrap(incomingUid));
+  }
+
+  Future<void> _runPostAuthBootstrap(String uid) async {
+    if (uid.trim().isEmpty || _profile.id.trim() != uid.trim()) return;
+    if (_firestoreService == null) {
+      // Retry bootstrap when Firestore is attached later.
+      _lastAuthBootstrapUid = null;
+      return;
+    }
+    await hydrateProfileFromFirestore(uid);
+    try {
+      await _firestoreService?.resumeDeletingGroupsForAdmin(adminUid: uid);
+    } catch (e, st) {
+      _recordBackendError(e, st);
+    }
+    await hydrateCurrentUserHistoryFromFirestore();
+    await migrateLocalDataToFirestoreIfNeeded();
+    await flushPendingPicksOutbox();
+    await PushNotificationsService.instance.initializeForAppState(this);
+  }
+
+  Future<void> _applySignedOutAuthStateIfNeeded() async {
+    if (_profile.id.trim().isEmpty) return;
+    _lastAuthBootstrapUid = null;
+    _prefs?.remove(_kProfileId);
+    _prefs?.remove(_kProfileDisplayName);
+    _prefs?.remove(_kProfileEmail);
+    _prefs?.remove(_kProfilePhotoUrl);
+
+    _profile = _defaultProfile;
+    _currentUserProfileSetupCompleted = false;
+    _profileLocalUpdatedAtMs = 0;
+    _profileLocalFieldUpdatedAtMs = const <String, int>{};
+    _resetProfileSyncState();
+    _hydratedCurrentUserHistoryKey = null;
+    _historyHydrationQueued = false;
+    _cancelStandingsStream();
+    await groupState.clearAll();
+    predictionState.clearAllHistory();
+    await _prefs?.remove(_kProfileLocalUpdatedAtMs);
+    await _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
+    await _prefs?.remove(_kPendingPicksOutboxScoped);
+    notifyListeners();
+  }
+
+  static Map<String, int> _decodeProfileFieldUpdateMap(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const <String, int>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const <String, int>{};
+      final out = <String, int>{};
+      for (final entry in decoded.entries) {
+        final key = entry.key.toString().trim();
+        if (key.isEmpty) continue;
+        final value = (entry.value as num?)?.toInt();
+        if (value == null || value <= 0) continue;
+        out[key] = value;
+      }
+      return Map<String, int>.unmodifiable(out);
+    } catch (_) {
+      return const <String, int>{};
+    }
+  }
+
+  Future<void> _persistProfileFieldUpdateMap() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    if (_profileLocalFieldUpdatedAtMs.isEmpty) {
+      await prefs.remove(_kProfileLocalFieldUpdatedAtMs);
+      return;
+    }
+    await prefs.setString(
+      _kProfileLocalFieldUpdatedAtMs,
+      jsonEncode(_profileLocalFieldUpdatedAtMs),
+    );
+  }
+
+  int _localProfileUpdatedAtForField(String fieldKey) {
+    final fromField = _profileLocalFieldUpdatedAtMs[fieldKey];
+    if (fromField != null && fromField > 0) return fromField;
+    return _profileLocalUpdatedAtMs;
+  }
+
+  bool _isRemoteProfileFieldNewer(int? remoteUpdatedAtMs, String fieldKey) {
+    if (remoteUpdatedAtMs == null) return false;
+    return remoteUpdatedAtMs > _localProfileUpdatedAtForField(fieldKey);
+  }
+
+  Future<void> _markLocalProfileUpdatedNow([String? fieldKey]) async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _profileLocalUpdatedAtMs = nowMs;
+    if (fieldKey != null && fieldKey.trim().isNotEmpty) {
+      _profileLocalFieldUpdatedAtMs = {
+        ..._profileLocalFieldUpdatedAtMs,
+        fieldKey.trim(): nowMs,
+      };
+    }
+    await _prefs?.setInt(_kProfileLocalUpdatedAtMs, _profileLocalUpdatedAtMs);
+    if (fieldKey != null && fieldKey.trim().isNotEmpty) {
+      await _persistProfileFieldUpdateMap();
+    }
+  }
+
+  void _markRemoteFieldApplied(String fieldKey, int remoteUpdatedAtMs) {
+    _profileLocalFieldUpdatedAtMs = {
+      ..._profileLocalFieldUpdatedAtMs,
+      fieldKey: remoteUpdatedAtMs,
+    };
+  }
+
+  int? _extractRemoteProfileUpdatedAtMs(Map<String, dynamic> data) {
+    final raw = data['updatedAt'];
+    if (raw is DateTime) return raw.millisecondsSinceEpoch;
+    if (raw is Timestamp) return raw.toDate().millisecondsSinceEpoch;
+    return null;
   }
 
   /// Merge profilo letto da Firestore con stato locale.
   /// Usato all'avvio per ripristinare dati da cloud su device nuovo.
   void mergeFirestoreProfile(Map<String, dynamic> data) {
     bool changed = false;
+    final remoteUpdatedAtMs = _extractRemoteProfileUpdatedAtMs(data);
 
     final remoteDisplayName = data['displayName'] as String?;
     if (remoteDisplayName != null) {
       final sanitized = UserProfile.sanitizeDisplayName(remoteDisplayName);
-      if (sanitized.isNotEmpty && sanitized != _profile.displayName) {
+      final remoteIsNewer = _isRemoteProfileFieldNewer(
+        remoteUpdatedAtMs,
+        _kProfileFieldDisplayName,
+      );
+      if (sanitized.isNotEmpty &&
+          (remoteIsNewer || _profile.displayName.trim().isEmpty) &&
+          sanitized != _profile.displayName) {
         _profile = _profile.copyWith(displayName: sanitized);
         _prefs?.setString(_kProfileDisplayName, sanitized);
+        if (remoteUpdatedAtMs != null) {
+          _markRemoteFieldApplied(_kProfileFieldDisplayName, remoteUpdatedAtMs);
+        }
         changed = true;
       }
     }
 
     final remoteTeamName = data['teamName'] as String?;
-    if (remoteTeamName != null &&
-        remoteTeamName.trim().isNotEmpty &&
-        _profile.teamName == _defaultProfile.teamName &&
-        remoteTeamName != _profile.teamName) {
+    if (remoteTeamName != null && remoteTeamName.trim().isNotEmpty) {
       final normalizedRemote = UserProfile.normalizeHandle(remoteTeamName);
-      _profile = _profile.copyWith(teamName: normalizedRemote);
-      _prefs?.setString(_kProfileTeamName, normalizedRemote);
-      changed = true;
+      final remoteIsNewer = _isRemoteProfileFieldNewer(
+        remoteUpdatedAtMs,
+        _kProfileFieldTeamName,
+      );
+      if ((remoteIsNewer || _profile.teamName == _defaultProfile.teamName) &&
+          normalizedRemote != _profile.teamName) {
+        _profile = _profile.copyWith(teamName: normalizedRemote);
+        _prefs?.setString(_kProfileTeamName, normalizedRemote);
+        if (remoteUpdatedAtMs != null) {
+          _markRemoteFieldApplied(_kProfileFieldTeamName, remoteUpdatedAtMs);
+        }
+        changed = true;
+      }
     }
 
     final remoteFavoriteTeam = data['favoriteTeam'] as String?;
     final sanitizedFav = UserProfile.sanitizeFavoriteTeam(remoteFavoriteTeam);
-    if (sanitizedFav != null && _profile.favoriteTeam == null) {
+    final remoteIsNewerFavorite = _isRemoteProfileFieldNewer(
+      remoteUpdatedAtMs,
+      _kProfileFieldFavoriteTeam,
+    );
+    if (sanitizedFav != null &&
+        (remoteIsNewerFavorite || _profile.favoriteTeam == null) &&
+        sanitizedFav != _profile.favoriteTeam) {
       _profile = _profile.copyWith(favoriteTeam: sanitizedFav);
       _prefs?.setString(_kProfileFavoriteTeam, sanitizedFav);
+      if (remoteUpdatedAtMs != null) {
+        _markRemoteFieldApplied(_kProfileFieldFavoriteTeam, remoteUpdatedAtMs);
+      }
       changed = true;
     }
 
     final remotePhotoUrl = data['photoUrl'] as String?;
-    if (remotePhotoUrl != null &&
-        remotePhotoUrl.trim().isNotEmpty &&
-        _profile.photoUrl != remotePhotoUrl.trim()) {
-      _profile = _profile.copyWith(photoUrl: remotePhotoUrl.trim());
-      _prefs?.setString(_kProfilePhotoUrl, remotePhotoUrl.trim());
-      changed = true;
+    if (remotePhotoUrl != null && remotePhotoUrl.trim().isNotEmpty) {
+      final normalizedRemotePhoto = _normalizePersistedImageReference(
+        remotePhotoUrl,
+      );
+      final remoteIsNewer = _isRemoteProfileFieldNewer(
+        remoteUpdatedAtMs,
+        _kProfileFieldPhotoUrl,
+      );
+      if ((remoteIsNewer || (_profile.photoUrl ?? '').trim().isEmpty) &&
+          _profile.photoUrl != normalizedRemotePhoto) {
+        _profile = _profile.copyWith(photoUrl: normalizedRemotePhoto);
+        _prefs?.setString(_kProfilePhotoUrl, normalizedRemotePhoto);
+        if (remoteUpdatedAtMs != null) {
+          _markRemoteFieldApplied(_kProfileFieldPhotoUrl, remoteUpdatedAtMs);
+        }
+        changed = true;
+      }
     }
 
     final remoteLang = data['language'] as String?;
-    if (remoteLang != null) {
+    final remoteIsNewerLanguage = _isRemoteProfileFieldNewer(
+      remoteUpdatedAtMs,
+      _kProfileFieldLanguage,
+    );
+    if (remoteLang != null && remoteIsNewerLanguage) {
       final parsed = cassandraLanguageFromStorage(remoteLang);
       if (parsed != _language) {
         _language = parsed;
         _prefs?.setString(_kLanguage, remoteLang);
+        if (remoteUpdatedAtMs != null) {
+          _markRemoteFieldApplied(_kProfileFieldLanguage, remoteUpdatedAtMs);
+        }
         changed = true;
       }
     }
 
     final remoteVis = data['defaultVisibility'] as String?;
-    if (remoteVis != null) {
+    final remoteIsNewerVisibility = _isRemoteProfileFieldNewer(
+      remoteUpdatedAtMs,
+      _kProfileFieldDefaultVisibility,
+    );
+    if (remoteVis != null && remoteIsNewerVisibility) {
       final parsed = predictionVisibilityFromStorage(remoteVis);
       if (parsed != _defaultVisibility) {
         _defaultVisibility = parsed;
         _prefs?.setString(_kDefaultVisibility, remoteVis);
+        if (remoteUpdatedAtMs != null) {
+          _markRemoteFieldApplied(
+            _kProfileFieldDefaultVisibility,
+            remoteUpdatedAtMs,
+          );
+        }
         changed = true;
       }
     }
@@ -234,6 +471,15 @@ class AppState extends ChangeNotifier {
         previousActiveGroupId != groupState.activeGroupId) {
       _triggerHistoryHydrationWithRetry();
     }
+
+    if (remoteUpdatedAtMs != null &&
+        remoteUpdatedAtMs > _profileLocalUpdatedAtMs) {
+      _profileLocalUpdatedAtMs = remoteUpdatedAtMs;
+      unawaited(_prefs?.setInt(_kProfileLocalUpdatedAtMs, remoteUpdatedAtMs));
+    }
+    if (remoteUpdatedAtMs != null) {
+      unawaited(_persistProfileFieldUpdateMap());
+    }
   }
 
   // ===== GROUP STATE (delegated) =====
@@ -254,33 +500,54 @@ class AppState extends ChangeNotifier {
   bool _profileSyncLoopRunning = false;
   int _profileSyncRetryAttempt = 0;
   String? _lastProfileSyncFingerprint;
+  String? _profileHydrationPendingUid;
+  String? _profileHydrationCompletedUid;
   String? _lastBackendSyncError;
   DateTime? _lastBackendSyncErrorAt;
+  int _consecutiveSyncFailures = 0;
+
+  /// Number of consecutive sync failures required before the offline banner
+  /// is shown. With a 30-second sync interval this means ~60 s of sustained
+  /// failures before the user sees the banner — enough to ignore transient
+  /// hiccups while still surfacing real connectivity problems quickly.
+  static const int _syncFailureThreshold = 2;
 
   StreamSubscription<List<ApiFootballStanding>>? _standingsSubscription;
 
   String? get lastBackendSyncError => _lastBackendSyncError;
   DateTime? get lastBackendSyncErrorAt => _lastBackendSyncErrorAt;
-  bool get hasBackendSyncError => _lastBackendSyncError != null;
+  bool get hasBackendSyncError =>
+      _lastBackendSyncError != null &&
+      _consecutiveSyncFailures >= _syncFailureThreshold;
 
   void _recordBackendError(Object error, [StackTrace? st]) {
+    _consecutiveSyncFailures++;
     final message = error.toString();
     _lastBackendSyncError = message;
     _lastBackendSyncErrorAt = DateTime.now();
     if (kDebugMode) {
-      debugPrint('[backend-sync] $message');
+      debugPrint(
+        '[backend-sync] failure $_consecutiveSyncFailures/$_syncFailureThreshold: $message',
+      );
       if (st != null) debugPrint('$st');
     }
-    notifyListeners();
+    // Only notify (and potentially show the banner) when the threshold is
+    // reached or already exceeded.  Before that the UI stays unchanged.
+    if (_consecutiveSyncFailures >= _syncFailureThreshold) {
+      notifyListeners();
+    }
   }
 
   void _clearBackendError() {
-    if (_lastBackendSyncError == null && _lastBackendSyncErrorAt == null) {
-      return;
-    }
+    final hadVisibleError =
+        _lastBackendSyncError != null &&
+        _consecutiveSyncFailures >= _syncFailureThreshold;
     _lastBackendSyncError = null;
     _lastBackendSyncErrorAt = null;
-    notifyListeners();
+    _consecutiveSyncFailures = 0;
+    if (hadVisibleError) {
+      notifyListeners();
+    }
   }
 
   void markBackendSyncError(Object error, [StackTrace? st]) {
@@ -305,6 +572,54 @@ class AppState extends ChangeNotifier {
       '$currentUserAvatarSeed',
       sortedGroupIds.join(','),
     ].join('|');
+  }
+
+  bool _isProfileHydrationPendingForUid(String uid) {
+    final cleaned = uid.trim();
+    if (cleaned.isEmpty) return false;
+    return _profileHydrationPendingUid == cleaned;
+  }
+
+  void _markProfileHydrationPending(String uid) {
+    final cleaned = uid.trim();
+    if (cleaned.isEmpty) return;
+    _profileHydrationPendingUid = cleaned;
+    if (_profileHydrationCompletedUid != cleaned) {
+      _profileHydrationCompletedUid = null;
+    }
+  }
+
+  void _markProfileHydrationCompleted(String uid) {
+    final cleaned = uid.trim();
+    if (cleaned.isEmpty) return;
+    if (_profileHydrationPendingUid == cleaned) {
+      _profileHydrationPendingUid = null;
+    }
+    _profileHydrationCompletedUid = cleaned;
+    if (_profile.id.trim() == cleaned && _profileSyncDirty) {
+      _profileSyncRetryTimer?.cancel();
+      _profileSyncRetryTimer = null;
+      _profileSyncRetryAttempt = 0;
+      _scheduleProfileSyncStart(Duration.zero);
+    }
+  }
+
+  void _clearProfileHydrationState() {
+    _profileHydrationPendingUid = null;
+    _profileHydrationCompletedUid = null;
+  }
+
+  void _resetProfileSyncState({bool clearHydration = true}) {
+    _profileSyncDebounceTimer?.cancel();
+    _profileSyncDebounceTimer = null;
+    _profileSyncRetryTimer?.cancel();
+    _profileSyncRetryTimer = null;
+    _profileSyncDirty = false;
+    _profileSyncRetryAttempt = 0;
+    _lastProfileSyncFingerprint = null;
+    if (clearHydration) {
+      _clearProfileHydrationState();
+    }
   }
 
   void _scheduleProfileSyncStart(Duration delay) {
@@ -373,6 +688,9 @@ class AppState extends ChangeNotifier {
     if (uid.isEmpty) {
       return false;
     }
+    if (_isProfileHydrationPendingForUid(uid)) {
+      return true;
+    }
 
     final fingerprint = _profileSyncFingerprint();
     if (_lastProfileSyncFingerprint == fingerprint) {
@@ -415,11 +733,9 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
-    _profileSyncDebounceTimer?.cancel();
-    _profileSyncDebounceTimer = null;
-    _profileSyncRetryTimer?.cancel();
-    _profileSyncRetryTimer = null;
-    _profileSyncRetryAttempt = 0;
+    _authStateSubscription?.cancel();
+    _idTokenSubscription?.cancel();
+    _resetProfileSyncState();
     _cancelStandingsStream();
     groupState.removeListener(notifyListeners);
     predictionState.removeListener(notifyListeners);
@@ -454,9 +770,13 @@ class AppState extends ChangeNotifier {
     final fs = _firestoreService;
     final targetUid = uid ?? _profile.id;
     if (fs == null || targetUid.isEmpty) return;
+    _markProfileHydrationPending(targetUid);
 
     try {
       final data = await fs.getUserProfile(targetUid);
+      if (_profile.id.trim() != targetUid.trim()) {
+        return;
+      }
       if (data != null) {
         mergeFirestoreProfile(data);
       }
@@ -476,6 +796,13 @@ class AppState extends ChangeNotifier {
       await _repairProfilePhotoReferenceIfNeeded();
     } catch (e, st) {
       _recordBackendError(e, st);
+    } finally {
+      final currentUid = _profile.id.trim();
+      if (currentUid == targetUid.trim()) {
+        _markProfileHydrationCompleted(currentUid);
+      } else if (_profileHydrationPendingUid == targetUid.trim()) {
+        _profileHydrationPendingUid = null;
+      }
     }
   }
 
@@ -495,6 +822,10 @@ class AppState extends ChangeNotifier {
     if (fs == null || !isAuthenticated) return;
     final uid = _profile.id;
     if (uid.isEmpty) return;
+    if (_isProfileHydrationPendingForUid(uid)) {
+      _syncProfileToFirestore();
+      return;
+    }
     final payload = Map<String, dynamic>.from(fields);
     unawaited(
       _runFirestoreWriteWithRetry(
@@ -504,7 +835,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> _runFirestoreWriteWithRetry({
+  Future<_FirestoreWriteResult> _runFirestoreWriteWithRetryDetailed({
     required String operation,
     required Future<void> Function() action,
   }) async {
@@ -512,19 +843,23 @@ class AppState extends ChangeNotifier {
       try {
         await action();
         _clearBackendError();
-        return;
+        return const _FirestoreWriteResult(success: true);
       } catch (error, stackTrace) {
         final isLastAttempt = attempt >= _kFirestoreWriteAttempts;
+        debugPrint(
+          '[firestore-write] $operation attempt '
+          '$attempt/$_kFirestoreWriteAttempts failed: $error',
+        );
         if (kDebugMode) {
-          debugPrint(
-            '[firestore-write] $operation attempt '
-            '$attempt/$_kFirestoreWriteAttempts failed: $error',
-          );
           debugPrint('$stackTrace');
         }
         if (isLastAttempt) {
           _recordBackendError(error, stackTrace);
-          return;
+          return _FirestoreWriteResult(
+            success: false,
+            error: error,
+            stackTrace: stackTrace,
+          );
         }
         final backoff = Duration(
           milliseconds:
@@ -534,6 +869,18 @@ class AppState extends ChangeNotifier {
         await Future<void>.delayed(backoff);
       }
     }
+    return const _FirestoreWriteResult(success: false);
+  }
+
+  Future<bool> _runFirestoreWriteWithRetry({
+    required String operation,
+    required Future<void> Function() action,
+  }) async {
+    final result = await _runFirestoreWriteWithRetryDetailed(
+      operation: operation,
+      action: action,
+    );
+    return result.success;
   }
 
   bool get isAuthenticated => _authService?.isSignedIn ?? false;
@@ -588,6 +935,9 @@ class AppState extends ChangeNotifier {
   String? _rememberedPhotoUrl;
   String? _rememberedProvider;
   String? _devicePushToken;
+  int _profileLocalUpdatedAtMs = 0;
+  Map<String, int> _profileLocalFieldUpdatedAtMs = const <String, int>{};
+  bool _flushingPendingPicksOutbox = false;
 
   int _demoSeed;
 
@@ -621,25 +971,81 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  String _normalizePersistedImageReference(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return trimmed;
+    final storage = _storageService;
+    if (storage != null) {
+      return storage.normalizePersistedImageReference(trimmed);
+    }
+    return StorageService.normalizePersistedReference(trimmed);
+  }
+
   Future<void> updateGroupImagePath(String? path) async {
     final cleaned = (path ?? '').trim();
     final nextRaw = cleaned.isEmpty ? null : cleaned;
-    final nextPortable = nextRaw == null
-        ? null
-        : await _portableImageReference(nextRaw);
-    final next = nextPortable ?? nextRaw;
+    final previous = (groupState.groupImagePath ?? '').trim();
+    final fs = _firestoreService;
+    final groupId = activeGroupId;
+    final remoteWritable = fs != null && isAuthenticated && groupId != null;
+
+    if (nextRaw == null) {
+      if (remoteWritable) {
+        final writableFs = fs;
+        final writableGroupId = groupId;
+        final ok = await _runFirestoreWriteWithRetry(
+          operation: 'updateGroupImageUrl.clear',
+          action: () => writableFs.updateGroupImageUrl(
+            groupId: writableGroupId,
+            imageUrl: null,
+          ),
+        );
+        if (!ok) return;
+      }
+      await groupState.updateGroupImagePath(null);
+      if (previous.isNotEmpty) {
+        unawaited(_bestEffortDeleteStorageObject(previous));
+      }
+      return;
+    }
+
+    final imageRef = await _resolveImageReferenceForUpload(
+      source: nextRaw,
+      profileUid: null,
+      groupId: groupId,
+    );
+    final next = imageRef == null
+        ? nextRaw
+        : (imageRef.uploaded
+              ? StorageService.toStorageReference(imageRef.storagePath)
+              : _normalizePersistedImageReference(imageRef.downloadUrl));
+
+    if (remoteWritable) {
+      final writableFs = fs;
+      final writableGroupId = groupId;
+      final ok = await _runFirestoreWriteWithRetry(
+        operation: 'updateGroupImageUrl',
+        action: () => writableFs.updateGroupImageUrl(
+          groupId: writableGroupId,
+          imageUrl: next,
+        ),
+      );
+      if (!ok) {
+        if (imageRef?.uploaded == true) {
+          unawaited(
+            _bestEffortDeleteStorageObject(
+              StorageService.toStorageReference(imageRef!.storagePath),
+            ),
+          );
+        }
+        return;
+      }
+    }
 
     await groupState.updateGroupImagePath(next);
 
-    final fs = _firestoreService;
-    final groupId = activeGroupId;
-    if (fs != null && isAuthenticated && groupId != null) {
-      try {
-        await fs.updateGroupImageUrl(groupId: groupId, imageUrl: next);
-        _clearBackendError();
-      } catch (e, st) {
-        _recordBackendError(e, st);
-      }
+    if (imageRef?.uploaded == true && previous.isNotEmpty && previous != next) {
+      unawaited(_bestEffortDeleteStorageObject(previous));
     }
   }
 
@@ -850,7 +1256,13 @@ class AppState extends ChangeNotifier {
     final storedDisplayName = (prefs.getString(_kProfileDisplayName) ?? '')
         .trim();
     final storedEmail = (prefs.getString(_kProfileEmail) ?? '').trim();
-    final storedPhotoUrl = (prefs.getString(_kProfilePhotoUrl) ?? '').trim();
+    final storedPhotoUrl = StorageService.normalizePersistedReference(
+      (prefs.getString(_kProfilePhotoUrl) ?? '').trim(),
+    );
+    if (storedPhotoUrl.isNotEmpty &&
+        storedPhotoUrl != (prefs.getString(_kProfilePhotoUrl) ?? '').trim()) {
+      await prefs.setString(_kProfilePhotoUrl, storedPhotoUrl);
+    }
 
     // teamName: prova chiave nuova, poi legacy
     final storedTeamName =
@@ -899,10 +1311,21 @@ class AppState extends ChangeNotifier {
     final rememberedHandle = (prefs.getString(_kRememberedHandle) ?? '').trim();
     final rememberedPhotoUrl = (prefs.getString(_kRememberedPhotoUrl) ?? '')
         .trim();
+    final normalizedRememberedPhotoUrl =
+        StorageService.normalizePersistedReference(rememberedPhotoUrl);
+    if (rememberedPhotoUrl.isNotEmpty &&
+        normalizedRememberedPhotoUrl != rememberedPhotoUrl) {
+      await prefs.setString(_kRememberedPhotoUrl, normalizedRememberedPhotoUrl);
+    }
     final rememberedProvider = (prefs.getString(_kRememberedProvider) ?? '')
         .trim()
         .toLowerCase();
     final storedPushToken = (prefs.getString(_kDevicePushToken) ?? '').trim();
+    final profileLocalUpdatedAtMs =
+        prefs.getInt(_kProfileLocalUpdatedAtMs) ?? 0;
+    final profileLocalFieldUpdatedAtMs = _decodeProfileFieldUpdateMap(
+      prefs.getString(_kProfileLocalFieldUpdatedAtMs),
+    );
     final profileSetupCompleted = storedId.isNotEmpty
         ? (prefs.getBool(_profileSetupCompletedKeyForUid(storedId)) ?? false)
         : false;
@@ -923,12 +1346,14 @@ class AppState extends ChangeNotifier {
       .._rememberedHandle = rememberedHandle.isEmpty ? null : rememberedHandle
       .._rememberedPhotoUrl = rememberedPhotoUrl.isEmpty
           ? null
-          : rememberedPhotoUrl
+          : normalizedRememberedPhotoUrl
       .._rememberedProvider =
           (rememberedProvider == 'google' || rememberedProvider == 'apple')
           ? rememberedProvider
           : null
       .._devicePushToken = storedPushToken.isEmpty ? null : storedPushToken
+      .._profileLocalUpdatedAtMs = profileLocalUpdatedAtMs
+      .._profileLocalFieldUpdatedAtMs = profileLocalFieldUpdatedAtMs
       .._currentUserProfileSetupCompleted = profileSetupCompleted;
   }
 
@@ -962,6 +1387,7 @@ class AppState extends ChangeNotifier {
     await _prefs?.setString(_kProfileTeamName, normalized);
     // scrivo anche la legacy per compatibilità
     await _prefs?.setString(_kTeamNameLegacy, normalized);
+    await _markLocalProfileUpdatedNow(_kProfileFieldTeamName);
     await _syncRememberedIdentityFromProfile();
     _syncProfileToFirestore();
   }
@@ -975,6 +1401,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     await _prefs?.setString(_kProfileDisplayName, cleaned);
+    await _markLocalProfileUpdatedNow(_kProfileFieldDisplayName);
     await _syncRememberedIdentityFromProfile();
     _syncProfileToFirestore();
   }
@@ -982,25 +1409,76 @@ class AppState extends ChangeNotifier {
   Future<void> updateProfilePhotoPath(String? path) async {
     final cleaned = (path ?? '').trim();
     final nextRaw = cleaned.isEmpty ? null : cleaned;
-    final nextPortable = nextRaw == null
-        ? null
-        : await _portableImageReference(nextRaw);
-    final next = nextPortable ?? nextRaw;
-    if (next == _profile.photoUrl) return;
+    final current = (_profile.photoUrl ?? '').trim();
+    if (nextRaw != null && nextRaw == current) return;
 
-    _profile = _profile.copyWith(photoUrl: next, clearPhotoUrl: next == null);
-    notifyListeners();
+    final fs = _firestoreService;
+    final uid = _profile.id.trim();
+    final remoteWritable = fs != null && isAuthenticated && uid.isNotEmpty;
 
-    if (next == null) {
+    if (nextRaw == null) {
+      if (remoteWritable) {
+        final writableFs = fs;
+        final ok = await _runFirestoreWriteWithRetry(
+          operation: 'updateUserField.photoUrl.clear',
+          action: () => writableFs.updateUserField(uid, {'photoUrl': null}),
+        );
+        if (!ok) return;
+      }
+
+      _profile = _profile.copyWith(clearPhotoUrl: true);
+      notifyListeners();
       await _prefs?.remove(_kProfilePhotoUrl);
+      await _markLocalProfileUpdatedNow(_kProfileFieldPhotoUrl);
       await _syncRememberedIdentityFromProfile();
       _syncProfileToFirestore();
+      if (current.isNotEmpty) {
+        unawaited(_bestEffortDeleteStorageObject(current));
+      }
       return;
     }
 
+    final uploaded = await _resolveImageReferenceForUpload(
+      source: nextRaw,
+      profileUid: uid,
+      groupId: null,
+    );
+    final next = uploaded == null
+        ? nextRaw
+        : (uploaded.uploaded
+              ? StorageService.toStorageReference(uploaded.storagePath)
+              : _normalizePersistedImageReference(uploaded.downloadUrl));
+    if (next == current) return;
+
+    if (remoteWritable) {
+      final writableFs = fs;
+      final ok = await _runFirestoreWriteWithRetry(
+        operation: 'updateUserField.photoUrl',
+        action: () => writableFs.updateUserField(uid, {'photoUrl': next}),
+      );
+      if (!ok) {
+        if (uploaded?.uploaded == true) {
+          unawaited(
+            _bestEffortDeleteStorageObject(
+              StorageService.toStorageReference(uploaded!.storagePath),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    _profile = _profile.copyWith(photoUrl: next);
+    notifyListeners();
+
     await _prefs?.setString(_kProfilePhotoUrl, next);
+    await _markLocalProfileUpdatedNow(_kProfileFieldPhotoUrl);
     await _syncRememberedIdentityFromProfile();
     _syncProfileToFirestore();
+
+    if (uploaded?.uploaded == true && current.isNotEmpty && current != next) {
+      unawaited(_bestEffortDeleteStorageObject(current));
+    }
   }
 
   Future<void> updateFavoriteTeam(String value) async {
@@ -1023,6 +1501,7 @@ class AppState extends ChangeNotifier {
       await _prefs.setString(_kProfileFavoriteTeam, stored);
       await _prefs.setString(_kFavoriteTeamLegacy, stored);
     }
+    await _markLocalProfileUpdatedNow(_kProfileFieldFavoriteTeam);
     _syncProfileToFirestore();
   }
 
@@ -1031,6 +1510,7 @@ class AppState extends ChangeNotifier {
     _language = value;
     notifyListeners();
     await _prefs?.setString(_kLanguage, cassandraLanguageToStorage(value));
+    await _markLocalProfileUpdatedNow(_kProfileFieldLanguage);
     _syncFieldToFirestore({'language': cassandraLanguageToStorage(value)});
   }
 
@@ -1049,6 +1529,7 @@ class AppState extends ChangeNotifier {
       _kDefaultVisibility,
       predictionVisibilityToStorage(value),
     );
+    await _markLocalProfileUpdatedNow(_kProfileFieldDefaultVisibility);
     _syncFieldToFirestore({
       'defaultVisibility': predictionVisibilityToStorage(value),
     });
@@ -1085,6 +1566,18 @@ class AppState extends ChangeNotifier {
   }
 
   void setProfileFromFirebaseUser(User user) {
+    final previousPersistedUid = (_prefs?.getString(_kProfileId) ?? '').trim();
+    final nextUid = user.uid.trim();
+    _lastProfileSyncFingerprint = null;
+    _markProfileHydrationPending(nextUid);
+    final accountSwitched =
+        previousPersistedUid.isEmpty || previousPersistedUid != nextUid;
+    if (accountSwitched) {
+      // Prevent cross-account cache contamination on shared devices.
+      predictionState.clearAllHistory();
+      _hydratedCurrentUserHistoryKey = null;
+    }
+
     final existingTeamName =
         _prefs?.getString(_kProfileTeamName) ??
         _prefs?.getString(_kTeamNameLegacy);
@@ -1093,7 +1586,9 @@ class AppState extends ChangeNotifier {
         _prefs?.getString(_kFavoriteTeamLegacy);
     final existingPhotoUrlRaw =
         _prefs?.getString(_kProfilePhotoUrl) ?? _profile.photoUrl;
-    final existingPhotoUrl = (existingPhotoUrlRaw ?? '').trim();
+    final existingPhotoUrl = _normalizePersistedImageReference(
+      (existingPhotoUrlRaw ?? '').trim(),
+    );
 
     _profile = UserProfile.fromFirebaseUser(
       user,
@@ -1101,6 +1596,8 @@ class AppState extends ChangeNotifier {
       existingFavoriteTeam: existingFavoriteTeam,
       existingPhotoUrl: existingPhotoUrl.isEmpty ? null : existingPhotoUrl,
     );
+    _profileLocalUpdatedAtMs = 0;
+    _profileLocalFieldUpdatedAtMs = const <String, int>{};
     _currentUserProfileSetupCompleted = _readProfileSetupCompletedForUid(
       user.uid,
     );
@@ -1113,6 +1610,8 @@ class AppState extends ChangeNotifier {
     if (_profile.photoUrl != null) {
       _prefs?.setString(_kProfilePhotoUrl, _profile.photoUrl!);
     }
+    _prefs?.setInt(_kProfileLocalUpdatedAtMs, _profileLocalUpdatedAtMs);
+    _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
 
     if (_rememberMeEnabled) {
       unawaited(_syncRememberedIdentityFromProfile());
@@ -1145,6 +1644,11 @@ class AppState extends ChangeNotifier {
   Future<void> signOut() async {
     final token = _devicePushToken;
     final uid = _profile.id.trim();
+    final scopedOutboxKey = _scopedHistoryKey(
+      _kPendingPicksOutbox,
+      uid: uid,
+      seasonKey: currentSeasonKey,
+    );
     final fs = _firestoreService;
     if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
       await _runFirestoreWriteWithRetry(
@@ -1155,14 +1659,21 @@ class AppState extends ChangeNotifier {
 
     await _authService?.signOut();
     await forgetRememberedIdentity();
+    _lastAuthBootstrapUid = null;
 
     _prefs?.remove(_kProfileId);
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
+    _prefs?.remove(_kProfileLocalUpdatedAtMs);
+    _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
+    _prefs?.remove(scopedOutboxKey);
 
     _profile = _defaultProfile;
     _currentUserProfileSetupCompleted = false;
+    _profileLocalUpdatedAtMs = 0;
+    _profileLocalFieldUpdatedAtMs = const <String, int>{};
+    _resetProfileSyncState();
     await groupState.clearAll();
     predictionState.clearAllHistory();
     _cancelStandingsStream();
@@ -1172,6 +1683,11 @@ class AppState extends ChangeNotifier {
   Future<void> deleteAccount() async {
     final token = _devicePushToken;
     final uid = _profile.id.trim();
+    final scopedOutboxKey = _scopedHistoryKey(
+      _kPendingPicksOutbox,
+      uid: uid,
+      seasonKey: currentSeasonKey,
+    );
     final fs = _firestoreService;
     if (token != null && token.isNotEmpty && uid.isNotEmpty && fs != null) {
       await _runFirestoreWriteWithRetry(
@@ -1182,16 +1698,21 @@ class AppState extends ChangeNotifier {
 
     await _authService?.deleteAccount();
     await forgetRememberedIdentity();
+    _lastAuthBootstrapUid = null;
 
     _prefs?.remove(_kProfileId);
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
+    _prefs?.remove(_kProfileLocalUpdatedAtMs);
+    _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
+    _prefs?.remove(scopedOutboxKey);
 
     _cancelStandingsStream();
     await groupState.clearAll();
 
     await resetAll();
+    _resetProfileSyncState();
     notifyListeners();
   }
 
@@ -1203,6 +1724,8 @@ class AppState extends ChangeNotifier {
     _language = CassandraLanguage.system;
     _themeMode = CassandraThemeMode.system;
     _defaultVisibility = PredictionVisibility.friends;
+    _profileLocalUpdatedAtMs = 0;
+    _profileLocalFieldUpdatedAtMs = const <String, int>{};
     await groupState.clearAll();
     predictionState.clearAllHistory();
     _rememberMeEnabled = false;
@@ -1211,6 +1734,7 @@ class AppState extends ChangeNotifier {
     _rememberedHandle = null;
     _rememberedPhotoUrl = null;
     _rememberedProvider = null;
+    _resetProfileSyncState();
     notifyListeners();
 
     if (_prefs == null) return;
@@ -1230,6 +1754,15 @@ class AppState extends ChangeNotifier {
     await _prefs.remove(_kRememberedHandle);
     await _prefs.remove(_kRememberedPhotoUrl);
     await _prefs.remove(_kRememberedProvider);
+    await _prefs.remove(_kProfileLocalUpdatedAtMs);
+    await _prefs.remove(_kProfileLocalFieldUpdatedAtMs);
+    await _prefs.remove(
+      _scopedHistoryKey(
+        _kPendingPicksOutbox,
+        uid: scopedUid,
+        seasonKey: scopedSeason,
+      ),
+    );
     await _prefs.remove(
       _scopedHistoryKey(
         _kCurrentUserPicksByMatchday,
@@ -1260,6 +1793,7 @@ class AppState extends ChangeNotifier {
     );
     // Backward-compat cleanup for older global keys.
     await _prefs.remove(_kCurrentUserPicksByMatchday);
+    await _prefs.remove(_kPendingPicksOutbox);
     await _prefs.remove(_kPredictionOutcomesByMatchday);
     await _prefs.remove(_kMatchdayMatchesByDayV1);
     await _prefs.remove(_kFirestoreMigrationV1Done);
@@ -1330,30 +1864,205 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Fire-and-forget: upload picks per questa giornata su Firestore.
-  void submitPicksToFirestore({
+  List<_PendingPicksSubmission> _loadPendingPicksOutbox() {
+    final raw = _prefs?.getString(_kPendingPicksOutboxScoped);
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final entries = <_PendingPicksSubmission>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final parsed = _PendingPicksSubmission.fromJson(
+          Map<String, dynamic>.from(item),
+        );
+        if (parsed != null) entries.add(parsed);
+      }
+      return entries;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[picks-outbox] failed to parse outbox: $e');
+        debugPrint('$st');
+      }
+      return const [];
+    }
+  }
+
+  Future<void> _savePendingPicksOutbox(
+    List<_PendingPicksSubmission> entries,
+  ) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    if (entries.isEmpty) {
+      await prefs.remove(_kPendingPicksOutboxScoped);
+      return;
+    }
+    await prefs.setString(
+      _kPendingPicksOutboxScoped,
+      jsonEncode(entries.map((e) => e.toJson()).toList(growable: false)),
+    );
+  }
+
+  bool _sameOutboxScope(
+    _PendingPicksSubmission entry, {
+    required int dayNumber,
+    required String? groupId,
+  }) {
+    final normalizedGroup = (groupId ?? '').trim();
+    final entryGroup = (entry.groupId ?? '').trim();
+    return entry.dayNumber == dayNumber && entryGroup == normalizedGroup;
+  }
+
+  Future<void> _enqueuePendingPicksSubmission({
+    required int dayNumber,
+    required Map<String, PickOption> picksByMatchId,
+    required String visibility,
+    required String? groupId,
+  }) async {
+    final current = _loadPendingPicksOutbox();
+    final next = <_PendingPicksSubmission>[];
+    for (final entry in current) {
+      if (_sameOutboxScope(entry, dayNumber: dayNumber, groupId: groupId)) {
+        continue;
+      }
+      next.add(entry);
+    }
+    next.add(
+      _PendingPicksSubmission(
+        dayNumber: dayNumber,
+        picksByMatchId: Map<String, PickOption>.from(picksByMatchId),
+        visibility: visibility,
+        groupId: (groupId ?? '').trim().isEmpty ? null : groupId!.trim(),
+        createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    await _savePendingPicksOutbox(next);
+  }
+
+  Future<void> _removePendingPicksSubmission({
+    required int dayNumber,
+    required String? groupId,
+  }) async {
+    final current = _loadPendingPicksOutbox();
+    final next = current
+        .where(
+          (entry) =>
+              !_sameOutboxScope(entry, dayNumber: dayNumber, groupId: groupId),
+        )
+        .toList(growable: false);
+    await _savePendingPicksOutbox(next);
+  }
+
+  bool _isPermanentPicksOutboxFailure(_FirestoreWriteResult result) {
+    final code = result.firebaseCode;
+    if (code == null || code.isEmpty) return false;
+    return code == 'permission-denied' ||
+        code == 'failed-precondition' ||
+        code == 'invalid-argument' ||
+        code == 'not-found';
+  }
+
+  Future<void> flushPendingPicksOutbox() async {
+    if (_flushingPendingPicksOutbox) return;
+    final fs = _firestoreService;
+    if (fs == null || !isAuthenticated) return;
+    final uid = _profile.id.trim();
+    if (uid.isEmpty) return;
+
+    _flushingPendingPicksOutbox = true;
+    try {
+      final queue = _loadPendingPicksOutbox();
+      if (queue.isEmpty) return;
+
+      final remaining = <_PendingPicksSubmission>[];
+      for (var i = 0; i < queue.length; i++) {
+        final entry = queue[i];
+        final result = await _runFirestoreWriteWithRetryDetailed(
+          operation: 'savePicks.outbox',
+          action: () => fs.savePicks(
+            uid: uid,
+            seasonKey: currentSeasonKey,
+            dayNumber: entry.dayNumber,
+            picksByMatchId: entry.picksByMatchId,
+            visibility: entry.visibility,
+            groupId: entry.groupId,
+          ),
+        );
+        if (!result.success) {
+          if (_isPermanentPicksOutboxFailure(result)) {
+            if (kDebugMode) {
+              debugPrint(
+                '[picks-outbox] dropping entry day=${entry.dayNumber} '
+                'group=${entry.groupId ?? "nogroup"} '
+                'reason=${result.firebaseCode ?? "permanent-failure"}',
+              );
+            }
+            continue;
+          }
+          remaining.addAll(queue.sublist(i));
+          // Break at first failing write to avoid hammering backend.
+          break;
+        }
+      }
+      await _savePendingPicksOutbox(remaining);
+    } finally {
+      _flushingPendingPicksOutbox = false;
+    }
+  }
+
+  /// Upload picks per questa giornata su Firestore.
+  Future<bool> submitPicksToFirestore({
     required int dayNumber,
     required Map<String, PickOption> picksByMatchId,
     required String visibility,
     DayScoreBreakdown? score,
-  }) {
+  }) async {
     final fs = _firestoreService;
-    if (fs == null || !isAuthenticated) return;
+    if (fs == null || !isAuthenticated) {
+      debugPrint(
+        '[savePicks] bail: fs=${fs != null} auth=$isAuthenticated',
+      );
+      return false;
+    }
     final payload = Map<String, PickOption>.from(picksByMatchId);
-    unawaited(
-      _runFirestoreWriteWithRetry(
-        operation: 'savePicks',
-        action: () => fs.savePicks(
-          uid: _profile.id,
-          seasonKey: currentSeasonKey,
-          dayNumber: dayNumber,
-          picksByMatchId: payload,
-          visibility: visibility,
-          groupId: activeGroupId,
-          score: score,
-        ),
+    final scopedGroupId = (activeGroupId ?? '').trim();
+    final groupId = scopedGroupId.isEmpty ? null : scopedGroupId;
+
+    debugPrint(
+      '[savePicks] uid=${_profile.id} season=$currentSeasonKey '
+      'day=$dayNumber group=${groupId ?? "none"} picks=${payload.length}',
+    );
+
+    await _enqueuePendingPicksSubmission(
+      dayNumber: dayNumber,
+      picksByMatchId: payload,
+      visibility: visibility,
+      groupId: groupId,
+    );
+
+    final ok = await _runFirestoreWriteWithRetry(
+      operation: 'savePicks',
+      action: () => fs.savePicks(
+        uid: _profile.id,
+        seasonKey: currentSeasonKey,
+        dayNumber: dayNumber,
+        picksByMatchId: payload,
+        visibility: visibility,
+        groupId: groupId,
+        score: score,
       ),
     );
+    if (!ok) {
+      debugPrint('[savePicks] FAILED for day=$dayNumber');
+    }
+    if (ok) {
+      await _removePendingPicksSubmission(
+        dayNumber: dayNumber,
+        groupId: groupId,
+      );
+      unawaited(flushPendingPicksOutbox());
+    }
+    return ok;
   }
 
   // ===== FIRESTORE GROUP LEADERBOARD =====
@@ -1620,22 +2329,6 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      // 3. Migrate matchday data (matches + outcomes)
-      await predictionState.ensureMatchdayMatchesLoaded();
-      for (final entry in predictionState.matchdayMatchesByDay.entries) {
-        final dayNumber = entry.key;
-        final matches = entry.value;
-        if (matches.isEmpty) continue;
-
-        final outcomes = predictionState.outcomesByMatchday[dayNumber] ?? {};
-        await fs.saveMatchdayData(
-          seasonKey: season,
-          dayNumber: dayNumber,
-          matches: matches,
-          outcomesByMatchId: outcomes,
-        );
-      }
-
       await prefs.setBool(_kFirestoreMigrationV1DoneScoped, true);
       _clearBackendError();
     } catch (e, st) {
@@ -1873,6 +2566,95 @@ class AppState extends ChangeNotifier {
 
   // ===== PORTABLE IMAGE UTILITIES =====
 
+  Future<StorageUploadResult?> _resolveImageReferenceForUpload({
+    required String source,
+    required String? profileUid,
+    required String? groupId,
+  }) async {
+    final cleaned = source.trim();
+    if (cleaned.isEmpty) return null;
+    final lower = cleaned.toLowerCase();
+    final isLocalOrData =
+        lower.startsWith('data:image/') || _looksLikeLocalFileRef(cleaned);
+    final storage = _storageService;
+
+    if (!isLocalOrData) {
+      if (storage != null && storage.isRemoteImageUrl(cleaned)) {
+        final normalizedRemote = _normalizePersistedImageReference(cleaned);
+        return StorageUploadResult(
+          downloadUrl: normalizedRemote,
+          storagePath: '',
+          uploaded: false,
+        );
+      }
+      return null;
+    }
+
+    if (storage != null) {
+      try {
+        if (groupId != null && groupId.trim().isNotEmpty) {
+          final uploaded = await storage.uploadGroupImage(
+            groupId: groupId.trim(),
+            source: cleaned,
+          );
+          if (uploaded != null) return uploaded;
+        } else if (profileUid != null && profileUid.trim().isNotEmpty) {
+          final uploaded = await storage.uploadUserProfileImage(
+            uid: profileUid.trim(),
+            source: cleaned,
+          );
+          if (uploaded != null) return uploaded;
+        }
+      } catch (e, st) {
+        _recordBackendError(e, st);
+      }
+    }
+
+    final portable = await _portableImageReference(cleaned);
+    if (portable != null && portable.trim().isNotEmpty) {
+      return StorageUploadResult(
+        downloadUrl: portable,
+        storagePath: '',
+        uploaded: false,
+      );
+    }
+
+    return null;
+  }
+
+  Future<void> _bestEffortDeleteStorageObject(String? reference) async {
+    final storage = _storageService;
+    final cleaned = (reference ?? '').trim();
+    if (storage == null || cleaned.isEmpty) return;
+    try {
+      await storage.deleteByDownloadUrl(cleaned);
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[image] storage cleanup failed: $e');
+        debugPrint('$st');
+      }
+    }
+  }
+
+  Future<bool> _isKnownMissingStorageObject(String reference) async {
+    final storage = _storageService;
+    final cleaned = reference.trim();
+    if (storage == null || cleaned.isEmpty) return false;
+    if (!storage.isFirebaseStorageUrl(cleaned) &&
+        !storage.isStoragePathReference(cleaned)) {
+      return false;
+    }
+    try {
+      return !(await storage.objectExistsByDownloadUrl(cleaned));
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[image] storage metadata check failed: $e');
+        debugPrint('$st');
+      }
+      return false;
+    }
+  }
+
   Future<String?> _portableImageReference(String source) async {
     final trimmed = source.trim();
     if (trimmed.isEmpty) return null;
@@ -1938,46 +2720,138 @@ class AppState extends ChangeNotifier {
 
   Future<void> _repairProfilePhotoReferenceIfNeeded() async {
     final current = (_profile.photoUrl ?? '').trim();
-    if (current.isEmpty ||
-        _looksLikePortableImageRef(current) ||
+    if (current.isEmpty) {
+      return;
+    }
+
+    final normalized = _normalizePersistedImageReference(current);
+    if (normalized != current) {
+      await updateProfilePhotoPath(normalized);
+      return;
+    }
+
+    final missingStorageObject = await _isKnownMissingStorageObject(current);
+    if (missingStorageObject) {
+      await updateProfilePhotoPath(null);
+      return;
+    }
+
+    if (_looksLikePortableImageRef(current) ||
         !_looksLikeLocalFileRef(current)) {
       return;
     }
 
-    final converted = await _portableImageReference(current);
-    if (converted == null ||
-        converted.trim().isEmpty ||
-        converted == current ||
-        !_looksLikePortableImageRef(converted)) {
-      return;
-    }
-
-    _profile = _profile.copyWith(photoUrl: converted);
-    await _prefs?.setString(_kProfilePhotoUrl, converted);
-    await _syncRememberedIdentityFromProfile();
-    _syncProfileToFirestore();
-    notifyListeners();
+    await updateProfilePhotoPath(current);
   }
 
   Future<void> _repairGroupImageReferenceIfNeeded(GroupDocument group) async {
     final raw = (group.imageUrl ?? '').trim();
-    if (raw.isEmpty ||
-        _looksLikePortableImageRef(raw) ||
-        !_looksLikeLocalFileRef(raw)) {
-      return;
-    }
-    if (group.adminUid.trim() != _profile.id.trim()) {
+    if (raw.isEmpty) {
       return;
     }
 
-    final converted = await _portableImageReference(raw);
-    if (converted == null ||
-        converted.trim().isEmpty ||
-        converted == raw ||
-        !_looksLikePortableImageRef(converted)) {
+    final isAdmin = group.adminUid.trim() == _profile.id.trim();
+    final normalized = _normalizePersistedImageReference(raw);
+    if (normalized != raw) {
+      if (isAdmin) {
+        await updateGroupImagePath(normalized);
+      }
+      return;
+    }
+    final missingStorageObject = await _isKnownMissingStorageObject(raw);
+    if (missingStorageObject) {
+      if (isAdmin) {
+        await updateGroupImagePath(null);
+      }
       return;
     }
 
-    await updateGroupImagePath(converted);
+    if (_looksLikePortableImageRef(raw) || !_looksLikeLocalFileRef(raw)) {
+      return;
+    }
+    if (!isAdmin) {
+      return;
+    }
+    await updateGroupImagePath(raw);
+  }
+}
+
+class _PendingPicksSubmission {
+  final int dayNumber;
+  final Map<String, PickOption> picksByMatchId;
+  final String visibility;
+  final String? groupId;
+  final int createdAtMs;
+
+  const _PendingPicksSubmission({
+    required this.dayNumber,
+    required this.picksByMatchId,
+    required this.visibility,
+    required this.groupId,
+    required this.createdAtMs,
+  });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'dayNumber': dayNumber,
+    'visibility': visibility,
+    'groupId': groupId,
+    'createdAtMs': createdAtMs,
+    'picksByMatchId': {
+      for (final e in picksByMatchId.entries) e.key: e.value.name,
+    },
+  };
+
+  static _PendingPicksSubmission? fromJson(Map<String, dynamic> json) {
+    final dayNumber = json['dayNumber'];
+    final visibility = (json['visibility'] as String?)?.trim();
+    final rawPicks = json['picksByMatchId'];
+    if (dayNumber is! int ||
+        visibility == null ||
+        visibility.isEmpty ||
+        rawPicks is! Map) {
+      return null;
+    }
+    final picks = <String, PickOption>{};
+    for (final entry in rawPicks.entries) {
+      final key = (entry.key as Object?)?.toString().trim() ?? '';
+      final value = (entry.value as Object?)?.toString().trim() ?? '';
+      if (key.isEmpty || value.isEmpty) continue;
+      try {
+        picks[key] = PickOption.values.byName(value);
+      } catch (_) {
+        // Skip unknown enum values from older/corrupt payloads.
+      }
+    }
+    if (picks.isEmpty) return null;
+    final groupId = (json['groupId'] as String?)?.trim();
+    final createdAtMs = (json['createdAtMs'] as num?)?.toInt() ?? 0;
+    return _PendingPicksSubmission(
+      dayNumber: dayNumber,
+      picksByMatchId: picks,
+      visibility: visibility,
+      groupId: (groupId == null || groupId.isEmpty) ? null : groupId,
+      createdAtMs: createdAtMs,
+    );
+  }
+}
+
+class _FirestoreWriteResult {
+  const _FirestoreWriteResult({
+    required this.success,
+    this.error,
+    this.stackTrace,
+  });
+
+  final bool success;
+  final Object? error;
+  final StackTrace? stackTrace;
+
+  String? get firebaseCode {
+    final err = error;
+    if (err is FirebaseException) {
+      final code = err.code.trim();
+      return code.isEmpty ? null : code;
+    }
+    return null;
   }
 }

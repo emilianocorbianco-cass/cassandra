@@ -152,9 +152,9 @@ class _PredictionsPageState extends State<PredictionsPage>
   void _setPick(String matchId, PickOption pick) {
     final l10n = AppLocalizations.of(context)!;
     if (_submitted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.predictionsAlreadySubmitted)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.predictionsAlreadySubmitted)));
       return;
     }
     final PredictionMatch? match = matches.cast<PredictionMatch?>().firstWhere(
@@ -244,8 +244,8 @@ class _PredictionsPageState extends State<PredictionsPage>
       },
     );
     if (result == true) {
-      await _submit(VisibilityChoice.public);
-      if (mounted) {
+      final submitted = await _submit(VisibilityChoice.public);
+      if (mounted && submitted) {
         setState(() => _submitted = true);
       }
     }
@@ -285,22 +285,16 @@ class _PredictionsPageState extends State<PredictionsPage>
     return result ?? false;
   }
 
-  Future<void> _submit(VisibilityChoice visibility) async {
+  Future<bool> _submit(VisibilityChoice visibility) async {
     final l10n = AppLocalizations.of(context)!;
-    if (_locked) return;
+    if (_locked) return false;
     final missing = _missingCount;
     if (missing > 0) {
       final ok = await _confirmSubmitIfMissing(missing);
-      if (!ok) return;
-      if (!mounted) return;
+      if (!ok) return false;
+      if (!mounted) return false;
     }
-    if (!mounted) return;
-    final label = visibility == VisibilityChoice.public
-        ? l10n.predictionsVisibilityPublic
-        : l10n.predictionsVisibilityPrivate;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.predictionsSlipSubmitted(label))),
-    );
+    if (!mounted) return false;
     final appState = CassandraScope.of(context);
     appState.ensureCurrentUserPicksHistoryLoaded();
     appState.ensureMatchdayMatchesLoaded();
@@ -340,12 +334,26 @@ class _PredictionsPageState extends State<PredictionsPage>
     final visLabel = visibility == VisibilityChoice.public
         ? 'public'
         : 'private';
-    appState.submitPicksToFirestore(
+    final submitted = await appState.submitPicksToFirestore(
       dayNumber: _effectiveMatchdayNumber,
       picksByMatchId: _picks,
       visibility: visLabel,
       score: scoreCache,
     );
+    if (!mounted) return submitted;
+    if (submitted) {
+      final label = visibility == VisibilityChoice.public
+          ? l10n.predictionsVisibilityPublic
+          : l10n.predictionsVisibilityPrivate;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.predictionsSlipSubmitted(label))),
+      );
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.predictionsSlipSubmitFailed)));
+    }
+    return submitted;
   }
 
   Future<void> _tryLoadRealFixtures() async {
@@ -588,8 +596,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                           delegate: SliverChildBuilderDelegate((ctx, i) {
                             final match = matches[i];
                             final pick = _pickFor(match.id);
-                            final outcome =
-                                scoreOutcomesByMatchId[match.id];
+                            final outcome = scoreOutcomesByMatchId[match.id];
                             final breakdown = dayScore.matchBreakdowns
                                 .cast<MatchScoreBreakdown?>()
                                 .firstWhere(
@@ -614,9 +621,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                         SliverToBoxAdapter(
                           child: SerieAStandingsTable(standings: standings),
                         ),
-                      const SliverPadding(
-                        padding: EdgeInsets.only(bottom: 16),
-                      ),
+                      const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
                     ],
                   ),
 
@@ -627,9 +632,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                     left: 0,
                     right: 0,
                     height: heroAreaHeight / 2,
-                    child: const ColoredBox(
-                      color: CassandraColors.charcoal,
-                    ),
+                    child: const ColoredBox(color: CassandraColors.charcoal),
                   ),
 
                   // Layer 3: hero card pinned on top.
@@ -1059,10 +1062,6 @@ class _CompactMatchCard extends StatelessWidget {
     return '$h:$m';
   }
 
-
-
-
-
   /// Win odds: what the user gains if correct.
   double get _winOdds {
     if (pick.isNone) return 0;
@@ -1207,10 +1206,7 @@ class _CompactMatchCard extends StatelessWidget {
         const SizedBox(height: 8),
 
         // ── Charcoal divider ─────────────────────────────────────────
-        Container(
-          height: 1,
-          color: CassandraColors.charcoal,
-        ),
+        Container(height: 1, color: CassandraColors.charcoal),
 
         const SizedBox(height: 8),
 
@@ -1286,10 +1282,7 @@ class _CompactMatchCard extends StatelessWidget {
   }
 
   /// Post-lock: status | teams + score | 2 pick bubbles.
-  Widget _buildPostLockLayout(
-    String homeInitial,
-    String awayInitial,
-  ) {
+  Widget _buildPostLockLayout(String homeInitial, String awayInitial) {
     final hasPick = !pick.isNone;
     final kickoff = match.kickoff.toLocal();
     final dateStr =
@@ -1326,7 +1319,7 @@ class _CompactMatchCard extends StatelessWidget {
         ),
         const SizedBox(width: 4),
 
-        // ── Center: team rows with logos + names ─────────────────────
+        // ── Center: team rows with logos, names & scores ──────────────
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1352,6 +1345,18 @@ class _CompactMatchCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (_isStarted)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 5),
+                      child: Text(
+                        '${match.homeGoals ?? 0}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: CassandraColors.inkBlackV2,
+                        ),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -1376,56 +1381,34 @@ class _CompactMatchCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (_isStarted)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 5),
+                      child: Text(
+                        '${match.awayGoals ?? 0}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: CassandraColors.inkBlackV2,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ],
           ),
         ),
 
-        // ── Scores (only after kickoff), centered ────────────────────
-        if (_isStarted) ...[
-          const SizedBox(width: 6),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${match.homeGoals ?? 0}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: CassandraColors.inkBlackV2,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${match.awayGoals ?? 0}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: CassandraColors.inkBlackV2,
-                ),
-              ),
-            ],
-          ),
-        ],
-
         // ── Right: 2 pick bubbles ──────────────────────────────────
         if (hasPick) ...[
           const SizedBox(width: 8),
-          _PostLockPickBubble(
-            label: pick.label,
-            odds: _winOdds,
-          ),
+          _PostLockPickBubble(label: pick.label, odds: _winOdds),
           const SizedBox(width: 4),
-          _PostLockPickBubble(
-            label: _opposingPickLabel(),
-            odds: _loseOdds,
-          ),
+          _PostLockPickBubble(label: _opposingPickLabel(), odds: _loseOdds),
         ],
       ],
     );
   }
-
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

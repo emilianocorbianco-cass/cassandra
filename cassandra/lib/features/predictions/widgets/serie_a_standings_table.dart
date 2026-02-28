@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:cassandra/app/theme/cassandra_colors.dart';
 import 'package:cassandra/app/widgets/team_name.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:cassandra/services/api_football/models/api_football_standing.dart';
@@ -19,6 +20,7 @@ class SerieAStandingsTable extends StatelessWidget {
     final cellStyle = textTheme.bodySmall;
 
     return Card(
+      color: CassandraColors.platinum,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),

@@ -67,6 +67,8 @@
   "joinGroupJoined": "Entrato nel gruppo!",
   "joinGroupInvalidCode": "Codice invito non valido",
   "joinGroupAlreadyMember": "Fai gia parte di questo gruppo",
+  "joinGroupFull": "Questo gruppo e pieno",
+  "joinGroupUnavailable": "Questo gruppo non e disponibile",
   "groupTitle": "Il mio gruppo",
   "groupEmptyCreateButton": "Crea un gruppo",
   "groupEmptyJoinButton": "Unisciti a un gruppo",
@@ -362,7 +364,7 @@
   "groupOddsLabel": "quota",
   "groupSyncError": "Errore nel caricamento del gruppo",
   "groupSyncRetry": "Riprova",
-  "tabGroup": "Gruppo",
+  "tabGroup": "Gruppi",
   "tabLive": "Livescore",
   "tabSettings": "Settings",
   "chatTitle": "Chat",
@@ -435,6 +437,7 @@
       "visibility": {}
     }
   },
+  "predictionsSlipSubmitFailed": "Impossibile inviare la schedina. Riprova.",
   "predictionsDebugScoreTitle": "Debug: calcolo punteggio",
   "predictionsDebugBase": "base: {value}",
   "@predictionsDebugBase": {

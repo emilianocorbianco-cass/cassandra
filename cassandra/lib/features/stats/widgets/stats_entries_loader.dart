@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../app/state/app_state.dart';
 import '../../group/models/group_member.dart';
 import '../../leaderboards/models/matchday_data.dart';
@@ -64,8 +66,10 @@ class StatsEntriesLoader {
             matches: md.matches,
             outcomesByMatchId: md.outcomesByMatchId,
           );
-        } catch (error, stackTrace) {
-          app.markBackendSyncError(error, stackTrace);
+        } catch (error) {
+          if (kDebugMode) {
+            debugPrint('[stats-loader] day $day failed: $error');
+          }
         }
       }
     }

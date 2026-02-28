@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
@@ -266,8 +267,6 @@ class _GroupPageState extends State<GroupPage> {
         _firestoreLoading = false;
         _firestoreLoadError = false;
       });
-      appState.clearBackendSyncError();
-
       _scheduleFirestoreReveal(matchdayData?.lockTime);
       _bindFirestoreRealtime(
         appState: appState,
@@ -275,8 +274,10 @@ class _GroupPageState extends State<GroupPage> {
         seasonKey: appState.currentSeasonKey,
         dayNumber: appState.uiMatchdayNumber,
       );
-    } catch (error, stackTrace) {
-      appState.markBackendSyncError(error, stackTrace);
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[group] load failed: $error');
+      }
       if (!mounted) return;
       setState(() {
         _firestoreGroupId = groupId;
@@ -298,7 +299,9 @@ class _GroupPageState extends State<GroupPage> {
     Object error,
     StackTrace stackTrace,
   ) {
-    appState.markBackendSyncError(error, stackTrace);
+    if (kDebugMode) {
+      debugPrint('[group] realtime stream error: $error');
+    }
     if (!mounted) return;
     setState(() {
       _firestoreLoading = false;
@@ -600,8 +603,10 @@ class _GroupPageState extends State<GroupPage> {
             );
             loadedOutcomes[day] = md.outcomesByMatchId;
           }
-        } catch (error, stackTrace) {
-          appState.markBackendSyncError(error, stackTrace);
+        } catch (error) {
+          if (kDebugMode) {
+            debugPrint('[group] history hydration day $day failed: $error');
+          }
         }
       }
 

@@ -365,6 +365,18 @@ abstract class AppLocalizations {
   /// **'Already a member of this group'**
   String get joinGroupAlreadyMember;
 
+  /// No description provided for @joinGroupFull.
+  ///
+  /// In en, this message translates to:
+  /// **'This group is full'**
+  String get joinGroupFull;
+
+  /// No description provided for @joinGroupUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This group is unavailable'**
+  String get joinGroupUnavailable;
+
   /// No description provided for @groupTitle.
   ///
   /// In en, this message translates to:
@@ -1744,6 +1756,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Slip submitted (visibility: {visibility})'**
   String predictionsSlipSubmitted(Object visibility);
+
+  /// No description provided for @predictionsSlipSubmitFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to submit slip. Please try again.'**
+  String get predictionsSlipSubmitFailed;
 
   /// No description provided for @predictionsDebugScoreTitle.
   ///

@@ -4,7 +4,6 @@ import 'dart:async';
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
 
-import '../../features/chat/chat_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
@@ -85,6 +84,20 @@ class _HomeShellState extends State<HomeShell> {
       final now = DateTime.now();
       var dayNumber = app.cassandraMatchdayCursor;
       app.ensureOriginKickoffsLoaded();
+
+      // Serie A has 38 matchdays. A cursor beyond that is a stale artefact;
+      // reset to a safe default so the look-ahead can rediscover the current
+      // matchday from Firestore.
+      const maxSerieAMatchday = 38;
+      const safeCursorReset = 20;
+      if (dayNumber > maxSerieAMatchday) {
+        debugPrint(
+          '[live-sync] cursor $dayNumber > $maxSerieAMatchday, '
+          'resetting to $safeCursorReset',
+        );
+        dayNumber = safeCursorReset;
+        await app.setCassandraMatchdayCursor(safeCursorReset);
+      }
 
       MatchdayDocument? resolvedDoc;
       MatchdayProgress? resolvedProgress;
@@ -182,7 +195,6 @@ class _HomeShellState extends State<HomeShell> {
     PredictionsPage(),
     GroupPage(),
     SerieAPage(),
-    ChatPage(),
     SettingsPage(),
   ];
 
@@ -261,12 +273,12 @@ class _HomeShellState extends State<HomeShell> {
                 indicatorColor: Colors.transparent,
                 surfaceTintColor: Colors.transparent,
                 shadowColor: Colors.transparent,
-                height: 64,
+                height: 52,
                 iconTheme: WidgetStateProperty.resolveWith((states) {
                   final selected = states.contains(WidgetState.selected);
                   return IconThemeData(
                     color: CassandraColors.brightSnow,
-                    size: selected ? 24 : 22,
+                    size: selected ? 22 : 20,
                   );
                 }),
                 labelTextStyle: WidgetStateProperty.resolveWith((states) {
@@ -274,8 +286,8 @@ class _HomeShellState extends State<HomeShell> {
                   return TextStyle(
                     color: CassandraColors.brightSnow,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                    fontSize: 10,
-                    height: 1.8,
+                    fontSize: 9,
+                    height: 1.6,
                   );
                 }),
                 labelBehavior:
@@ -299,11 +311,6 @@ class _HomeShellState extends State<HomeShell> {
                     icon: const Icon(Icons.live_tv_outlined),
                     selectedIcon: const Icon(Icons.live_tv),
                     label: l10n.tabLive,
-                  ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    selectedIcon: const Icon(Icons.chat_bubble),
-                    label: l10n.tabChat,
                   ),
                   NavigationDestination(
                     icon: const Icon(Icons.settings_outlined),

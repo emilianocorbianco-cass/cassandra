@@ -93,7 +93,6 @@ class PushNotificationsService {
       if (token == null || token.trim().isEmpty) return;
       await appState.setDevicePushToken(token);
     } catch (e, st) {
-      appState.markBackendSyncError(e, st);
       if (kDebugMode) {
         debugPrint('[push] token sync failed: $e');
         debugPrint('$st');

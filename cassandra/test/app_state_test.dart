@@ -1051,8 +1051,11 @@ void main() {
       state.mergeFirestoreProfile({'displayName': _testProfile.displayName});
       expect(count, 0);
 
-      // Different displayName → notification
-      state.mergeFirestoreProfile({'displayName': 'New Name'});
+      // Different displayName + newer remote revision -> notification
+      state.mergeFirestoreProfile({
+        'displayName': 'New Name',
+        'updatedAt': DateTime.now().add(const Duration(minutes: 1)),
+      });
       expect(count, 1);
     });
   });
@@ -1069,29 +1072,48 @@ void main() {
       expect(state.lastBackendSyncErrorAt, isNull);
     });
 
-    test('markBackendSyncError sets message and records a timestamp', () {
-      final state = AppState.inMemory();
-      final before = DateTime.now();
-      state.markBackendSyncError(Exception('firestore timeout'));
-      final after = DateTime.now();
+    test(
+      'single failure does not surface hasBackendSyncError (threshold = 2)',
+      () {
+        final state = AppState.inMemory();
+        state.markBackendSyncError(Exception('firestore timeout'));
 
-      expect(state.hasBackendSyncError, isTrue);
-      expect(state.lastBackendSyncError, contains('firestore timeout'));
-      expect(state.lastBackendSyncErrorAt, isNotNull);
-      expect(
-        state.lastBackendSyncErrorAt!.isAfter(before) ||
-            state.lastBackendSyncErrorAt!.isAtSameMomentAs(before),
-        isTrue,
-      );
-      expect(
-        state.lastBackendSyncErrorAt!.isBefore(after) ||
-            state.lastBackendSyncErrorAt!.isAtSameMomentAs(after),
-        isTrue,
-      );
-    });
+        // Error message is recorded internally but the public flag stays off
+        // until the threshold of consecutive failures is reached.
+        expect(state.hasBackendSyncError, isFalse);
+        expect(state.lastBackendSyncError, contains('firestore timeout'));
+      },
+    );
+
+    test(
+      'markBackendSyncError surfaces after consecutive failure threshold',
+      () {
+        final state = AppState.inMemory();
+        final before = DateTime.now();
+        state.markBackendSyncError(Exception('firestore timeout'));
+        state.markBackendSyncError(Exception('firestore timeout'));
+        final after = DateTime.now();
+
+        expect(state.hasBackendSyncError, isTrue);
+        expect(state.lastBackendSyncError, contains('firestore timeout'));
+        expect(state.lastBackendSyncErrorAt, isNotNull);
+        expect(
+          state.lastBackendSyncErrorAt!.isAfter(before) ||
+              state.lastBackendSyncErrorAt!.isAtSameMomentAs(before),
+          isTrue,
+        );
+        expect(
+          state.lastBackendSyncErrorAt!.isBefore(after) ||
+              state.lastBackendSyncErrorAt!.isAtSameMomentAs(after),
+          isTrue,
+        );
+      },
+    );
 
     test('clearBackendSyncError resets both fields to null', () {
       final state = AppState.inMemory();
+      // Reach threshold so hasBackendSyncError is true.
+      state.markBackendSyncError(Exception('network error'));
       state.markBackendSyncError(Exception('network error'));
       expect(state.hasBackendSyncError, isTrue);
 
@@ -1126,6 +1148,8 @@ void main() {
       'clearBackendSyncError after markBackendSyncError notifies listeners',
       () {
         final state = AppState.inMemory();
+        // Reach threshold so hasBackendSyncError becomes true.
+        state.markBackendSyncError(Exception('some error'));
         state.markBackendSyncError(Exception('some error'));
         var count = 0;
         state.addListener(() => count++);
@@ -1133,6 +1157,20 @@ void main() {
         state.clearBackendSyncError();
 
         expect(count, 1);
+      },
+    );
+
+    test(
+      'a single success between failures resets the counter',
+      () {
+        final state = AppState.inMemory();
+        state.markBackendSyncError(Exception('fail 1'));
+        // One success in between should reset the counter.
+        state.clearBackendSyncError();
+        state.markBackendSyncError(Exception('fail 2'));
+
+        // Only one failure since the last clear — still below threshold.
+        expect(state.hasBackendSyncError, isFalse);
       },
     );
   });

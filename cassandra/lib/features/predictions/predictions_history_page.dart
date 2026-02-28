@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -56,9 +57,10 @@ class _PredictionsHistoryPageState extends State<PredictionsHistoryPage> {
         force: true,
         throwOnError: true,
       );
-      app.clearBackendSyncError();
-    } catch (error, stackTrace) {
-      app.markBackendSyncError(error, stackTrace);
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[predictions-history] hydration failed: $error');
+      }
     } finally {
       if (mounted) {
         setState(() => _hydratingFromBackend = false);

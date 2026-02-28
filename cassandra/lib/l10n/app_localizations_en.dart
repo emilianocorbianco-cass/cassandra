@@ -152,6 +152,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get joinGroupAlreadyMember => 'Already a member of this group';
 
   @override
+  String get joinGroupFull => 'This group is full';
+
+  @override
+  String get joinGroupUnavailable => 'This group is unavailable';
+
+  @override
   String get groupTitle => 'My group';
 
   @override
@@ -892,6 +898,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String predictionsSlipSubmitted(Object visibility) {
     return 'Slip submitted (visibility: $visibility)';
   }
+
+  @override
+  String get predictionsSlipSubmitFailed => 'Unable to submit slip. Please try again.';
 
   @override
   String get predictionsDebugScoreTitle => 'Debug: score calculation';

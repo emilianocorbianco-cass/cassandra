@@ -152,6 +152,12 @@ class AppLocalizationsIt extends AppLocalizations {
   String get joinGroupAlreadyMember => 'Fai gia parte di questo gruppo';
 
   @override
+  String get joinGroupFull => 'Questo gruppo e pieno';
+
+  @override
+  String get joinGroupUnavailable => 'Questo gruppo non e disponibile';
+
+  @override
   String get groupTitle => 'Il mio gruppo';
 
   @override
@@ -892,6 +898,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String predictionsSlipSubmitted(Object visibility) {
     return 'Schedina inviata (visibilita: $visibility)';
   }
+
+  @override
+  String get predictionsSlipSubmitFailed => 'Impossibile inviare la schedina. Riprova.';
 
   @override
   String get predictionsDebugScoreTitle => 'Debug: calcolo punteggio';

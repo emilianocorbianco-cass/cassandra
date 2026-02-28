@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
@@ -114,8 +115,10 @@ class _StatsPageState extends State<StatsPage> {
         _loading = false;
         _loadedGroupId = app.activeGroupId;
       });
-    } catch (error, stackTrace) {
-      app.markBackendSyncError(error, stackTrace);
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[stats] load failed: $error');
+      }
       if (!mounted) return;
       final fallback = StatsEntriesLoader.emptyEntryFor(
         StatsEntriesLoader.currentUserMember(app),

@@ -67,6 +67,8 @@
   "joinGroupJoined": "Joined group!",
   "joinGroupInvalidCode": "Invalid invite code",
   "joinGroupAlreadyMember": "Already a member of this group",
+  "joinGroupFull": "This group is full",
+  "joinGroupUnavailable": "This group is unavailable",
   "groupTitle": "My group",
   "groupEmptyCreateButton": "Create a group",
   "groupEmptyJoinButton": "Join a group",
@@ -362,7 +364,7 @@
   "groupOddsLabel": "odds",
   "groupSyncError": "Error loading group data",
   "groupSyncRetry": "Retry",
-  "tabGroup": "Group",
+  "tabGroup": "Groups",
   "tabLive": "Livescore",
   "tabSettings": "Settings",
   "chatTitle": "Chat",
@@ -435,6 +437,7 @@
       "visibility": {}
     }
   },
+  "predictionsSlipSubmitFailed": "Unable to submit slip. Please try again.",
   "predictionsDebugScoreTitle": "Debug: score calculation",
   "predictionsDebugBase": "base: {value}",
   "@predictionsDebugBase": {
