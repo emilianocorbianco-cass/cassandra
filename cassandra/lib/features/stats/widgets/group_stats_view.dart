@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
+import '../../badges/widgets/avatar_with_badges.dart';
 import '../../leaderboards/models/season_leaderboard_entry.dart';
 import '../../predictions/models/formatters.dart';
 import '../models/group_metric.dart';
@@ -130,13 +131,12 @@ class GroupStatsView extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        CircleAvatar(
+                        AvatarWithBadges(
                           radius: 18,
                           backgroundColor: CassandraColors.primary,
-                          child: Text(
-                            p.member.avatarInitial,
-                            style: const TextStyle(color: Colors.white),
-                          ),
+                          text: p.member.avatarInitial,
+                          badges: const [],
+                          imagePathOrUrl: p.member.photoUrl,
                         ),
                       ],
                     ),

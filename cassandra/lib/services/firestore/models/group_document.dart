@@ -9,6 +9,8 @@ class GroupDocument {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int memberCount;
+  final int maxMembers;
+  final bool deleting;
   final List<String> competitions;
 
   const GroupDocument({
@@ -20,6 +22,8 @@ class GroupDocument {
     required this.createdAt,
     required this.updatedAt,
     required this.memberCount,
+    required this.maxMembers,
+    this.deleting = false,
     this.competitions = const ['serie-a'],
   });
 
@@ -42,6 +46,8 @@ class GroupDocument {
       // Use num? → toInt() so Firestore double values (e.g. 1.0 from a Cloud
       // Function) are accepted without a TypeError.
       memberCount: (d['memberCount'] as num?)?.toInt() ?? 0,
+      maxMembers: (d['maxMembers'] as num?)?.toInt() ?? 50,
+      deleting: d['deleting'] as bool? ?? false,
       competitions: competitions,
     );
   }

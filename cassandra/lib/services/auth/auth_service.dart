@@ -37,6 +37,7 @@ class AuthService {
   bool get isSignedIn => _auth.currentUser != null;
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+  Stream<User?> get idTokenChanges => _auth.idTokenChanges();
 
   Future<AuthSignInResult> signInWithGoogle() async {
     final googleUser = await GoogleSignIn().signIn();

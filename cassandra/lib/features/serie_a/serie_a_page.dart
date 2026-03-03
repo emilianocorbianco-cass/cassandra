@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -194,7 +193,7 @@ class _SerieAPageState extends State<SerieAPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          l10n.serieATitle,
+          l10n.tabLive,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
@@ -297,66 +296,23 @@ class _SerieAPageState extends State<SerieAPage> {
         final liveStatus = _statusLabelForCard(m.statusShort, l10n);
         final kickoff = formatKickoff(m.kickoff);
 
-        // Liquid Glass card: shadow esterno → ClipRRect → BackdropFilter → vetro.
         const liveSet = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'P'};
         final rawStatus = (m.statusShort ?? '').trim().toUpperCase();
         final isMatchLive = liveSet.contains(rawStatus);
 
-        return Container(
-          decoration: BoxDecoration(
+        return Material(
+          color: CassandraColors.platinum,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 20,
-                spreadRadius: -2,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 5,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    Navigator.of(context, rootNavigator: true).push(
-                      MaterialPageRoute(
-                        builder: (_) => LiveMatchDetailsPage(match: m),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.70),
-                      border: Border(
-                        top: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          width: 1.0,
-                        ),
-                        left: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.65),
-                          width: 1.0,
-                        ),
-                        right: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.20),
-                          width: 0.5,
-                        ),
-                        bottom: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          width: 0.5,
-                        ),
-                      ),
-                    ),
+            onTap: () {
+              Navigator.of(context, rootNavigator: true).push(
+                MaterialPageRoute(
+                  builder: (_) => LiveMatchDetailsPage(match: m),
+                ),
+              );
+            },
+            child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
@@ -371,6 +327,7 @@ class _SerieAPageState extends State<SerieAPage> {
                               logoUrl: m.homeTeamLogo,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
+                                color: CassandraColors.inkBlackV2,
                               ),
                             ),
                           ),
@@ -408,20 +365,20 @@ class _SerieAPageState extends State<SerieAPage> {
                                   kickoff,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: CassandraColors.slate.withValues(
-                                      alpha: 0.7,
+                                    color: CassandraColors.inkBlackV2.withValues(
+                                      alpha: 0.5,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                               ],
-                              // Score — navy bold
+                              // Score — ink black bold
                               Text(
                                 liveScore,
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,
-                                  color: CassandraColors.navBarBg,
+                                  color: CassandraColors.inkBlackV2,
                                   letterSpacing: -0.5,
                                   height: 1.1,
                                 ),
@@ -435,8 +392,8 @@ class _SerieAPageState extends State<SerieAPage> {
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
-                                    color: CassandraColors.slate.withValues(
-                                      alpha: 0.70,
+                                    color: CassandraColors.inkBlackV2.withValues(
+                                      alpha: 0.55,
                                     ),
                                   ),
                                 ),
@@ -453,6 +410,7 @@ class _SerieAPageState extends State<SerieAPage> {
                               logoUrl: m.awayTeamLogo,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
+                                color: CassandraColors.inkBlackV2,
                               ),
                               reversed: true,
                             ),
@@ -460,12 +418,9 @@ class _SerieAPageState extends State<SerieAPage> {
                         ),
                       ],
                     ),
-                  ), // inner glass Container
-                ), // InkWell
-              ), // Material
-            ), // BackdropFilter
-          ), // ClipRRect
-        ); // outer shadow Container
+            ), // inner Container
+          ), // InkWell
+        ); // Material
       },
     );
   }

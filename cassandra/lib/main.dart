@@ -8,7 +8,7 @@ import 'app/state/app_state.dart';
 import 'app/state/cassandra_scope.dart';
 import 'services/auth/auth_service.dart';
 import 'services/firestore/firestore_service.dart';
-import 'services/notifications/push_notifications_service.dart';
+import 'services/storage/storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,40 +35,10 @@ Future<void> main() async {
   if (firebaseReady) {
     final authService = AuthService();
     final firestoreService = FirestoreService();
-    appState.setAuthService(authService);
+    final storageService = StorageService();
     appState.setFirestoreService(firestoreService);
-    // Ripristina profilo se sessione persistita
-    final currentUser = authService.currentUser;
-    if (currentUser != null) {
-      appState.setProfileFromFirebaseUser(currentUser);
-      // Merge profilo/gruppo Firestore (fire-and-forget, non blocca avvio)
-      appState.hydrateProfileFromFirestore(currentUser.uid).catchError((
-        Object e,
-        StackTrace st,
-      ) {
-        appState.markBackendSyncError(e, st);
-      });
-      // Hydrate picks/matchday history for "past predictions" and stats.
-      appState.hydrateCurrentUserHistoryFromFirestore().catchError((
-        Object e,
-        StackTrace st,
-      ) {
-        appState.markBackendSyncError(e, st);
-      });
-      // One-time migration: upload local data to Firestore
-      appState.migrateLocalDataToFirestoreIfNeeded().catchError((
-        Object e,
-        StackTrace st,
-      ) {
-        appState.markBackendSyncError(e, st);
-      });
-      // Push notifications: token sync + permessi.
-      PushNotificationsService.instance
-          .initializeForAppState(appState)
-          .catchError((Object e, StackTrace st) {
-            appState.markBackendSyncError(e, st);
-          });
-    }
+    appState.setStorageService(storageService);
+    appState.setAuthService(authService);
   }
 
   runApp(CassandraScope(notifier: appState, child: const CassandraApp()));

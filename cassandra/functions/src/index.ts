@@ -1,5 +1,5 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { defineString } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
 import {
@@ -757,6 +757,89 @@ async function backfillLegacyPicksGroupIds(
   );
 }
 
+async function backfillGroupInviteIndex(
+  db: FirebaseFirestore.Firestore,
+  logPrefix: string
+): Promise<void> {
+  const groupsSnap = await db.collection("groups").get();
+  if (groupsSnap.empty) return;
+
+  let scanned = 0;
+  let upserted = 0;
+  let conflicts = 0;
+  let skippedInvalid = 0;
+  let skippedDeleting = 0;
+  let batch = db.batch();
+  let pendingWrites = 0;
+
+  for (const groupDoc of groupsSnap.docs) {
+    scanned += 1;
+    const data = groupDoc.data();
+    const deleting = data["deleting"] === true;
+    if (deleting) {
+      skippedDeleting += 1;
+      continue;
+    }
+    const inviteCodeRaw =
+      typeof data["inviteCode"] === "string" ? data["inviteCode"] : "";
+    const inviteCode = inviteCodeRaw.trim().toUpperCase();
+    const adminUid =
+      typeof data["adminUid"] === "string" ? data["adminUid"].trim() : "";
+    const groupName =
+      typeof data["name"] === "string" ? data["name"].trim() : "";
+
+    if (!inviteCode || !adminUid || !groupName) {
+      skippedInvalid += 1;
+      continue;
+    }
+
+    const inviteRef = db.collection("group_invites").doc(inviteCode);
+    const inviteSnap = await inviteRef.get();
+    if (inviteSnap.exists) {
+      const existing = inviteSnap.data();
+      const existingGroupId =
+        typeof existing?.["groupId"] === "string"
+          ? existing["groupId"].trim()
+          : "";
+      if (existingGroupId && existingGroupId !== groupDoc.id) {
+        conflicts += 1;
+        continue;
+      }
+    }
+
+    batch.set(
+      inviteRef,
+      {
+        groupId: groupDoc.id,
+        groupName,
+        inviteCode,
+        adminUid,
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(inviteSnap.exists
+          ? {}
+          : { createdAt: FieldValue.serverTimestamp() }),
+      },
+      { merge: true }
+    );
+    pendingWrites += 1;
+    upserted += 1;
+
+    if (pendingWrites >= 400) {
+      await batch.commit();
+      batch = db.batch();
+      pendingWrites = 0;
+    }
+  }
+
+  if (pendingWrites > 0) {
+    await batch.commit();
+  }
+
+  console.log(
+    `[${logPrefix}] Backfill group_invites scanned=${scanned} upserted=${upserted} conflicts=${conflicts} skippedInvalid=${skippedInvalid} skippedDeleting=${skippedDeleting}`
+  );
+}
+
 async function recomputeAllPicksScoresForSeason(
   db: FirebaseFirestore.Firestore,
   seasonKey: string,
@@ -849,6 +932,97 @@ async function cleanupInvalidMatchdayDocsOnce(
   );
 }
 
+async function cleanupDeletingGroups(
+  db: FirebaseFirestore.Firestore,
+  logPrefix: string
+): Promise<void> {
+  const deletingSnap = await db
+    .collection("groups")
+    .where("deleting", "==", true)
+    .limit(40)
+    .get();
+  if (deletingSnap.empty) return;
+
+  let processed = 0;
+  let completed = 0;
+  let failed = 0;
+
+  for (const groupDoc of deletingSnap.docs) {
+    processed += 1;
+    const groupId = groupDoc.id;
+    try {
+      await cleanupSingleDeletingGroup(db, groupDoc);
+      completed += 1;
+    } catch (e) {
+      failed += 1;
+      console.warn(`[${logPrefix}] Cleanup deleting group failed id=${groupId}`, e);
+    }
+  }
+
+  console.log(
+    `[${logPrefix}] Cleanup deleting groups scanned=${processed} completed=${completed} failed=${failed}`
+  );
+}
+
+async function cleanupSingleDeletingGroup(
+  db: FirebaseFirestore.Firestore,
+  groupDoc: FirebaseFirestore.QueryDocumentSnapshot
+): Promise<void> {
+  const groupRef = groupDoc.ref;
+  const groupId = groupRef.id;
+  const data = groupDoc.data();
+  const inviteCode =
+    typeof data["inviteCode"] === "string"
+      ? data["inviteCode"].trim().toUpperCase()
+      : "";
+
+  const chunkSize = 200;
+  while (true) {
+    const membersSnap = await groupRef.collection("members").limit(chunkSize).get();
+    if (membersSnap.empty) break;
+
+    const batch = db.batch();
+    for (const memberDoc of membersSnap.docs) {
+      const uid = memberDoc.id.trim();
+      if (uid) {
+        batch.set(
+          db.collection("users").doc(uid),
+          {
+            groupIds: FieldValue.arrayRemove([groupId]),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      batch.delete(memberDoc.ref);
+    }
+    await batch.commit();
+
+    if (membersSnap.docs.length < chunkSize) break;
+  }
+
+  if (inviteCode) {
+    await db.collection("group_invites").doc(inviteCode).delete();
+  }
+
+  while (true) {
+    const staleInvites = await db
+      .collection("group_invites")
+      .where("groupId", "==", groupId)
+      .limit(200)
+      .get();
+    if (staleInvites.empty) break;
+    const batch = db.batch();
+    for (const inviteDoc of staleInvites.docs) {
+      batch.delete(inviteDoc.ref);
+    }
+    await batch.commit();
+    if (staleInvites.docs.length < 200) break;
+  }
+
+  await groupRef.delete();
+}
+
 function isInProgressStatus(rawStatus: string | null | undefined): boolean {
   const status = (rawStatus ?? "").trim().toUpperCase();
   return ["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"].includes(status);
@@ -916,6 +1090,26 @@ function isRelevantEventType(normalizedType: string): boolean {
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+/**
+ * Detects whether the odds in a list of match docs were produced by the
+ * deterministic fallback rather than fetched from a real bookmaker.
+ *
+ * Heuristic: the deterministic generator seeds from fixture ID, producing
+ * nearly identical odds across fixtures whose IDs are numerically close.
+ * We check if ALL "homeAway" (12) double-chance odds are identical — this
+ * is virtually impossible with real bookmaker data but very likely with
+ * the seed-based formula.
+ */
+function looksLikeDeterministicOdds(matches: MatchDoc[]): boolean {
+  if (matches.length < 3) return false;
+  const haVals = new Set(matches.map((m) => m.odds.homeAway));
+  if (haVals.size === 1) return true;
+  // Also check if home odds have < 3 distinct values across 10 matches
+  const homeVals = new Set(matches.map((m) => m.odds.home));
+  if (matches.length >= 8 && homeVals.size <= 2) return true;
+  return false;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -1656,9 +1850,22 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       continue;
     }
 
-    // Odds freeze: once a matchday has stored matches, we only update live fields.
-    // This keeps the first available odds snapshot stable for the whole matchday.
-    if (Array.isArray(existingMatches) && existingMatches.length > 0) {
+    // Odds freeze: once a matchday has stored matches with real bookmaker odds,
+    // we only update live fields. This keeps the first available odds snapshot
+    // stable for the whole matchday.
+    //
+    // GUARD: if the stored odds are clearly deterministic (fallback), we do NOT
+    // freeze them — instead we fall through and re-fetch from the API so real
+    // bookmaker odds replace the placeholders.
+    const existingMatchDocs: MatchDoc[] = Array.isArray(existingMatches)
+      ? existingMatches
+          .filter((m): m is Record<string, unknown> => typeof m === "object" && m != null)
+          .map((m) => m as unknown as MatchDoc)
+      : [];
+    const hasDeterministicOdds =
+      existingMatchDocs.length > 0 && looksLikeDeterministicOdds(existingMatchDocs);
+
+    if (Array.isArray(existingMatches) && existingMatches.length > 0 && !hasDeterministicOdds) {
       const mergedMatches = mergeLiveFieldsIntoExistingMatches(
         existingMatches,
         fixtures,
@@ -1691,12 +1898,22 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       continue;
     }
 
+    if (hasDeterministicOdds) {
+      console.log(
+        `[${options.logPrefix}] Matchday ${md}: detected deterministic odds, re-fetching from API`
+      );
+    }
+
     const oddsByFixture = new Map<number, FixtureOdds>();
     for (const f of fixtures) {
       const odds = await fetchOddsForFixture(f.fixtureId);
       if (odds) oddsByFixture.set(f.fixtureId, odds);
       await sleep(200);
     }
+
+    console.log(
+      `[${options.logPrefix}] Matchday ${md}: fetched real odds for ${oddsByFixture.size}/${fixtures.length} fixtures`
+    );
 
     const matches: MatchDoc[] = fixtures
       .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
@@ -1924,8 +2141,157 @@ export const maintenanceBackfillPicksAndScores = onSchedule(
     const seasonKey = seasonStartYear().toString();
     const logPrefix = "maintenance-picks";
 
+    await cleanupDeletingGroups(db, logPrefix);
+    await backfillGroupInviteIndex(db, logPrefix);
     await cleanupInvalidMatchdayDocsOnce(db, seasonKey, logPrefix);
     await backfillLegacyPicksGroupIds(db, seasonKey, logPrefix);
     await recomputeAllPicksScoresForSeason(db, seasonKey, logPrefix);
+  }
+);
+
+export const cleanupDeletingGroupsMaintenance = onSchedule(
+  {
+    region: "europe-west1",
+    schedule: "every 30 minutes",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const db = getFirestore();
+    await cleanupDeletingGroups(db, "maintenance-groups");
+  }
+);
+
+// ─── Member count reconciliation ─────────────────────────────────────────────
+// Auto-corrects memberCount on the group document whenever a member is
+// created or deleted. This replaces the fragile client-side increment/decrement
+// with a definitive count query.
+
+export const reconcileMemberCount = onDocumentWritten(
+  {
+    region: "europe-west1",
+    document: "groups/{groupId}/members/{memberUid}",
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const groupId = event.params.groupId;
+    const db = getFirestore();
+    const groupRef = db.collection("groups").doc(groupId);
+
+    // Only reconcile on create or delete (not profile updates).
+    const beforeExists = event.data?.before?.exists ?? false;
+    const afterExists = event.data?.after?.exists ?? false;
+    if (beforeExists === afterExists) return; // update, nothing to do
+
+    const membersSnap = await groupRef.collection("members").select().get();
+    const actualCount = membersSnap.size;
+    const groupSnap = await groupRef.get();
+    if (!groupSnap.exists) return;
+
+    const storedCount =
+      (groupSnap.data()?.["memberCount"] as number | undefined) ?? 0;
+    if (storedCount === actualCount) return;
+
+    await groupRef.update({
+      memberCount: actualCount,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(
+      `[reconcile-members] group=${groupId} stored=${storedCount} actual=${actualCount}`
+    );
+  }
+);
+
+// ─── Group integrity repair (scheduled) ──────────────────────────────────────
+// Runs alongside the existing maintenance job to fix:
+//   1. Admin role: ensure adminUid has role='admin' in members subcollection
+//   2. memberCount drift: reconcile with actual member count
+//   3. Orphan detection: log members without a /users/{uid} doc
+
+async function repairGroupIntegrity(
+  db: FirebaseFirestore.Firestore,
+  logPrefix: string
+): Promise<void> {
+  const groupsSnap = await db.collection("groups").get();
+  if (groupsSnap.empty) return;
+
+  let scanned = 0;
+  let adminFixed = 0;
+  let countFixed = 0;
+  let orphansFound = 0;
+
+  for (const groupDoc of groupsSnap.docs) {
+    scanned += 1;
+    const data = groupDoc.data();
+    const adminUid =
+      typeof data["adminUid"] === "string" ? data["adminUid"].trim() : "";
+    const storedCount =
+      typeof data["memberCount"] === "number" ? data["memberCount"] : 0;
+
+    const membersSnap = await groupDoc.ref.collection("members").get();
+    const actualCount = membersSnap.size;
+
+    // Fix memberCount if needed
+    if (storedCount !== actualCount) {
+      await groupDoc.ref.update({
+        memberCount: actualCount,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      countFixed += 1;
+    }
+
+    // Fix admin role
+    if (adminUid) {
+      const adminMemberRef = groupDoc.ref.collection("members").doc(adminUid);
+      const adminMemberSnap = await adminMemberRef.get();
+      if (adminMemberSnap.exists) {
+        const currentRole = adminMemberSnap.data()?.["role"];
+        if (currentRole !== "admin") {
+          await adminMemberRef.update({
+            role: "admin",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          adminFixed += 1;
+        }
+      }
+    }
+
+    // Detect orphan members (no user doc)
+    if (membersSnap.docs.length > 0) {
+      const memberUids = membersSnap.docs.map((d) => d.id);
+      const userRefs = memberUids.map((uid) =>
+        db.collection("users").doc(uid)
+      );
+      const userSnaps = await db.getAll(...userRefs);
+      for (let i = 0; i < userSnaps.length; i++) {
+        if (!userSnaps[i].exists) {
+          orphansFound += 1;
+          console.log(
+            `[${logPrefix}] orphan member uid=${memberUids[i]} ` +
+              `group=${groupDoc.id}`
+          );
+        }
+      }
+    }
+  }
+
+  console.log(
+    `[${logPrefix}] Group integrity repair scanned=${scanned} ` +
+      `adminFixed=${adminFixed} countFixed=${countFixed} ` +
+      `orphansFound=${orphansFound}`
+  );
+}
+
+export const maintenanceGroupIntegrity = onSchedule(
+  {
+    region: "europe-west1",
+    schedule: "every 6 hours",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const db = getFirestore();
+    await repairGroupIntegrity(db, "maintenance-integrity");
   }
 );

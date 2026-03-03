@@ -56,6 +56,10 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
             ? l10n.joinGroupInvalidCode
             : err == 'Already a member'
             ? l10n.joinGroupAlreadyMember
+            : err == 'Group full'
+            ? l10n.joinGroupFull
+            : err == 'Group unavailable'
+            ? l10n.joinGroupUnavailable
             : err == 'Not authenticated'
             ? l10n.groupSignInRequired
             : err == 'Backend unavailable'

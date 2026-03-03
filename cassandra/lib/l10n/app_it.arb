@@ -610,5 +610,10 @@
       "count": {}
     }
   },
-  "settingsSwitchGroup": "Cambia gruppo"
+  "settingsSwitchGroup": "Cambia gruppo",
+  "predictionsSubmitButton": "Invia",
+  "predictionsSubmittedButton": "Inviati",
+  "predictionsPicksMade": "Pronostici effettuati",
+  "predictionsMaxPoints": "Max Punti",
+  "predictionsMinPoints": "Min Punti"
 }

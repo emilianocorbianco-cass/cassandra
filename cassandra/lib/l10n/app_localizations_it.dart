@@ -778,7 +778,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupSyncRetry => 'Riprova';
 
   @override
-  String get tabGroup => 'Gruppo';
+  String get tabGroup => 'Gruppi';
 
   @override
   String get tabLive => 'Livescore';
@@ -1118,4 +1118,19 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get settingsSwitchGroup => 'Cambia gruppo';
+
+  @override
+  String get predictionsSubmitButton => 'Invia';
+
+  @override
+  String get predictionsSubmittedButton => 'Inviati';
+
+  @override
+  String get predictionsPicksMade => 'Pronostici effettuati';
+
+  @override
+  String get predictionsMaxPoints => 'Max Punti';
+
+  @override
+  String get predictionsMinPoints => 'Min Punti';
 }

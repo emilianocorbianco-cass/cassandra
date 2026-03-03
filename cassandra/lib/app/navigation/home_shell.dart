@@ -210,10 +210,10 @@ class _HomeShellState extends State<HomeShell> {
     final l10n = AppLocalizations.of(context)!;
     final app = CassandraScope.of(context);
 
-    // Charcoal è il primo layer: sfondo unico dell'intera app.
+    // Platinum background: sfondo unico dell'intera app.
     // Le card e gli altri elementi si appoggiano sopra.
     return Scaffold(
-        backgroundColor: CassandraColors.charcoal,
+        backgroundColor: CassandraColors.bg,
         // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
         body: Column(
           children: [
@@ -254,68 +254,40 @@ class _HomeShellState extends State<HomeShell> {
           ],
         ),
         bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Color(0x44000000),
-                blurRadius: 12,
-                offset: Offset(0, -4),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(20),
-            ),
-            child: NavigationBarTheme(
-              data: NavigationBarThemeData(
-                backgroundColor: CassandraColors.inkBlackV2,
-                indicatorColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                height: 52,
-                iconTheme: WidgetStateProperty.resolveWith((states) {
-                  final selected = states.contains(WidgetState.selected);
-                  return IconThemeData(
-                    color: CassandraColors.brightSnow,
-                    size: selected ? 22 : 20,
-                  );
-                }),
-                labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                  final selected = states.contains(WidgetState.selected);
-                  return TextStyle(
-                    color: CassandraColors.brightSnow,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                    fontSize: 9,
-                    height: 1.6,
-                  );
-                }),
-                labelBehavior:
-                    NavigationDestinationLabelBehavior.alwaysShow,
-              ),
-              child: NavigationBar(
-                selectedIndex: _index,
-                onDestinationSelected: (i) => setState(() => _index = i),
-                destinations: [
-                  NavigationDestination(
-                    icon: const Icon(Icons.sports_soccer_outlined),
-                    selectedIcon: const Icon(Icons.sports_soccer),
+          color: CassandraColors.inkBlackV2,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: Row(
+                children: [
+                  _NavTab(
+                    icon: Icons.sports_soccer_outlined,
+                    selectedIcon: Icons.sports_soccer,
                     label: l10n.tabPredictions,
+                    selected: _index == 0,
+                    onTap: () => setState(() => _index = 0),
                   ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.groups_outlined),
-                    selectedIcon: const Icon(Icons.groups),
+                  _NavTab(
+                    icon: Icons.groups_outlined,
+                    selectedIcon: Icons.groups,
                     label: l10n.tabGroup,
+                    selected: _index == 1,
+                    onTap: () => setState(() => _index = 1),
                   ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.live_tv_outlined),
-                    selectedIcon: const Icon(Icons.live_tv),
+                  _NavTab(
+                    icon: Icons.live_tv_outlined,
+                    selectedIcon: Icons.live_tv,
                     label: l10n.tabLive,
+                    selected: _index == 2,
+                    onTap: () => setState(() => _index = 2),
                   ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.settings_outlined),
-                    selectedIcon: const Icon(Icons.settings),
+                  _NavTab(
+                    icon: Icons.settings_outlined,
+                    selectedIcon: Icons.settings,
                     label: l10n.tabSettings,
+                    selected: _index == 3,
+                    onTap: () => setState(() => _index = 3),
                   ),
                 ],
               ),
@@ -323,5 +295,50 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ),
     ); // Scaffold
+  }
+}
+
+class _NavTab extends StatelessWidget {
+  const _NavTab({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected ? selectedIcon : icon,
+              color: CassandraColors.brightSnow,
+              size: selected ? 30 : 28,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: CassandraColors.brightSnow,
+                fontWeight: FontWeight.w700,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

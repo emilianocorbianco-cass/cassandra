@@ -141,12 +141,13 @@ class LiveMatchDetailsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final status = _statusLabel(match.statusShort, l10n);
+    // Ordine inverso: ultimi eventi in alto.
     final events = List<MatchLiveEvent>.of(match.liveEvents)
       ..sort((a, b) {
-        if (a.minute != b.minute) return a.minute.compareTo(b.minute);
+        if (a.minute != b.minute) return b.minute.compareTo(a.minute);
         final aExtra = a.extraMinute ?? 0;
         final bExtra = b.extraMinute ?? 0;
-        return aExtra.compareTo(bExtra);
+        return bExtra.compareTo(aExtra);
       });
 
     return Scaffold(
@@ -222,6 +223,7 @@ class LiveMatchDetailsPage extends StatelessWidget {
                         ].join(' • ');
 
                         return Card(
+                          color: CassandraColors.platinum,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -234,10 +236,10 @@ class LiveMatchDetailsPage extends StatelessWidget {
                                   width: 44,
                                   child: Text(
                                     _eventMinuteLabel(e),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: CassandraColors.inkBlackV2,
+                                    ),
                                   ),
                                 ),
                                 Icon(
@@ -253,23 +255,20 @@ class LiveMatchDetailsPage extends StatelessWidget {
                                     children: [
                                       Text(
                                         _eventMainLabel(e, l10n),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: CassandraColors.inkBlackV2,
+                                        ),
                                       ),
                                       if (secondary.isNotEmpty) ...[
                                         const SizedBox(height: 2),
                                         Text(
                                           secondary,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: CassandraColors.slate,
-                                              ),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: CassandraColors.inkBlackV2
+                                                .withValues(alpha: 0.6),
+                                          ),
                                         ),
                                       ],
                                     ],

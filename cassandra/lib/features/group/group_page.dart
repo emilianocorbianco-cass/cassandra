@@ -694,7 +694,7 @@ class _GroupPageState extends State<GroupPage> {
         appBar: AppBar(
           centerTitle: true,
           title: Text(
-            l10n.groupTitle,
+            l10n.tabGroup,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -1003,7 +1003,7 @@ class _GroupPageState extends State<GroupPage> {
       appBar: AppBar(
         centerTitle: true,
         title: Text(
-          l10n.groupTitle,
+          l10n.tabGroup,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
@@ -1060,7 +1060,9 @@ class _GroupPageState extends State<GroupPage> {
                           children: [
                             Text(
                               groupName,
-                              style: Theme.of(context).textTheme.titleMedium,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: CassandraColors.brightSnow,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -1070,7 +1072,9 @@ class _GroupPageState extends State<GroupPage> {
                                 english: en,
                                 l10n: l10n,
                               ),
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: CassandraColors.brightSnow,
+                              ),
                             ),
                           ],
                         ),
@@ -1081,7 +1085,7 @@ class _GroupPageState extends State<GroupPage> {
                   Text(
                     resultsLabel,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CassandraColors.slate,
+                      color: CassandraColors.brightSnow,
                     ),
                   ),
                   const SizedBox(height: 10),

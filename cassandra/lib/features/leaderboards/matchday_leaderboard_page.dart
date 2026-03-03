@@ -144,6 +144,7 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                               ),
                               text: e.member.avatarInitial,
                               badges: badges,
+                              imagePathOrUrl: e.member.photoUrl,
                             ),
                           ],
                         ),

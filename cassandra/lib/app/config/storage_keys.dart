@@ -10,6 +10,9 @@ class StorageKeys {
   static const profileDisplayNameV1 = 'profile.displayName.v1';
   static const profileEmailV1 = 'profile.email.v1';
   static const profilePhotoUrlV1 = 'profile.photoUrl.v1';
+  static const profileLocalUpdatedAtMsV1 = 'profile.localUpdatedAtMs.v1';
+  static const profileLocalFieldUpdatedAtMsV1 =
+      'profile.localFieldUpdatedAtMs.v1';
   static const demoSeedV1 = 'demo_seed.v1';
 
   // Auth / remember
@@ -40,6 +43,7 @@ class StorageKeys {
   static const currentUserPicksByMatchIdV1 =
       'cassandra.current_user_picks_by_match_id_v1';
   static const currentUserPicksByMatchdayV1 = 'picks.currentUser.byMatchday.v1';
+  static const pendingPicksOutboxV1 = 'picks.pendingOutbox.v1';
   static const predictionOutcomesByMatchdayV1 = 'outcomes.byMatchday.v1';
   static const memberPicksByMemberIdV1 =
       'cassandra.member_picks_by_member_id_v1';

@@ -562,6 +562,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                     ),
                                     text: e.member.avatarInitial,
                                     badges: badges,
+                                    imagePathOrUrl: e.member.photoUrl,
                                   ),
                                 ],
                               ),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../services/storage/storage_service.dart';
 import '../models/badge_type.dart';
 
 class AvatarWithBadges extends StatefulWidget {
@@ -28,41 +29,82 @@ class AvatarWithBadges extends StatefulWidget {
 
 class _AvatarWithBadgesState extends State<AvatarWithBadges> {
   String? _cachedSource;
-  ImageProvider<Object>? _cachedProvider;
-
-  static ImageProvider<Object>? _buildProvider(String? imagePathOrUrl) {
-    final source = (imagePathOrUrl ?? '').trim();
-    if (source.isEmpty) return null;
-    if (source.startsWith('http://') || source.startsWith('https://')) {
-      return NetworkImage(source);
-    }
-    if (source.startsWith('data:')) {
-      try {
-        final comma = source.indexOf(',');
-        if (comma >= 0) {
-          return MemoryImage(base64Decode(source.substring(comma + 1)));
-        }
-      } catch (_) {}
-      return null;
-    }
-    final file = File(source);
-    return file.existsSync() ? FileImage(file) : null;
-  }
+  ImageProvider<Object>? _resolvedProvider;
 
   @override
   void initState() {
     super.initState();
-    _cachedSource = widget.imagePathOrUrl;
-    _cachedProvider = _buildProvider(widget.imagePathOrUrl);
+    _loadImageIfNeeded();
   }
 
   @override
   void didUpdateWidget(AvatarWithBadges oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.imagePathOrUrl != _cachedSource) {
-      _cachedSource = widget.imagePathOrUrl;
-      _cachedProvider = _buildProvider(widget.imagePathOrUrl);
+    _loadImageIfNeeded();
+  }
+
+  void _loadImageIfNeeded() {
+    final source = (widget.imagePathOrUrl ?? '').trim();
+    if (source == (_cachedSource ?? '').trim()) return;
+    _cachedSource = source;
+
+    if (source.isEmpty) {
+      _resolvedProvider = null;
+      return;
     }
+
+    // storage:// reference — fetch asincrono, setState quando arriva
+    if (StorageService.isStorageReference(source)) {
+      StorageService().readBytesByReference(source).then((bytes) {
+        if (!mounted) return;
+        if ((widget.imagePathOrUrl ?? '').trim() != source) return;
+        setState(() {
+          _resolvedProvider = (bytes != null && bytes.isNotEmpty)
+              ? MemoryImage(bytes)
+              : null;
+        });
+      });
+      return;
+    }
+
+    // URL HTTP
+    if (source.startsWith('http://') || source.startsWith('https://')) {
+      _resolvedProvider = NetworkImage(source);
+      return;
+    }
+
+    // data:image URI
+    if (source.startsWith('data:')) {
+      try {
+        final comma = source.indexOf(',');
+        if (comma >= 0) {
+          _resolvedProvider = MemoryImage(
+            base64Decode(source.substring(comma + 1)),
+          );
+          return;
+        }
+      } catch (_) {}
+      _resolvedProvider = null;
+      return;
+    }
+
+    // File locale
+    final file = File(source);
+    _resolvedProvider = file.existsSync() ? FileImage(file) : null;
+  }
+
+  Widget _buildAvatar(ImageProvider<Object>? imageProvider, {String? text}) {
+    return CircleAvatar(
+      radius: widget.radius,
+      backgroundColor: widget.backgroundColor,
+      foregroundImage: imageProvider,
+      child: imageProvider == null
+          ? Text(
+              text ?? widget.text,
+              style: const TextStyle(color: Colors.white),
+            )
+          : null,
+    );
   }
 
   @override
@@ -73,21 +115,13 @@ class _AvatarWithBadgesState extends State<AvatarWithBadges> {
     final visible = sorted.take(2).toList(); // per ora max 2 badge visibili
 
     final bubbleSize = (widget.radius * 0.75).clamp(12.0, 16.0);
-    final imageProvider = _cachedProvider;
 
     return SizedBox(
       width: widget.radius * 2,
       height: widget.radius * 2,
       child: Stack(
         children: [
-          CircleAvatar(
-            radius: widget.radius,
-            backgroundColor: widget.backgroundColor,
-            foregroundImage: imageProvider,
-            child: imageProvider == null
-                ? Text(widget.text, style: const TextStyle(color: Colors.white))
-                : null,
-          ),
+          _buildAvatar(_resolvedProvider),
           if (visible.isNotEmpty)
             Positioned(
               top: 2,

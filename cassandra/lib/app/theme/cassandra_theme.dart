@@ -5,9 +5,12 @@ class CassandraTheme {
   static ThemeData light() {
     return ThemeData(
       useMaterial3: true,
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: CassandraColors.cardBg,
         surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -15,14 +18,14 @@ class CassandraTheme {
             if (states.contains(WidgetState.selected)) {
               return CassandraColors.primary;
             }
-            return null;
+            return CassandraColors.charcoal;
           }),
-          foregroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return CassandraColors.onPrimary;
-            }
-            return null;
-          }),
+          foregroundColor: WidgetStateProperty.all(
+            CassandraColors.brightSnow,
+          ),
+          side: WidgetStateProperty.all(
+            const BorderSide(color: CassandraColors.brightSnow, width: 1),
+          ),
         ),
       ),
 
@@ -34,18 +37,33 @@ class CassandraTheme {
       // Più avanti possiamo decidere un font unico cross-platform.
       fontFamily: 'Avenir',
 
-      // AppBar navy — coerente con la NavBar, crea il "frame scuro" premium.
+      // TabBar: snow text, amaranth indicator.
+      tabBarTheme: const TabBarThemeData(
+        labelColor: CassandraColors.brightSnow,
+        unselectedLabelColor: CassandraColors.brightSnow,
+        indicatorColor: CassandraColors.primary,
+        labelStyle: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Avenir',
+        ),
+        unselectedLabelStyle: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Avenir',
+        ),
+      ),
+
+      // AppBar ink black — coerente con la NavBar, crea il "frame scuro" premium.
       appBarTheme: const AppBarTheme(
-        backgroundColor: CassandraColors.navBarBg,
-        foregroundColor: CassandraColors.navBarFg,
+        backgroundColor: CassandraColors.inkBlackV2,
+        foregroundColor: CassandraColors.brightSnow,
         titleTextStyle: TextStyle(
-          color: CassandraColors.navBarFg,
+          color: CassandraColors.brightSnow,
           fontSize: 18,
           fontWeight: FontWeight.w700,
           fontFamily: 'Avenir',
         ),
-        iconTheme: IconThemeData(color: CassandraColors.navBarFg),
-        actionsIconTheme: IconThemeData(color: CassandraColors.navBarFg),
+        iconTheme: IconThemeData(color: CassandraColors.brightSnow),
+        actionsIconTheme: IconThemeData(color: CassandraColors.brightSnow),
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -90,14 +108,14 @@ class CassandraTheme {
             if (states.contains(WidgetState.selected)) {
               return CassandraColors.primary;
             }
-            return null;
+            return CassandraColors.charcoal;
           }),
-          foregroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return CassandraColors.onPrimary;
-            }
-            return null;
-          }),
+          foregroundColor: WidgetStateProperty.all(
+            CassandraColors.brightSnow,
+          ),
+          side: WidgetStateProperty.all(
+            const BorderSide(color: CassandraColors.brightSnow, width: 1),
+          ),
         ),
       ),
 

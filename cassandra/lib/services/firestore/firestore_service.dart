@@ -19,6 +19,8 @@ import 'models/picks_document.dart';
 class FirestoreService {
   late final FirebaseFirestore _db;
   static const Duration _requestTimeout = Duration(seconds: 15);
+  static const String _kGroupInvitesCollection = 'group_invites';
+  static const int _kDefaultGroupMaxMembers = 50;
 
   // ---------------------------------------------------------------------------
   // Group profile sync — retry / chunk constants and test-injection fields
@@ -145,15 +147,23 @@ class FirestoreService {
     final data = <String, dynamic>{
       'displayName': profile.displayName,
       'teamName': profile.teamName,
-      'favoriteTeam': profile.favoriteTeam,
-      'email': profile.email,
-      'photoUrl': profile.photoUrl,
       'language': cassandraLanguageToStorage(language),
       'defaultVisibility': predictionVisibilityToStorage(defaultVisibility),
       'avatarSeed': avatarSeed,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
+    // Only include nullable fields when non-null so that merge: true does not
+    // overwrite existing Firestore values with null.
+    if (profile.favoriteTeam != null) {
+      data['favoriteTeam'] = profile.favoriteTeam;
+    }
+    if (profile.email != null) {
+      data['email'] = profile.email;
+    }
+    if (profile.photoUrl != null) {
+      data['photoUrl'] = profile.photoUrl;
+    }
     if (groupIds != null) {
       data['groupIds'] = groupIds;
     }
@@ -171,6 +181,174 @@ class FirestoreService {
     );
     if (!doc.exists) return null;
     return doc.data();
+  }
+
+  /// Returns the UID of an existing user doc whose `email` matches [email]
+  /// but whose document ID is different from [currentUid], or `null` if no
+  /// such duplicate exists.
+  ///
+  /// This is used at sign-in time to detect stale accounts left behind by
+  /// a previous Firebase Auth deletion-then-recreation cycle.
+  Future<String?> findExistingUidForEmail({
+    required String email,
+    required String currentUid,
+  }) async {
+    if (email.isEmpty) return null;
+    try {
+      final snap = await _withTimeout(
+        _db.collection('users').where('email', isEqualTo: email).limit(2).get(),
+        operation: 'findExistingUidForEmail',
+      );
+      for (final doc in snap.docs) {
+        if (doc.id != currentUid) return doc.id;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[findExistingUidForEmail] query failed: $e');
+      }
+    }
+    return null;
+  }
+
+  /// Migrates Firestore data from a stale (deleted-auth) user to the current
+  /// user.  This covers:
+  ///
+  /// 1. **groupIds** — merges old user's group list into the new user doc.
+  /// 2. **member docs** — for each group the old UID belongs to, creates a new
+  ///    member doc under [toUid] (copying the old doc's data) and deletes the
+  ///    old one.  Also updates `adminUid` on the group doc if the old UID was
+  ///    the admin.
+  /// 3. **picks** — re-writes each pick doc so that `uid` points to [toUid].
+  ///    Because the doc-ID encodes the UID, we create a new doc and delete the
+  ///    old one.
+  /// 4. **old user doc** — deleted after the migration completes.
+  Future<void> migrateStaleUserData({
+    required String fromUid,
+    required String toUid,
+    required String displayName,
+    required String teamName,
+    required int avatarSeed,
+    String? favoriteTeam,
+    String? photoUrl,
+  }) async {
+    if (fromUid == toUid) return;
+    try {
+      // 1. Read old user doc to get its groupIds.
+      final oldUserSnap = await _db.collection('users').doc(fromUid).get();
+      if (!oldUserSnap.exists) return;
+      final oldData = oldUserSnap.data() ?? {};
+      final oldGroupIds = List<String>.from(
+        (oldData['groupIds'] as List<dynamic>?) ?? [],
+      );
+
+      // 2. For each group, migrate the member doc and fix adminUid if needed.
+      for (final groupId in oldGroupIds) {
+        try {
+          final oldMemberRef = _db
+              .collection('groups')
+              .doc(groupId)
+              .collection('members')
+              .doc(fromUid);
+          final oldMemberSnap = await oldMemberRef.get();
+          if (oldMemberSnap.exists) {
+            final memberData = Map<String, dynamic>.from(
+              oldMemberSnap.data() ?? {},
+            );
+            final wasAdmin = memberData['role'] == 'admin';
+
+            // Check if the new UID already has a member doc.
+            final newMemberRef = _db
+                .collection('groups')
+                .doc(groupId)
+                .collection('members')
+                .doc(toUid);
+            final newMemberSnap = await newMemberRef.get();
+
+            if (!newMemberSnap.exists) {
+              // Create new member doc preserving the old data.
+              memberData['displayName'] = displayName;
+              memberData['teamName'] = teamName;
+              memberData['avatarSeed'] = avatarSeed;
+              memberData['favoriteTeam'] = favoriteTeam;
+              memberData['photoUrl'] = photoUrl;
+              memberData['updatedAt'] = FieldValue.serverTimestamp();
+              await newMemberRef.set(memberData);
+            } else if (wasAdmin) {
+              // New member already exists — just promote to admin.
+              await newMemberRef.update({'role': 'admin'});
+            }
+
+            // Delete old member doc.
+            await oldMemberRef.delete();
+
+            // If old UID was admin, transfer ownership.
+            if (wasAdmin) {
+              await _db.collection('groups').doc(groupId).update({
+                'adminUid': toUid,
+              });
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint(
+              '[migrateStaleUserData] member migration failed for '
+              'group $groupId: $e',
+            );
+          }
+        }
+      }
+
+      // 3. Migrate picks: re-key each pick doc from fromUid to toUid.
+      try {
+        final picksSnap = await _db
+            .collection('picks')
+            .where('uid', isEqualTo: fromUid)
+            .get();
+        for (final pickDoc in picksSnap.docs) {
+          final pickData = Map<String, dynamic>.from(pickDoc.data());
+          pickData['uid'] = toUid;
+          pickData['migratedFrom'] = fromUid;
+          pickData['migratedAt'] = FieldValue.serverTimestamp();
+
+          // Build new doc ID by replacing the UID prefix.
+          final oldDocId = pickDoc.id;
+          final newDocId = oldDocId.replaceFirst(fromUid, toUid);
+
+          // Only create if the target doesn't already exist.
+          final existingPick = await _db
+              .collection('picks')
+              .doc(newDocId)
+              .get();
+          if (!existingPick.exists) {
+            await _db.collection('picks').doc(newDocId).set(pickData);
+          }
+          await pickDoc.reference.delete();
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[migrateStaleUserData] picks migration failed: $e');
+        }
+      }
+
+      // 4. Merge groupIds into the new user doc and delete the old one.
+      if (oldGroupIds.isNotEmpty) {
+        await _db.collection('users').doc(toUid).set({
+          'groupIds': FieldValue.arrayUnion(oldGroupIds),
+        }, SetOptions(merge: true));
+      }
+      await _db.collection('users').doc(fromUid).delete();
+
+      if (kDebugMode) {
+        debugPrint(
+          '[migrateStaleUserData] migrated $fromUid → $toUid '
+          '(groups: ${oldGroupIds.length})',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[migrateStaleUserData] failed: $e');
+      }
+    }
   }
 
   Future<void> updateUserField(String uid, Map<String, dynamic> fields) async {
@@ -225,33 +403,164 @@ class FirestoreService {
     required String name,
     required String adminUid,
     required String inviteCode,
+    int maxMembers = _kDefaultGroupMaxMembers,
+    String? creatorDisplayName,
+    String? creatorTeamName,
+    int? creatorAvatarSeed,
+    String? creatorFavoriteTeam,
+    String? creatorPhotoUrl,
   }) async {
-    final docRef = await _withTimeout(
-      _db.collection('groups').add({
-        'name': name,
-        'inviteCode': inviteCode,
-        'adminUid': adminUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'memberCount': 0,
-        'competitions': ['serie-a'],
+    final normalizedInviteCode = inviteCode.trim().toUpperCase();
+    final groupRef = _db.collection('groups').doc();
+    final inviteRef = _db
+        .collection(_kGroupInvitesCollection)
+        .doc(normalizedInviteCode);
+    final hasCreatorMembership = creatorAvatarSeed != null;
+
+    await _withTimeout(
+      _db.runTransaction((txn) async {
+        final inviteSnap = await txn.get(inviteRef);
+        if (inviteSnap.exists) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'already-exists',
+            message: 'Invite code already exists',
+          );
+        }
+
+        txn.set(groupRef, {
+          'name': name,
+          'inviteCode': normalizedInviteCode,
+          'adminUid': adminUid,
+          'maxMembers': maxMembers,
+          'deleting': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'memberCount': hasCreatorMembership ? 1 : 0,
+          'competitions': ['serie-a'],
+        });
+        txn.set(inviteRef, {
+          'groupId': groupRef.id,
+          'groupName': name,
+          'inviteCode': normalizedInviteCode,
+          'adminUid': adminUid,
+          'maxMembers': maxMembers,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        if (hasCreatorMembership) {
+          final memberRef = groupRef.collection('members').doc(adminUid);
+          final userRef = _db.collection('users').doc(adminUid);
+          txn.set(memberRef, {
+            'displayName': (creatorDisplayName ?? '').trim(),
+            'teamName': (creatorTeamName ?? '').trim(),
+            'photoUrl': creatorPhotoUrl,
+            'avatarSeed': creatorAvatarSeed,
+            'favoriteTeam': creatorFavoriteTeam,
+            'joinedAt': FieldValue.serverTimestamp(),
+            'role': 'admin',
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          txn.set(userRef, {
+            'groupIds': FieldValue.arrayUnion([groupRef.id]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
       }),
       operation: 'createGroup',
     );
-    return docRef.id;
+    return groupRef.id;
   }
 
   Future<GroupDocument?> getGroupByInviteCode(String code) async {
-    final snap = await _withTimeout(
-      _db
-          .collection('groups')
-          .where('inviteCode', isEqualTo: code)
-          .limit(1)
-          .get(),
+    final normalized = code.trim().toUpperCase();
+    if (normalized.isEmpty) return null;
+
+    final inviteSnap = await _withTimeout(
+      _db.collection(_kGroupInvitesCollection).doc(normalized).get(),
       operation: 'getGroupByInviteCode',
     );
-    if (snap.docs.isEmpty) return null;
-    return GroupDocument.fromFirestore(snap.docs.first);
+
+    if (inviteSnap.exists) {
+      final data = inviteSnap.data() ?? const <String, dynamic>{};
+      final groupId = (data['groupId'] as String? ?? '').trim();
+      if (groupId.isNotEmpty) {
+        final groupName = (data['groupName'] as String? ?? '').trim();
+        final adminUid = (data['adminUid'] as String? ?? '').trim();
+        final maxMembers = (data['maxMembers'] as num?)?.toInt() ?? 50;
+        final createdAt =
+            (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+        final updatedAt =
+            (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+        return GroupDocument(
+          id: groupId,
+          name: groupName,
+          inviteCode: normalized,
+          adminUid: adminUid,
+          createdAt: createdAt,
+          updatedAt: updatedAt,
+          memberCount: 0,
+          maxMembers: maxMembers,
+        );
+      }
+    }
+
+    // ── Fallback: group_invites doc missing — query groups by inviteCode ──
+    // The group_invites collection may be empty if the maintenance backfill
+    // hasn't run yet. Fall back to a direct query on the groups collection.
+    // This may fail if security rules don't allow the query for non-members.
+    if (kDebugMode) {
+      debugPrint(
+        '[firestore] invite doc missing for $normalized, '
+        'falling back to groups query',
+      );
+    }
+
+    try {
+      final groupQuery = await _withTimeout(
+        _db
+            .collection('groups')
+            .where('inviteCode', isEqualTo: normalized)
+            .limit(1)
+            .get(),
+        operation: 'getGroupByInviteCode.fallback',
+      );
+      if (groupQuery.docs.isEmpty) return null;
+
+      final groupDoc = groupQuery.docs.first;
+      final groupData = groupDoc.data();
+
+      // Self-heal: recreate the missing group_invites document.
+      final adminUid = (groupData['adminUid'] as String? ?? '').trim();
+      final groupName = (groupData['name'] as String? ?? '').trim();
+      unawaited(
+        _db
+            .collection(_kGroupInvitesCollection)
+            .doc(normalized)
+            .set({
+              'groupId': groupDoc.id,
+              'groupName': groupName,
+              'inviteCode': normalized,
+              'adminUid': adminUid,
+              'maxMembers': (groupData['maxMembers'] as num?)?.toInt() ?? 50,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            })
+            .catchError((_) {
+              // Best-effort: rules may prevent this write for non-admins.
+            }),
+      );
+
+      return GroupDocument.fromFirestore(groupDoc);
+    } catch (e) {
+      // Security rules may block the query for non-members.
+      if (kDebugMode) {
+        debugPrint('[firestore] invite fallback query failed: $e');
+      }
+      return null;
+    }
   }
 
   Future<GroupDocument?> getGroup(String groupId) async {
@@ -322,6 +631,27 @@ class FirestoreService {
         }
 
         final memberSnap = await txn.get(memberRef);
+        final currentCount =
+            (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+        final maxMembers =
+            (groupSnap.data()?['maxMembers'] as num?)?.toInt() ?? 0;
+        final deleting = groupSnap.data()?['deleting'] == true;
+        if (deleting) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'failed-precondition',
+            message: 'Group is being deleted',
+          );
+        }
+        if (!memberSnap.exists &&
+            maxMembers > 0 &&
+            currentCount >= maxMembers) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'resource-exhausted',
+            message: 'Group is full',
+          );
+        }
         final baseMemberData = <String, dynamic>{
           'displayName': displayName,
           'teamName': teamName,
@@ -332,8 +662,6 @@ class FirestoreService {
         };
 
         if (!memberSnap.exists) {
-          final currentCount =
-              (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
           txn.set(memberRef, {
             ...baseMemberData,
             'joinedAt': FieldValue.serverTimestamp(),
@@ -402,13 +730,30 @@ class FirestoreService {
           await hook(chunkIndex, chunkGroupIds);
           return;
         }
+        final memberRefs = chunkGroupIds
+            .map(
+              (groupId) => _db
+                  .collection('groups')
+                  .doc(groupId)
+                  .collection('members')
+                  .doc(uid),
+            )
+            .toList(growable: false);
+        final memberSnapshots = await _withTimeout(
+          Future.wait(memberRefs.map((ref) => ref.get())),
+          operation: 'updateGroupMemberProfileInGroups.prefetchMembers',
+        );
+
+        final existingMemberRefs = memberSnapshots
+            .where((snap) => snap.exists)
+            .map((snap) => snap.reference)
+            .toList(growable: false);
+        if (existingMemberRefs.isEmpty) {
+          return;
+        }
+
         final batch = _db.batch();
-        for (final groupId in chunkGroupIds) {
-          final memberRef = _db
-              .collection('groups')
-              .doc(groupId)
-              .collection('members')
-              .doc(uid);
+        for (final memberRef in existingMemberRefs) {
           batch.set(memberRef, {
             'displayName': displayName,
             'teamName': teamName,
@@ -505,12 +850,34 @@ class FirestoreService {
 
     final data = groupSnap.data();
     final actualAdminUid = data?['adminUid'] as String?;
+    final inviteCode = (data?['inviteCode'] as String? ?? '')
+        .trim()
+        .toUpperCase();
     if (actualAdminUid != adminUid) {
       throw FirebaseException(
         plugin: 'cloud_firestore',
         code: 'permission-denied',
         message: 'Only group admin can delete the group',
       );
+    }
+
+    await _withTimeout(
+      groupRef.set({
+        'deleting': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+      operation: 'deleteGroupAsAdmin.markDeleting',
+    );
+
+    if (inviteCode.isNotEmpty) {
+      try {
+        await _withTimeout(
+          _db.collection(_kGroupInvitesCollection).doc(inviteCode).delete(),
+          operation: 'deleteGroupAsAdmin.deleteInviteEarly',
+        );
+      } on FirebaseException catch (e) {
+        if (e.code != 'not-found') rethrow;
+      }
     }
 
     final membersSnap = await _withTimeout(
@@ -545,6 +912,59 @@ class FirestoreService {
       groupRef.delete(),
       operation: 'deleteGroupAsAdmin.delete',
     );
+
+    // Defensive cleanup: remove any stale invite docs still pointing to groupId.
+    final staleInvites = await _withTimeout(
+      _db
+          .collection(_kGroupInvitesCollection)
+          .where('groupId', isEqualTo: groupId)
+          .limit(20)
+          .get(),
+      operation: 'deleteGroupAsAdmin.findStaleInvites',
+    );
+    if (staleInvites.docs.isNotEmpty) {
+      final staleBatch = _db.batch();
+      for (final doc in staleInvites.docs) {
+        staleBatch.delete(doc.reference);
+      }
+      await _withTimeout(
+        staleBatch.commit(),
+        operation: 'deleteGroupAsAdmin.deleteStaleInvites',
+      );
+    }
+  }
+
+  Future<void> resumeDeletingGroupsForAdmin({
+    required String adminUid,
+    int limit = 30,
+  }) async {
+    final uid = adminUid.trim();
+    if (uid.isEmpty) return;
+
+    final groupsSnap = await _withTimeout(
+      _db
+          .collection('groups')
+          .where('adminUid', isEqualTo: uid)
+          .limit(limit)
+          .get(),
+      operation: 'resumeDeletingGroupsForAdmin.query',
+    );
+    if (groupsSnap.docs.isEmpty) return;
+
+    for (final groupDoc in groupsSnap.docs) {
+      final data = groupDoc.data();
+      if (data['deleting'] != true) continue;
+      try {
+        await deleteGroupAsAdmin(groupId: groupDoc.id, adminUid: uid);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            '[groups] resumeDeletingGroupsForAdmin failed '
+            'group=${groupDoc.id}: $e',
+          );
+        }
+      }
+    }
   }
 
   Future<List<GroupMemberDocument>> getGroupMembers(String groupId) async {
@@ -553,6 +973,135 @@ class FirestoreService {
       operation: 'getGroupMembers',
     );
     return snap.docs.map(GroupMemberDocument.fromFirestore).toList();
+  }
+
+  /// Repairs group membership consistency for the given [uid].
+  ///
+  /// 1. For every groupId in the user doc, verifies that a member doc exists
+  ///    in that group's subcollection. If missing, recreates it.
+  /// 2. Discovers orphaned memberships (member docs that exist in groups not
+  ///    listed in the user doc) and adds them back to the user's groupIds.
+  ///
+  /// This runs at most once per app session (controlled by the caller).
+  Future<void> repairGroupMembershipIfNeeded({
+    required String uid,
+    required String displayName,
+    required String teamName,
+    required int avatarSeed,
+    String? favoriteTeam,
+    String? photoUrl,
+  }) async {
+    if (uid.trim().isEmpty) return;
+
+    try {
+      // 1. Read user doc groupIds
+      final userDoc = await _withTimeout(
+        _db.collection('users').doc(uid).get(),
+        operation: 'repairMembership.readUser',
+      );
+      final userGroupIds = <String>{};
+      if (userDoc.exists) {
+        final raw = userDoc.data()?['groupIds'];
+        if (raw is List) {
+          for (final id in raw) {
+            final s = (id as String? ?? '').trim();
+            if (s.isNotEmpty) userGroupIds.add(s);
+          }
+        }
+      }
+
+      // 2. Discover membership via collectionGroup query
+      final discoveredGroupIds = await findGroupIdsForMember(uid);
+
+      // 3. Merge: union of user doc groupIds and discovered memberships
+      final allGroupIds = <String>{...userGroupIds, ...discoveredGroupIds};
+      if (allGroupIds.isEmpty) return;
+
+      // 4. Verify each membership and repair if needed.
+      //    Each group is checked independently so a permission error on one
+      //    group doesn't abort the entire repair.
+      final missingMemberDocs =
+          <String>[]; // groups where member doc is missing
+      final orphanedGroupIds = <String>[]; // discovered but not in user doc
+
+      for (final groupId in allGroupIds) {
+        try {
+          final memberRef = _db
+              .collection('groups')
+              .doc(groupId)
+              .collection('members')
+              .doc(uid);
+          final memberSnap = await memberRef.get();
+
+          if (!memberSnap.exists) {
+            // Check if the group itself still exists
+            final groupSnap = await _db.collection('groups').doc(groupId).get();
+            if (groupSnap.exists && groupSnap.data()?['deleting'] != true) {
+              missingMemberDocs.add(groupId);
+            }
+          }
+        } catch (e) {
+          // permission-denied means we have no member doc — treat as missing.
+          if (kDebugMode) {
+            debugPrint('[repair] could not verify membership in $groupId: $e');
+          }
+          missingMemberDocs.add(groupId);
+        }
+
+        if (!userGroupIds.contains(groupId)) {
+          orphanedGroupIds.add(groupId);
+        }
+      }
+
+      // 5. Recreate missing member docs
+      for (final groupId in missingMemberDocs) {
+        try {
+          await joinGroup(
+            groupId: groupId,
+            uid: uid,
+            displayName: displayName,
+            teamName: teamName,
+            avatarSeed: avatarSeed,
+            favoriteTeam: favoriteTeam,
+            photoUrl: photoUrl,
+          );
+          if (kDebugMode) {
+            debugPrint('[repair] recreated member doc in $groupId for $uid');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[repair] failed to recreate member in $groupId: $e');
+          }
+        }
+      }
+
+      // 6. Add orphaned groupIds back to user doc
+      if (orphanedGroupIds.isNotEmpty) {
+        await _db.collection('users').doc(uid).set({
+          'groupIds': FieldValue.arrayUnion(orphanedGroupIds),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        if (kDebugMode) {
+          debugPrint(
+            '[repair] added ${orphanedGroupIds.length} orphaned groupIds '
+            'back to user doc',
+          );
+        }
+      }
+
+      if (kDebugMode &&
+          (missingMemberDocs.isNotEmpty || orphanedGroupIds.isNotEmpty)) {
+        debugPrint(
+          '[repair] membership repair complete: '
+          'recreated=${missingMemberDocs.length} '
+          'orphans=${orphanedGroupIds.length}',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[repair] membership repair failed: $e');
+      }
+    }
   }
 
   Stream<List<GroupMemberDocument>> streamGroupMembers(String groupId) {
@@ -569,34 +1118,41 @@ class FirestoreService {
   }
 
   Future<bool> isInviteCodeTaken(String code) async {
-    final snap = await _withTimeout(
-      _db
-          .collection('groups')
-          .where('inviteCode', isEqualTo: code)
-          .limit(1)
-          .get(),
+    final normalized = code.trim().toUpperCase();
+    if (normalized.isEmpty) return false;
+    final doc = await _withTimeout(
+      _db.collection(_kGroupInvitesCollection).doc(normalized).get(),
       operation: 'isInviteCodeTaken',
     );
-    return snap.docs.isNotEmpty;
+    return doc.exists;
   }
 
   Future<List<String>> findGroupIdsForMember(String uid) async {
-    final snap = await _withTimeout(
-      _db
-          .collectionGroup('members')
-          .where(FieldPath.documentId, isEqualTo: uid)
-          .get(),
-      operation: 'findGroupIdsForMember',
-    );
-
-    final ids = <String>{};
-    for (final doc in snap.docs) {
-      final groupId = doc.reference.parent.parent?.id;
-      if (groupId != null && groupId.isNotEmpty) {
-        ids.add(groupId);
+    // Discovery via collectionGroup is not reliable because
+    // FieldPath.documentId in a collection group query matches the full
+    // document path, not just the document name.  The primary discovery
+    // source is the user doc's groupIds list; this method probes each
+    // known group instead.
+    try {
+      final userDoc = await _withTimeout(
+        _db.collection('users').doc(uid).get(),
+        operation: 'findGroupIdsForMember.readUser',
+      );
+      if (!userDoc.exists) return const [];
+      final raw = userDoc.data()?['groupIds'];
+      if (raw is! List) return const [];
+      final ids = <String>[];
+      for (final id in raw) {
+        final s = (id as String? ?? '').trim();
+        if (s.isNotEmpty) ids.add(s);
       }
+      return ids;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[findGroupIdsForMember] query failed: $e');
+      }
+      return const [];
     }
-    return ids.toList(growable: false);
   }
 
   // ===== GROUP CHAT =====
@@ -709,23 +1265,31 @@ class FirestoreService {
     );
 
     // Backward compatibility: delete legacy unscoped doc only when it is safe.
+    // Wrapped in try-catch so that a failure in legacy cleanup never shadows
+    // the already-successful main write above.
     final legacyDocId = _legacyPicksDocId(uid, seasonKey, dayNumber);
     if (legacyDocId == docId) return;
-    final legacyRef = _db.collection('picks').doc(legacyDocId);
-    final legacy = await _withTimeout(
-      legacyRef.get(),
-      operation: 'savePicks.legacyGet',
-    );
-    if (!legacy.exists) return;
-
-    final legacyGroupId = (legacy.data()?['groupId'] as String?)?.trim() ?? '';
-    final legacyIsSameScope =
-        legacyGroupId.isEmpty || legacyGroupId == normalizedGroupId;
-    if (legacyIsSameScope) {
-      await _withTimeout(
-        legacyRef.delete(),
-        operation: 'savePicks.legacyDelete',
+    try {
+      final legacyRef = _db.collection('picks').doc(legacyDocId);
+      final legacy = await _withTimeout(
+        legacyRef.get(),
+        operation: 'savePicks.legacyGet',
       );
+      if (!legacy.exists) return;
+
+      final legacyGroupId =
+          (legacy.data()?['groupId'] as String?)?.trim() ?? '';
+      final legacyIsSameScope =
+          legacyGroupId.isEmpty || legacyGroupId == normalizedGroupId;
+      if (legacyIsSameScope) {
+        await _withTimeout(
+          legacyRef.delete(),
+          operation: 'savePicks.legacyDelete',
+        );
+      }
+    } catch (e) {
+      // Best-effort: the main write already succeeded.
+      debugPrint('[savePicks] legacy cleanup failed (non-fatal): $e');
     }
   }
 

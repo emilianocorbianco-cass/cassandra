@@ -234,10 +234,14 @@ class AppState extends ChangeNotifier {
   Future<void> _applySignedOutAuthStateIfNeeded() async {
     if (_profile.id.trim().isEmpty) return;
     _lastAuthBootstrapUid = null;
+
+    // Only clear identity prefs (id/email).  Profile data prefs (photoUrl,
+    // favoriteTeam, teamName, timestamps) are intentionally preserved so they
+    // survive transient auth-stream glitches (e.g. idTokenChanges firing null
+    // during token refresh).  The explicit signOut() method handles full pref
+    // cleanup when the user intentionally signs out.
     _prefs?.remove(_kProfileId);
-    _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
-    _prefs?.remove(_kProfilePhotoUrl);
 
     _profile = _defaultProfile;
     _currentUserProfileSetupCompleted = false;
@@ -249,8 +253,6 @@ class AppState extends ChangeNotifier {
     _cancelStandingsStream();
     await groupState.clearAll();
     predictionState.clearAllHistory();
-    await _prefs?.remove(_kProfileLocalUpdatedAtMs);
-    await _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
     await _prefs?.remove(_kPendingPicksOutboxScoped);
     notifyListeners();
   }
@@ -505,6 +507,7 @@ class AppState extends ChangeNotifier {
   String? _lastBackendSyncError;
   DateTime? _lastBackendSyncErrorAt;
   int _consecutiveSyncFailures = 0;
+  bool _didRepairMembership = false;
 
   /// Number of consecutive sync failures required before the offline banner
   /// is shown. With a 30-second sync interval this means ~60 s of sustained
@@ -617,6 +620,7 @@ class AppState extends ChangeNotifier {
     _profileSyncDirty = false;
     _profileSyncRetryAttempt = 0;
     _lastProfileSyncFingerprint = null;
+    _didRepairMembership = false;
     if (clearHydration) {
       _clearProfileHydrationState();
     }
@@ -780,6 +784,35 @@ class AppState extends ChangeNotifier {
       if (data != null) {
         mergeFirestoreProfile(data);
       }
+
+      // Detect stale duplicate: if a previous Firebase Auth account with the
+      // same email was deleted and the user recreated it, an orphan user doc
+      // with the old UID still exists.  Migrate its data and clean it up.
+      final email = _profile.email?.trim() ?? '';
+      if (email.isNotEmpty) {
+        final staleUid = await fs.findExistingUidForEmail(
+          email: email,
+          currentUid: targetUid,
+        );
+        if (staleUid != null) {
+          if (kDebugMode) {
+            debugPrint(
+              '[hydrate] found stale user doc $staleUid for $email — '
+              'migrating data to $targetUid',
+            );
+          }
+          await fs.migrateStaleUserData(
+            fromUid: staleUid,
+            toUid: targetUid,
+            displayName: _profile.displayName,
+            teamName: _profile.teamName,
+            avatarSeed: currentUserAvatarSeed,
+            favoriteTeam: _profile.favoriteTeam,
+            photoUrl: _profile.photoUrl,
+          );
+        }
+      }
+
       if (groupState.firestoreGroupIds.isEmpty) {
         final recoveredGroupIds = await fs.findGroupIdsForMember(targetUid);
         if (recoveredGroupIds.isNotEmpty) {
@@ -794,6 +827,22 @@ class AppState extends ChangeNotifier {
       }
       await refreshActiveGroupMetadataFromFirestore();
       await _repairProfilePhotoReferenceIfNeeded();
+
+      // Self-heal group membership: verifies member docs exist for every
+      // group the user belongs to and recreates any that are missing.
+      // Runs synchronously so the group page has correct membership by the
+      // time the user navigates to it.
+      if (!_didRepairMembership) {
+        _didRepairMembership = true;
+        await fs.repairGroupMembershipIfNeeded(
+          uid: targetUid,
+          displayName: _profile.displayName,
+          teamName: _profile.teamName,
+          avatarSeed: currentUserAvatarSeed,
+          favoriteTeam: _profile.favoriteTeam,
+          photoUrl: _profile.photoUrl,
+        );
+      }
     } catch (e, st) {
       _recordBackendError(e, st);
     } finally {
@@ -1596,8 +1645,26 @@ class AppState extends ChangeNotifier {
       existingFavoriteTeam: existingFavoriteTeam,
       existingPhotoUrl: existingPhotoUrl.isEmpty ? null : existingPhotoUrl,
     );
-    _profileLocalUpdatedAtMs = 0;
-    _profileLocalFieldUpdatedAtMs = const <String, int>{};
+    // Preserve field timestamps when re-authenticating the same account so the
+    // Firestore merge correctly knows which values are newer.  Only reset
+    // timestamps on a genuine account switch where old timestamps are invalid.
+    if (accountSwitched) {
+      _profileLocalUpdatedAtMs = 0;
+      _profileLocalFieldUpdatedAtMs = const <String, int>{};
+    } else {
+      final loadedFieldMap = _decodeProfileFieldUpdateMap(
+        _prefs?.getString(_kProfileLocalFieldUpdatedAtMs),
+      );
+      if (loadedFieldMap.isNotEmpty) {
+        _profileLocalFieldUpdatedAtMs = loadedFieldMap;
+      }
+      final loadedGlobalTs = _prefs?.getInt(_kProfileLocalUpdatedAtMs) ?? 0;
+      if (loadedGlobalTs > 0) {
+        _profileLocalUpdatedAtMs = loadedGlobalTs;
+      } else {
+        _profileLocalUpdatedAtMs = 0;
+      }
+    }
     _currentUserProfileSetupCompleted = _readProfileSetupCompletedForUid(
       user.uid,
     );
@@ -1610,8 +1677,16 @@ class AppState extends ChangeNotifier {
     if (_profile.photoUrl != null) {
       _prefs?.setString(_kProfilePhotoUrl, _profile.photoUrl!);
     }
+    if (_profile.teamName.isNotEmpty) {
+      _prefs?.setString(_kProfileTeamName, _profile.teamName);
+    }
+    if (_profile.favoriteTeam != null) {
+      _prefs?.setString(_kProfileFavoriteTeam, _profile.favoriteTeam!);
+    }
     _prefs?.setInt(_kProfileLocalUpdatedAtMs, _profileLocalUpdatedAtMs);
-    _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
+    if (accountSwitched) {
+      _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
+    }
 
     if (_rememberMeEnabled) {
       unawaited(_syncRememberedIdentityFromProfile());
@@ -1665,6 +1740,10 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
     _prefs?.remove(_kProfilePhotoUrl);
+    _prefs?.remove(_kProfileTeamName);
+    _prefs?.remove(_kProfileFavoriteTeam);
+    _prefs?.remove(_kTeamNameLegacy);
+    _prefs?.remove(_kFavoriteTeamLegacy);
     _prefs?.remove(_kProfileLocalUpdatedAtMs);
     _prefs?.remove(_kProfileLocalFieldUpdatedAtMs);
     _prefs?.remove(scopedOutboxKey);
@@ -2019,9 +2098,7 @@ class AppState extends ChangeNotifier {
   }) async {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) {
-      debugPrint(
-        '[savePicks] bail: fs=${fs != null} auth=$isAuthenticated',
-      );
+      debugPrint('[savePicks] bail: fs=${fs != null} auth=$isAuthenticated');
       return false;
     }
     final payload = Map<String, PickOption>.from(picksByMatchId);
@@ -2267,6 +2344,27 @@ class AppState extends ChangeNotifier {
         );
       } else if (picksChanged) {
         notifyListeners();
+      }
+
+      // If the live picks map is empty but we have saved picks for the
+      // current matchday, repopulate it so the Predictions tab shows them
+      // immediately without requiring a page reload.
+      predictionState.ensureCurrentUserPicksLoaded();
+      final cursor = cassandraMatchdayCursor;
+      if (predictionState.currentUserPicksByMatchId.isEmpty && cursor > 0) {
+        final savedForCurrent =
+            predictionState.currentUserPicksByMatchday[cursor];
+        if (savedForCurrent != null && savedForCurrent.isNotEmpty) {
+          for (final entry in savedForCurrent.entries) {
+            predictionState.setCurrentUserPick(entry.key, entry.value);
+          }
+          if (kDebugMode) {
+            debugPrint(
+              '[history-hydration] restored ${savedForCurrent.length} '
+              'live picks from history for day=$cursor',
+            );
+          }
+        }
       }
 
       _hydratedCurrentUserHistoryKey = hydrationKey;

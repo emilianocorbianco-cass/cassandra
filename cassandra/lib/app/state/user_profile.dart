@@ -111,7 +111,12 @@ class UserProfile {
       ),
       favoriteTeam: sanitizeFavoriteTeam(existingFavoriteTeam),
       email: user.email,
-      photoUrl: user.photoURL ?? existingPhotoUrl,
+      // Prefer a custom-uploaded photo (storage:// or data:image/) over the
+      // social-provider avatar (user.photoURL) so the user's chosen image
+      // survives re-authentication.
+      photoUrl: (existingPhotoUrl != null && existingPhotoUrl.isNotEmpty)
+          ? existingPhotoUrl
+          : user.photoURL,
     );
   }
 }

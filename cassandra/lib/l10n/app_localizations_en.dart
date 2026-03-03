@@ -778,7 +778,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupSyncRetry => 'Retry';
 
   @override
-  String get tabGroup => 'Group';
+  String get tabGroup => 'Groups';
 
   @override
   String get tabLive => 'Livescore';
@@ -1118,4 +1118,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSwitchGroup => 'Switch group';
+
+  @override
+  String get predictionsSubmitButton => 'Submit';
+
+  @override
+  String get predictionsSubmittedButton => 'Submitted';
+
+  @override
+  String get predictionsPicksMade => 'Picks made';
+
+  @override
+  String get predictionsMaxPoints => 'Max Points';
+
+  @override
+  String get predictionsMinPoints => 'Min Points';
 }

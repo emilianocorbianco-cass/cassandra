@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 
 class CassandraColors {
   // ── Card / badge ──────────────────────────────────────────────────────────
-  static const Color cardBg = Color(0xFFF5F5F5);
+  static const Color cardBg = Color(0xFFECF0F2); // platinum
 
   static const Color simBadgeBg = Color(0xFFF5F5F5);
   static const Color simBadgeBorder = Color(0xFFE0E0E0);
 
   // ── App background ────────────────────────────────────────────────────────
-  // "Bianco antico" — used by Scaffold and AppBar.
-  static const Color bg = Color(0xFFE7E3DF);
+  // Charcoal — global page background.
+  static const Color bg = Color(0xFF344A54);
 
   // ── Brand / primary ───────────────────────────────────────────────────────
-  // Rosso principale — drives the Material 3 colorSchemeSeed.
-  static const Color primary = Color(0xFFD3003F);
+  // Amaranth — drives the Material 3 colorSchemeSeed.
+  static const Color primary = Color(0xFFE01E48);
 
   // Testo chiaro su sfondi primari selezionati (es. SegmentedButton).
   static const Color onPrimary = Color(0xFFF6F4EF);

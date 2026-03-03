@@ -26,6 +26,10 @@ class GroupState extends ChangeNotifier {
           return 'Request timeout';
         case 'unavailable':
           return 'Backend unavailable';
+        case 'resource-exhausted':
+          return 'Group full';
+        case 'failed-precondition':
+          return 'Group unavailable';
       }
     }
     return fallback;
@@ -219,15 +223,11 @@ class GroupState extends ChangeNotifier {
         name: cleaned,
         adminUid: uid,
         inviteCode: code,
-      );
-      await fs.joinGroup(
-        groupId: groupId,
-        uid: uid,
-        displayName: profile.displayName,
-        teamName: profile.teamName,
-        avatarSeed: avatarSeed,
-        favoriteTeam: profile.favoriteTeam,
-        photoUrl: profile.photoUrl,
+        creatorDisplayName: profile.displayName,
+        creatorTeamName: profile.teamName,
+        creatorAvatarSeed: avatarSeed,
+        creatorFavoriteTeam: profile.favoriteTeam,
+        creatorPhotoUrl: profile.photoUrl,
       );
 
       _groupName = cleaned;
@@ -261,33 +261,37 @@ class GroupState extends ChangeNotifier {
     final fs = firestoreService;
     if (fs == null) return 'Backend unavailable';
     if (!isAuthenticated) return 'Not authenticated';
+    try {
+      final group = await fs.getGroupByInviteCode(code.trim().toUpperCase());
+      if (group == null) return 'Invalid code';
 
-    final group = await fs.getGroupByInviteCode(code.trim().toUpperCase());
-    if (group == null) return 'Invalid code';
+      if (_firestoreGroupIds.contains(group.id)) return 'Already a member';
 
-    if (_firestoreGroupIds.contains(group.id)) return 'Already a member';
+      await fs.joinGroup(
+        groupId: group.id,
+        uid: uid,
+        displayName: profile.displayName,
+        teamName: profile.teamName,
+        avatarSeed: avatarSeed,
+        favoriteTeam: profile.favoriteTeam,
+        photoUrl: profile.photoUrl,
+      );
 
-    await fs.joinGroup(
-      groupId: group.id,
-      uid: uid,
-      displayName: profile.displayName,
-      teamName: profile.teamName,
-      avatarSeed: avatarSeed,
-      favoriteTeam: profile.favoriteTeam,
-      photoUrl: profile.photoUrl,
-    );
+      _firestoreGroupIds = [..._firestoreGroupIds, group.id];
+      _activeGroupId = group.id;
+      await _persistActiveGroupId();
 
-    _firestoreGroupIds = [..._firestoreGroupIds, group.id];
-    _activeGroupId = group.id;
-    await _persistActiveGroupId();
+      _groupName = group.name;
+      _groupInviteCode = group.inviteCode;
+      await _prefs?.setString(_kGroupNameV1, group.name);
+      await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
 
-    _groupName = group.name;
-    _groupInviteCode = group.inviteCode;
-    await _prefs?.setString(_kGroupNameV1, group.name);
-    await _prefs?.setString(_kGroupInviteCodeV1, group.inviteCode);
-
-    notifyListeners();
-    return null;
+      notifyListeners();
+      return null;
+    } catch (error, stackTrace) {
+      _logGroupError('joinGroupByInviteCode', error, stackTrace);
+      return _friendlyGroupError(error, 'Join group failed');
+    }
   }
 
   /// Lascia un gruppo Firestore.

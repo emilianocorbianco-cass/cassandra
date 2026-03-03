@@ -5,6 +5,9 @@ String normalizeSerieATeamName(String rawName) {
       return 'Roma';
     case 'ac milan':
       return 'Milan';
+    case 'hellas verona':
+    case 'hellas verona fc':
+      return 'Verona';
     default:
       return trimmed;
   }

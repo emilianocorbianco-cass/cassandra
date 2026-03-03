@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
+import '../../../services/storage/storage_service.dart';
 
 class GroupImageHelper {
   GroupImageHelper._();
@@ -27,7 +27,7 @@ class GroupImageHelper {
   }
 }
 
-class GroupImageDisplay extends StatelessWidget {
+class GroupImageDisplay extends StatefulWidget {
   final String? imagePath;
   final double radius;
 
@@ -38,47 +38,96 @@ class GroupImageDisplay extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final source = (imagePath ?? '').trim();
-    if (source.isNotEmpty) {
-      final lower = source.toLowerCase();
-      if (lower.startsWith('data:image/')) {
-        final comma = source.indexOf(',');
-        if (comma > 0 && comma < source.length - 1) {
-          final b64 = source.substring(comma + 1).trim();
-          if (b64.isNotEmpty) {
-            try {
-              final bytes = base64Decode(b64);
-              return CircleAvatar(
-                radius: radius,
-                backgroundImage: MemoryImage(Uint8List.fromList(bytes)),
-              );
-            } catch (_) {
-              // ignore malformed data URI
-            }
-          }
-        }
-      }
+  State<GroupImageDisplay> createState() => _GroupImageDisplayState();
+}
 
-      if (source.startsWith('http://') || source.startsWith('https://')) {
-        return CircleAvatar(
-          radius: radius,
-          backgroundImage: NetworkImage(source),
-        );
-      }
+class _GroupImageDisplayState extends State<GroupImageDisplay> {
+  String? _cachedSource;
+  ImageProvider<Object>? _resolvedImage;
 
-      if (File(source).existsSync()) {
-        return CircleAvatar(
-          radius: radius,
-          backgroundImage: FileImage(File(source)),
-        );
-      }
+  @override
+  void initState() {
+    super.initState();
+    _loadImageIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant GroupImageDisplay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadImageIfNeeded();
+  }
+
+  void _loadImageIfNeeded() {
+    final source = (widget.imagePath ?? '').trim();
+    if (source == _cachedSource) return;
+    _cachedSource = source;
+
+    if (source.isEmpty) {
+      _resolvedImage = null;
+      return;
     }
 
+    final lower = source.toLowerCase();
+
+    // data:image URI — decode sincrono
+    if (lower.startsWith('data:image/')) {
+      final comma = source.indexOf(',');
+      if (comma > 0 && comma < source.length - 1) {
+        final b64 = source.substring(comma + 1).trim();
+        if (b64.isNotEmpty) {
+          try {
+            _resolvedImage = MemoryImage(base64Decode(b64));
+            return;
+          } catch (_) {}
+        }
+      }
+      _resolvedImage = null;
+      return;
+    }
+
+    // storage:// reference — fetch asincrono, setState quando arriva
+    if (StorageService.isStorageReference(source)) {
+      // Non resettare _resolvedImage qui: la vecchia immagine resta visibile
+      // fino a quando arrivano i nuovi bytes (evita flash).
+      StorageService().readBytesByReference(source).then((bytes) {
+        if (!mounted) return;
+        if ((widget.imagePath ?? '').trim() != source) return;
+        setState(() {
+          _resolvedImage = (bytes != null && bytes.isNotEmpty)
+              ? MemoryImage(bytes)
+              : null;
+        });
+      });
+      return;
+    }
+
+    // URL HTTP
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      _resolvedImage = NetworkImage(source);
+      return;
+    }
+
+    // File locale
+    if (File(source).existsSync()) {
+      _resolvedImage = FileImage(File(source));
+      return;
+    }
+
+    _resolvedImage = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_resolvedImage != null) {
+      return CircleAvatar(
+        radius: widget.radius,
+        backgroundImage: _resolvedImage,
+      );
+    }
     return CircleAvatar(
-      radius: radius,
+      radius: widget.radius,
       backgroundColor: CassandraColors.primary,
-      child: Icon(Icons.groups, color: Colors.white, size: radius),
+      child: Icon(Icons.groups, color: Colors.white, size: widget.radius),
     );
   }
 }

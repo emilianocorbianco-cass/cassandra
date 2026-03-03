@@ -1,0 +1,40 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isGroupAdmin(groupId) {
+      return signedIn() &&
+        firestore.get(
+          /databases/(default)/documents/groups/$(groupId)
+        ).data.adminUid == request.auth.uid;
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn() &&
+        firestore.exists(
+          /databases/(default)/documents/groups/$(groupId)/members/$(request.auth.uid)
+        );
+    }
+
+    match /users/{uid}/profile/{imageId} {
+      allow read: if signedIn();
+      allow write: if isSelf(uid);
+    }
+
+    match /groups/{groupId}/images/{imageId} {
+      allow read: if isGroupAdmin(groupId) || isGroupMember(groupId);
+      allow write: if isGroupAdmin(groupId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

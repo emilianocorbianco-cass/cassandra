@@ -15,13 +15,86 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
     }
 
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId);
+    }
+
+    function matchdayPathForPicks(data) {
+      return /databases/$(database)/documents/seasons/$(data.seasonKey)/matchdays/$(data.dayNumber);
+    }
+
+    function hasValidMatchdayForPicks(data) {
+      return data.seasonKey is string
+        && data.dayNumber is int
+        && exists(matchdayPathForPicks(data));
+    }
+
+    function picksLockPassed(data) {
+      return hasValidMatchdayForPicks(data)
+        && get(matchdayPathForPicks(data)).data.lockTime is timestamp
+        && request.time >= get(matchdayPathForPicks(data)).data.lockTime;
+    }
+
+    function picksWriteOpen(data) {
+      return hasValidMatchdayForPicks(data)
+        && get(matchdayPathForPicks(data)).data.lockTime is timestamp
+        && request.time < get(matchdayPathForPicks(data)).data.lockTime
+        && !(get(matchdayPathForPicks(data)).data.finalized == true);
+    }
+
+    // Group members can read all picks for their group.
+    // Pre-lock visibility is enforced at the UI layer
+    // (_buildVisibleMatchdayPicks) to keep the query simple and avoid
+    // permission-denied when the season query returns mixed-lock picks.
+    function canReadGroupPicks(data) {
+      return data.groupId is string
+        && isGroupMember(data.groupId);
+    }
+
     function selfMemberPath(groupId) {
       return /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid);
+    }
+
+    function isCreatorBootstrapMembershipCreate(groupId, memberUid) {
+      return request.auth.uid == memberUid
+        && !exists(groupPath(groupId))
+        && existsAfter(groupPath(groupId))
+        && getAfter(groupPath(groupId)).data.adminUid == request.auth.uid
+        && getAfter(groupPath(groupId)).data.memberCount == 1
+        && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid));
+    }
+
+    function isSelfMembershipCreateWithGroupIncrement(groupId, memberUid) {
+      return request.auth.uid == memberUid
+        && exists(groupPath(groupId))
+        && existsAfter(groupPath(groupId))
+        && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid))
+        && !isGroupDeleting(get(groupPath(groupId)).data)
+        && hasGroupCapacity(get(groupPath(groupId)).data)
+        && getAfter(groupPath(groupId)).data.diff(get(groupPath(groupId)).data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+        && getAfter(groupPath(groupId)).data.memberCount == get(groupPath(groupId)).data.memberCount + 1;
+    }
+
+    function isCreateWithCreatorMembership(groupId) {
+      return request.resource.data.memberCount == 1
+        && existsAfter(selfMemberPath(groupId));
+    }
+
+    function hasGroupCapacity(groupData) {
+      return !(groupData.maxMembers is int)
+        || groupData.maxMembers <= 0
+        || groupData.memberCount < groupData.maxMembers;
+    }
+
+    function isGroupDeleting(groupData) {
+      return groupData.deleting == true;
     }
 
     function isSelfMembershipJoin(groupId) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
         && request.resource.data.memberCount == resource.data.memberCount + 1
+        && !isGroupDeleting(resource.data)
+        && hasGroupCapacity(resource.data)
         && !exists(selfMemberPath(groupId))
         && existsAfter(selfMemberPath(groupId));
     }
@@ -33,18 +106,34 @@ service cloud.firestore {
         && !existsAfter(selfMemberPath(groupId));
     }
 
-    // /users/{uid} — profilo privato: leggibile e scrivibile solo dal proprietario
+    // /users/{uid} — profilo privato
+    // get: solo il proprietario
+    // list: consente la query email == proprio token email (necessario per
+    //       rilevare user doc orfani dopo cancellazione/ricreazione account)
     match /users/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if signedIn()
+                  && resource.data.email == request.auth.token.email;
       allow write: if signedIn() && request.auth.uid == uid;
     }
 
     // /groups/{groupId}
+    // Any signed-in user can read group metadata (needed for join flow and
+    // repair). Write rules still enforce membership / admin ownership.
     match /groups/{groupId} {
       allow read: if signedIn();
       allow create: if signedIn()
                     && request.resource.data.adminUid == request.auth.uid
-                    && request.resource.data.memberCount == 0;
+                    && request.resource.data.memberCount is int
+                    && request.resource.data.memberCount >= 0
+                    && request.resource.data.maxMembers is int
+                    && request.resource.data.maxMembers > 0
+                    && request.resource.data.deleting == false
+                    && request.resource.data.memberCount <= request.resource.data.maxMembers
+                    && (
+                      request.resource.data.memberCount == 0
+                      || isCreateWithCreatorMembership(groupId)
+                    );
       allow update: if signedIn()
                     && (resource.data.adminUid == request.auth.uid
                         || isSelfMembershipJoin(groupId)
@@ -55,18 +144,35 @@ service cloud.firestore {
       // un utente può aggiungersi (join) o rimuoversi (leave)
       // admin può gestire qualsiasi membro
       match /members/{memberUid} {
-        allow read: if signedIn();
+        // A user can always read their own member doc (needed for repair to
+        // check membership status). Listing all members requires membership.
+        allow get: if signedIn()
+                   && (request.auth.uid == memberUid
+                       || isGroupMember(groupId)
+                       || isGroupAdmin(groupId));
+        allow list: if signedIn()
+                    && (isGroupMember(groupId)
+                        || isGroupAdmin(groupId));
         allow create: if signedIn()
                       && (
-                        // join normale: l'utente crea il proprio documento
-                        (request.auth.uid == memberUid
-                          && !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(memberUid)))
-                        // seed dev: qualsiasi utente autenticato può creare utenti mock (uid mock_*)
-                        || (signedIn() && memberUid.matches('mock_.*'))
+                        isCreatorBootstrapMembershipCreate(groupId, memberUid)
+                        || isSelfMembershipCreateWithGroupIncrement(groupId, memberUid)
                       );
         allow update: if signedIn()
-                      && (request.auth.uid == memberUid
-                          || isGroupAdmin(groupId));
+                      && (
+                        isGroupAdmin(groupId)
+                        || (
+                          request.auth.uid == memberUid
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                            'displayName',
+                            'teamName',
+                            'photoUrl',
+                            'avatarSeed',
+                            'favoriteTeam',
+                            'updatedAt',
+                          ])
+                        )
+                      );
         allow delete: if signedIn()
                       && (request.auth.uid == memberUid
                           || isGroupAdmin(groupId));
@@ -84,12 +190,30 @@ service cloud.firestore {
       }
     }
 
+    // /group_invites/{inviteCode}
+    // lookup minimale per join via codice invito senza esporre /groups globalmente
+    match /group_invites/{inviteCode} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+                    && request.resource.data.adminUid == request.auth.uid
+                    && request.resource.data.groupId is string
+                    && request.resource.data.groupName is string
+                    && request.resource.data.inviteCode == inviteCode;
+      allow update: if signedIn()
+                    && resource.data.adminUid == request.auth.uid
+                    && request.resource.data.groupId == resource.data.groupId
+                    && request.resource.data.inviteCode == resource.data.inviteCode
+                    && request.resource.data.adminUid == resource.data.adminUid;
+      allow delete: if signedIn()
+                    && resource.data.adminUid == request.auth.uid;
+    }
+
     // /picks/{docId}
     match /picks/{docId} {
       allow read: if signedIn()
                   && (resource.data.uid == request.auth.uid
-                      || (resource.data.groupId is string
-                          && isGroupMember(resource.data.groupId)));
+                      || canReadGroupPicks(resource.data));
       allow create: if signedIn()
                     && (
                       // write normale: l'utente crea i propri pick
@@ -97,19 +221,21 @@ service cloud.firestore {
                         && (!request.resource.data.keys().hasAny(['groupId'])
                             || (request.resource.data.groupId is string
                                 && isGroupMember(request.resource.data.groupId)))
-                        && !request.resource.data.keys().hasAny(['score', 'scoredAt']))
-                      // seed dev: qualsiasi utente autenticato può creare pick per utenti mock (uid mock_*)
-                      || (request.resource.data.uid.matches('mock_.*')
-                          && !request.resource.data.keys().hasAny(['score', 'scoredAt']))
+                        && !request.resource.data.keys().hasAny(['score', 'scoredAt'])
+                        && picksWriteOpen(request.resource.data))
                     );
       allow update: if signedIn()
                     && resource.data.uid == request.auth.uid
                     && request.resource.data.uid == resource.data.uid
                     && request.resource.data.seasonKey == resource.data.seasonKey
                     && request.resource.data.dayNumber == resource.data.dayNumber
-                    && request.resource.data.groupId == resource.data.groupId
-                    && request.resource.data.score == resource.data.score
-                    && request.resource.data.scoredAt == resource.data.scoredAt;
+                    && request.resource.data.get('groupId', null) == resource.data.get('groupId', null)
+                    && request.resource.data.get('score', null) == resource.data.get('score', null)
+                    && request.resource.data.get('scoredAt', null) == resource.data.get('scoredAt', null)
+                    && (!resource.data.keys().hasAny(['groupId'])
+                        || (resource.data.groupId is string
+                            && isGroupMember(resource.data.groupId)))
+                    && picksWriteOpen(resource.data);
       allow delete: if false;
     }
 

@@ -24,6 +24,16 @@ class CassandraScoringEngine {
     return _bonusByCorrect[c] ?? 0;
   }
 
+  /// Public accessor for the odds of a given pick on a match.
+  static double oddsForPick(PredictionMatch match, PickOption pick) {
+    return _oddsPlayedForPick(match, pick) ?? 0;
+  }
+
+  /// Public accessor for double-chance wrong penalty.
+  static double wrongDoublePenalty(PredictionMatch match, PickOption pick) {
+    return _wrongDoublePenalty(match, pick);
+  }
+
   static double _max1X2(Odds o) {
     var m = o.home;
     if (o.draw > m) m = o.draw;
@@ -71,37 +81,36 @@ class CassandraScoringEngine {
     }
   }
 
-  /// Penalità per singola sbagliata: si perde la quota della doppia chance
-  /// complementare (opposto logico della singola giocata).
-  ///   Gioco 1 e sbaglio → perdo la quota X2 (drawAway)
-  ///   Gioco X e sbaglio → perdo la quota 12 (homeAway)
-  ///   Gioco 2 e sbaglio → perdo la quota 1X (homeDraw)
+  /// Penalità per singola sbagliata: si perde la quota singola giocata.
+  ///   Gioco 1 e sbaglio → perdo quota 1 (home)
+  ///   Gioco X e sbaglio → perdo quota X (draw)
+  ///   Gioco 2 e sbaglio → perdo quota 2 (away)
   static double _wrongSinglePenalty(PredictionMatch match, PickOption pick) {
     switch (pick) {
       case PickOption.home:
-        return match.odds.drawAway; // X2
+        return match.odds.home;
       case PickOption.draw:
-        return match.odds.homeAway; // 12
+        return match.odds.draw;
       case PickOption.away:
-        return match.odds.homeDraw; // 1X
+        return match.odds.away;
       default:
         return 0;
     }
   }
 
-  /// Penalità per doppia chance sbagliata: si perde la quota della singola
-  /// complementare × 2 (il segno escluso dalla doppia chance giocata).
-  ///   Gioco 1X e sbaglio → perdo quota 2 × 2 (away × 2)
-  ///   Gioco X2 e sbaglio → perdo quota 1 × 2 (home × 2)
-  ///   Gioco 12 e sbaglio → perdo quota X × 2 (draw × 2)
+  /// Penalità per doppia chance sbagliata: si perde la somma delle due quote
+  /// singole coperte dalla doppia chance giocata.
+  ///   Gioco 1X e sbaglio → perdo quota 1 + quota X
+  ///   Gioco X2 e sbaglio → perdo quota X + quota 2
+  ///   Gioco 12 e sbaglio → perdo quota 1 + quota 2
   static double _wrongDoublePenalty(PredictionMatch match, PickOption pick) {
     switch (pick) {
       case PickOption.homeDraw:
-        return match.odds.away * 2; // 2 × 2
+        return match.odds.home + match.odds.draw;
       case PickOption.drawAway:
-        return match.odds.home * 2; // 1 × 2
+        return match.odds.draw + match.odds.away;
       case PickOption.homeAway:
-        return match.odds.draw * 2; // X × 2
+        return match.odds.home + match.odds.away;
       default:
         return 0;
     }
@@ -162,7 +171,7 @@ class CassandraScoringEngine {
         playedOdds: played,
         note: correct
             ? 'Singola corretta'
-            : 'Singola sbagliata: -doppia complementare',
+            : 'Singola sbagliata: -quota giocata',
       );
     }
 
@@ -186,7 +195,7 @@ class CassandraScoringEngine {
           basePoints: -penalty,
           correct: false,
           playedOdds: played,
-          note: 'Doppia sbagliata: -singola complementare × 2',
+          note: 'Doppia sbagliata: -(somma due singole)',
         );
       }
     }

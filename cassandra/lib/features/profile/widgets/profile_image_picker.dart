@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
+import '../../../services/storage/storage_service.dart';
 
 class ProfileImageHelper {
   ProfileImageHelper._();
@@ -27,7 +28,7 @@ class ProfileImageHelper {
   }
 }
 
-class ProfileImageDisplay extends StatelessWidget {
+class ProfileImageDisplay extends StatefulWidget {
   const ProfileImageDisplay({
     super.key,
     required this.imagePathOrUrl,
@@ -36,6 +37,14 @@ class ProfileImageDisplay extends StatelessWidget {
 
   final String? imagePathOrUrl;
   final double radius;
+
+  @override
+  State<ProfileImageDisplay> createState() => _ProfileImageDisplayState();
+}
+
+class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
+  String? _cachedSource;
+  Future<Uint8List?>? _storageBytesFuture;
 
   Uint8List? _decodeDataImage(String source) {
     final lower = source.toLowerCase();
@@ -51,40 +60,101 @@ class ProfileImageDisplay extends StatelessWidget {
     }
   }
 
+  Future<Uint8List?> _loadStorageBytes(String source) {
+    try {
+      return StorageService().readBytesByReference(source);
+    } catch (_) {
+      return Future<Uint8List?>.value(null);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshStorageFutureIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileImageDisplay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _refreshStorageFutureIfNeeded();
+  }
+
+  void _refreshStorageFutureIfNeeded() {
+    final source = (widget.imagePathOrUrl ?? '').trim();
+    if (source == _cachedSource) return;
+    _cachedSource = source;
+    if (StorageService.isStorageReference(source)) {
+      _storageBytesFuture = _loadStorageBytes(source);
+    } else {
+      _storageBytesFuture = null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final source = (imagePathOrUrl ?? '').trim();
+    final source = (widget.imagePathOrUrl ?? '').trim();
     if (source.isNotEmpty) {
       final dataBytes = _decodeDataImage(source);
       if (dataBytes != null) {
         return CircleAvatar(
-          radius: radius,
+          radius: widget.radius,
           backgroundImage: MemoryImage(dataBytes),
+        );
+      }
+      if (StorageService.isStorageReference(source)) {
+        return FutureBuilder<Uint8List?>(
+          future: _storageBytesFuture,
+          builder: (context, snapshot) {
+            final bytes = snapshot.data;
+            if (bytes != null && bytes.isNotEmpty) {
+              return CircleAvatar(
+                radius: widget.radius,
+                backgroundImage: MemoryImage(bytes),
+              );
+            }
+            return CircleAvatar(
+              radius: widget.radius,
+              backgroundColor: CassandraColors.primary,
+              child: Icon(
+                Icons.person,
+                color: CassandraColors.onPrimary,
+                size: widget.radius,
+              ),
+            );
+          },
         );
       }
       if (source.startsWith('http://') || source.startsWith('https://')) {
         return CircleAvatar(
-          radius: radius,
+          radius: widget.radius,
           foregroundImage: NetworkImage(source),
           backgroundColor: CassandraColors.primary,
           child: Icon(
             Icons.person,
             color: CassandraColors.onPrimary,
-            size: radius,
+            size: widget.radius,
           ),
         );
       }
 
       final file = File(source);
       if (file.existsSync()) {
-        return CircleAvatar(radius: radius, backgroundImage: FileImage(file));
+        return CircleAvatar(
+          radius: widget.radius,
+          backgroundImage: FileImage(file),
+        );
       }
     }
 
     return CircleAvatar(
-      radius: radius,
+      radius: widget.radius,
       backgroundColor: CassandraColors.primary,
-      child: Icon(Icons.person, color: CassandraColors.onPrimary, size: radius),
+      child: Icon(
+        Icons.person,
+        color: CassandraColors.onPrimary,
+        size: widget.radius,
+      ),
     );
   }
 }

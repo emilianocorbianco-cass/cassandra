@@ -610,5 +610,10 @@
       "count": {}
     }
   },
-  "settingsSwitchGroup": "Switch group"
+  "settingsSwitchGroup": "Switch group",
+  "predictionsSubmitButton": "Submit",
+  "predictionsSubmittedButton": "Submitted",
+  "predictionsPicksMade": "Picks made",
+  "predictionsMaxPoints": "Max Points",
+  "predictionsMinPoints": "Min Points"
 }

@@ -236,26 +236,16 @@ class _PredictionsPageLegacyState extends State<PredictionsPageLegacy>
     return result ?? false;
   }
 
-  Future<void> _submit(VisibilityChoice visibility) async {
+  Future<bool> _submit(VisibilityChoice visibility) async {
     final l10n = AppLocalizations.of(context)!;
-    if (_locked) return;
+    if (_locked) return false;
     final missing = _missingCount;
     if (missing > 0) {
       final ok = await _confirmSubmitIfMissing(missing);
-      if (!ok) return;
-      if (!mounted) return; // dopo await
+      if (!ok) return false;
+      if (!mounted) return false; // dopo await
     }
-    if (!mounted) return;
-    setState(() {
-      _submittedVisibility = visibility;
-      _submittedAt = DateTime.now();
-    });
-    final label = visibility == VisibilityChoice.public
-        ? l10n.predictionsVisibilityPublic
-        : l10n.predictionsVisibilityPrivate;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.predictionsSlipSubmitted(label))),
-    );
+    if (!mounted) return false;
     // Snapshot storico: salva i pick per questa giornata (così "passati" diventa vero)
     final appState = CassandraScope.of(context);
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -299,12 +289,30 @@ class _PredictionsPageLegacyState extends State<PredictionsPageLegacy>
     final visLabel = visibility == VisibilityChoice.public
         ? 'public'
         : 'private';
-    appState.submitPicksToFirestore(
+    final submitted = await appState.submitPicksToFirestore(
       dayNumber: _effectiveMatchdayNumber,
       picksByMatchId: _picks,
       visibility: visLabel,
       score: scoreCache,
     );
+    if (!mounted) return submitted;
+    if (submitted) {
+      setState(() {
+        _submittedVisibility = visibility;
+        _submittedAt = DateTime.now();
+      });
+      final label = visibility == VisibilityChoice.public
+          ? l10n.predictionsVisibilityPublic
+          : l10n.predictionsVisibilityPrivate;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.predictionsSlipSubmitted(label))),
+      );
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.predictionsSlipSubmitFailed)));
+    }
+    return submitted;
   }
 
   Future<void> _tryLoadRealFixtures() async {

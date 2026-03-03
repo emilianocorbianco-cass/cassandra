@@ -1544,7 +1544,7 @@ abstract class AppLocalizations {
   /// No description provided for @tabGroup.
   ///
   /// In en, this message translates to:
-  /// **'Group'**
+  /// **'Groups'**
   String get tabGroup;
 
   /// No description provided for @tabLive.
@@ -2104,6 +2104,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Switch group'**
   String get settingsSwitchGroup;
+
+  /// No description provided for @predictionsSubmitButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get predictionsSubmitButton;
+
+  /// No description provided for @predictionsSubmittedButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Submitted'**
+  String get predictionsSubmittedButton;
+
+  /// No description provided for @predictionsPicksMade.
+  ///
+  /// In en, this message translates to:
+  /// **'Picks made'**
+  String get predictionsPicksMade;
+
+  /// No description provided for @predictionsMaxPoints.
+  ///
+  /// In en, this message translates to:
+  /// **'Max Points'**
+  String get predictionsMaxPoints;
+
+  /// No description provided for @predictionsMinPoints.
+  ///
+  /// In en, this message translates to:
+  /// **'Min Points'**
+  String get predictionsMinPoints;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
