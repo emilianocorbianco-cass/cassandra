@@ -91,7 +91,7 @@ class GroupStatsView extends StatelessWidget {
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
             itemCount: sorted.length,
             itemBuilder: (context, i) {
               final p = sorted[i];

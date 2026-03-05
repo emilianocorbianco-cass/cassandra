@@ -236,7 +236,9 @@ service cloud.firestore {
                         || (resource.data.groupId is string
                             && isGroupMember(resource.data.groupId)))
                     && picksWriteOpen(resource.data);
-      allow delete: if false;
+      allow delete: if signedIn()
+                    && resource.data.uid == request.auth.uid
+                    && picksWriteOpen(resource.data);
     }
 
     // /seasons/{seasonKey}/matchdays/{dayNumber}

@@ -6,9 +6,7 @@ import '../predictions/models/formatters.dart';
 import 'models/matchday_data.dart';
 import 'models/season_leaderboard_entry.dart';
 import 'models/member_matchday_score.dart';
-import '../badges/badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
-import '../profile/user_hub_page.dart';
 import '../scoring/ranking_rules.dart';
 
 class MatchdayLeaderboardPage extends StatelessWidget {
@@ -92,34 +90,12 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final e = rows[i].entry;
                   final s = rows[i].score;
-                  final badges = CassandraBadgeEngine.badgesForGroupMatchday(
-                    member: e.member,
-                    rank: i + 1,
-                    totalPlayers: rows.length,
-                    matches: matchday.matches,
-                    picksByMatchId: s.picksByMatchId,
-                    outcomesByMatchId: matchday.outcomesByMatchId,
-                    day: s.day,
-                  );
-
                   final pts = s.day.total;
                   final ptsLabel = formatOdds(pts);
                   final sign = pts >= 0 ? '+' : '';
 
                   return Card(
                     child: ListTile(
-                      onTap: () {
-                        Navigator.of(context, rootNavigator: true).push(
-                          MaterialPageRoute(
-                            builder: (_) => UserHubPage(
-                              member: e.member,
-                              matchday: matchday,
-                              picksByMatchId: s.picksByMatchId,
-                              initialTabIndex: 0,
-                            ),
-                          ),
-                        );
-                      },
                       leading: SizedBox(
                         width: 64,
                         child: Row(
@@ -143,7 +119,7 @@ class MatchdayLeaderboardPage extends StatelessWidget {
                                 e.member.avatarSeed,
                               ),
                               text: e.member.avatarInitial,
-                              badges: badges,
+                              badges: const [],
                               imagePathOrUrl: e.member.photoUrl,
                             ),
                           ],

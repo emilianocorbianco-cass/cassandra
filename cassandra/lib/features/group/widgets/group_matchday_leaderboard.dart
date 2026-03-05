@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
-import '../../badges/badge_engine.dart';
 import '../../badges/widgets/avatar_with_badges.dart';
 import '../../predictions/models/formatters.dart';
 import '../../predictions/models/pick_option.dart';
@@ -50,16 +49,6 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
       itemBuilder: (context, i) {
         final e = entries[i];
 
-        final badges = CassandraBadgeEngine.badgesForGroupMatchday(
-          member: e.member,
-          rank: i + 1,
-          totalPlayers: entries.length,
-          matches: matches,
-          picksByMatchId: e.picksByMatchId,
-          outcomesByMatchId: outcomesByMatchId,
-          day: e.day,
-        );
-
         final pts = formatOdds(e.day.total);
 
         return Card(
@@ -85,7 +74,7 @@ class GroupMatchdayLeaderboard extends StatelessWidget {
                     radius: 18,
                     backgroundColor: _avatarColorFromSeed(e.member.avatarSeed),
                     text: e.member.avatarInitial,
-                    badges: badges,
+                    badges: const [],
                     imagePathOrUrl: e.member.photoUrl,
                   ),
                 ],

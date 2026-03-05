@@ -140,6 +140,7 @@ class LiveMatchDetailsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    const fg = CassandraColors.brightSnow;
     final status = _statusLabel(match.statusShort, l10n);
     // Ordine inverso: ultimi eventi in alto.
     final events = List<MatchLiveEvent>.of(match.liveEvents)
@@ -151,41 +152,94 @@ class LiveMatchDetailsPage extends StatelessWidget {
       });
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.serieATitle)),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: CassandraColors.brightSnow,
+        toolbarHeight: 36,
+        title: const SizedBox.shrink(),
+      ),
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Column(
                 children: [
                   Text(
                     formatKickoff(match.kickoff),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: CassandraColors.slate,
+                      color: fg,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          match.homeTeam,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        child: Row(
+                          children: [
+                            if (match.homeTeamLogo != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Image.network(
+                                  match.homeTeamLogo!,
+                                  width: 24,
+                                  height: 24,
+                                  errorBuilder: (_, e, s) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
+                            Flexible(
+                              child: Text(
+                                match.homeTeam,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: fg,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        _scoreLabel(),
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          _scoreLabel(),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: fg,
+                              ),
+                        ),
                       ),
                       Expanded(
-                        child: Text(
-                          match.awayTeam,
-                          textAlign: TextAlign.right,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                match.awayTeam,
+                                textAlign: TextAlign.right,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: fg,
+                                    ),
+                              ),
+                            ),
+                            if (match.awayTeamLogo != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Image.network(
+                                  match.awayTeamLogo!,
+                                  width: 24,
+                                  height: 24,
+                                  errorBuilder: (_, e, s) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
@@ -196,7 +250,7 @@ class LiveMatchDetailsPage extends StatelessWidget {
                     child: Text(
                       status,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: CassandraColors.slate,
+                        color: fg,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -207,7 +261,12 @@ class LiveMatchDetailsPage extends StatelessWidget {
             const Divider(height: 1),
             Expanded(
               child: events.isEmpty
-                  ? Center(child: Text(l10n.liveNoEvents))
+                  ? Center(
+                      child: Text(
+                        l10n.liveNoEvents,
+                        style: const TextStyle(color: fg),
+                      ),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                       itemCount: events.length,

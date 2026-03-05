@@ -1199,10 +1199,13 @@ function mergeLiveFieldsIntoExistingMatches(
 
       const next: Record<string, unknown> = {
         ...m,
+        kickoff: fixture.kickoffUtc,
         statusShort: fixture.statusShort,
         homeGoals: fixture.homeGoals,
         awayGoals: fixture.awayGoals,
       };
+      if (fixture.homeLogo) next.homeLogo = fixture.homeLogo;
+      if (fixture.awayLogo) next.awayLogo = fixture.awayLogo;
       if (eventsByMatchId != null) {
         const events = eventsByMatchId.get(id);
         if (events != null) {

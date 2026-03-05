@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
 import 'api_football_diagnostics_page.dart';
-import 'package:cassandra/features/stats/stats_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -24,7 +23,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _initialized = false;
   String? _selectedFavoriteTeam;
-  int _settingsSegment = 0; // 0 = my settings, 1 = my stats
   CassandraLanguage _language = CassandraLanguage.system;
   AppState? _app;
 
@@ -71,191 +69,150 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Column(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 17, 16, 90),
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 17, 12, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    segments: [
-                      ButtonSegment(
-                        value: 0,
-                        label: Text(
-                          l10n.settingsSegmentMySettings,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        label: Text(
-                          l10n.settingsSegmentMyStats,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
-                    selected: {_settingsSegment},
-                    onSelectionChanged: (selected) {
-                      setState(() => _settingsSegment = selected.first);
-                    },
-                  ),
-                ],
+            ProfileSettingsSection(
+              app: app,
+              displayNameController: _displayNameCtrl,
+              teamNameController: _teamNameCtrl,
+              selectedFavoriteTeam: _selectedFavoriteTeam,
+              onFavoriteTeamChanged: (value) {
+                setState(() => _selectedFavoriteTeam = value);
+              },
+            ),
+            GroupSettingsSection(app: app),
+            AccountSection(app: app),
+            LanguageSelector(
+              currentValue: _language,
+              onChanged: (value) {
+                setState(() => _language = value);
+              },
+            ),
+            const SizedBox(height: 32),
+            // ── Debug ───────────────
+            Text(
+              'Debug',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.orange.shade700,
               ),
             ),
-            const SizedBox(height: 2),
-            const Divider(height: 1),
-            Expanded(
-              child: _settingsSegment == 1
-                  ? const StatsPage(embedded: true, lockToPersonal: true)
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 90),
-                      children: [
-                        ProfileSettingsSection(
-                          app: app,
-                          displayNameController: _displayNameCtrl,
-                          teamNameController: _teamNameCtrl,
-                          selectedFavoriteTeam: _selectedFavoriteTeam,
-                          onFavoriteTeamChanged: (value) {
-                            setState(() => _selectedFavoriteTeam = value);
-                          },
-                        ),
-                        GroupSettingsSection(app: app),
-                        AccountSection(app: app),
-                        LanguageSelector(
-                          currentValue: _language,
-                          onChanged: (value) {
-                            setState(() => _language = value);
-                          },
-                        ),
-                        const SizedBox(height: 32),
-                        // ── Debug ───────────────
-                        Text(
-                          'Debug',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.orange.shade700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: Icon(
-                              Icons.bug_report_outlined,
-                              color: Colors.orange.shade800,
-                            ),
-                            label: Text(
-                              l10n.settingsBackendDiagnosticsTitle,
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.orange.shade800,
-                              side: BorderSide(color: Colors.orange.shade800),
-                            ),
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const ApiFootballDiagnosticsPage(),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: Icon(
-                              Icons.delete_outline,
-                              color: Colors.orange.shade800,
-                            ),
-                            label: Text(
-                              'Reset Picks (Giornata ${app.cassandraMatchdayCursor})',
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.orange.shade800,
-                              side: BorderSide(color: Colors.orange.shade800),
-                            ),
-                            onPressed: () async {
-                              final day = app.cassandraMatchdayCursor;
-                              await app.resetPicksForCurrentMatchday();
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Picks giornata $day cancellati (locale + Firestore)',
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.orange.shade800,
-                                  side: BorderSide(
-                                    color: app.debugLockOverride == false
-                                        ? Colors.orange.shade800
-                                        : Colors.grey.shade400,
-                                    width: app.debugLockOverride == false
-                                        ? 2
-                                        : 1,
-                                  ),
-                                ),
-                                onPressed: () =>
-                                    app.setDebugLockOverride(false),
-                                child: const Text('Pre-lock'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.orange.shade800,
-                                  side: BorderSide(
-                                    color: app.debugLockOverride == true
-                                        ? Colors.orange.shade800
-                                        : Colors.grey.shade400,
-                                    width: app.debugLockOverride == true
-                                        ? 2
-                                        : 1,
-                                  ),
-                                ),
-                                onPressed: () =>
-                                    app.setDebugLockOverride(true),
-                                child: const Text('Post-lock'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.grey.shade600,
-                                  side: BorderSide(
-                                    color: app.debugLockOverride == null
-                                        ? Colors.orange.shade800
-                                        : Colors.grey.shade400,
-                                    width: app.debugLockOverride == null
-                                        ? 2
-                                        : 1,
-                                  ),
-                                ),
-                                onPressed: () =>
-                                    app.setDebugLockOverride(null),
-                                child: const Text('Natural'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: Icon(
+                  Icons.bug_report_outlined,
+                  color: Colors.orange.shade800,
+                ),
+                label: Text(
+                  l10n.settingsBackendDiagnosticsTitle,
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange.shade800,
+                  side: BorderSide(color: Colors.orange.shade800),
+                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const ApiFootballDiagnosticsPage(),
                     ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: Colors.orange.shade800,
+                ),
+                label: Text(
+                  'Reset Picks (Giornata ${app.cassandraMatchdayCursor})',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange.shade800,
+                  side: BorderSide(color: Colors.orange.shade800),
+                ),
+                onPressed: () async {
+                  final day = app.cassandraMatchdayCursor;
+                  await app.resetPicksForCurrentMatchday();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Picks giornata $day cancellati (locale + Firestore)',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade800,
+                      side: BorderSide(
+                        color: app.debugLockOverride == false
+                            ? Colors.orange.shade800
+                            : Colors.grey.shade400,
+                        width: app.debugLockOverride == false
+                            ? 2
+                            : 1,
+                      ),
+                    ),
+                    onPressed: () =>
+                        app.setDebugLockOverride(false),
+                    child: const Text('Pre-lock'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade800,
+                      side: BorderSide(
+                        color: app.debugLockOverride == true
+                            ? Colors.orange.shade800
+                            : Colors.grey.shade400,
+                        width: app.debugLockOverride == true
+                            ? 2
+                            : 1,
+                      ),
+                    ),
+                    onPressed: () =>
+                        app.setDebugLockOverride(true),
+                    child: const Text('Post-lock'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.grey.shade600,
+                      side: BorderSide(
+                        color: app.debugLockOverride == null
+                            ? Colors.orange.shade800
+                            : Colors.grey.shade400,
+                        width: app.debugLockOverride == null
+                            ? 2
+                            : 1,
+                      ),
+                    ),
+                    onPressed: () =>
+                        app.setDebugLockOverride(null),
+                    child: const Text('Natural'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

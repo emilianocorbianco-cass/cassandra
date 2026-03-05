@@ -2530,6 +2530,31 @@ class AppState extends ChangeNotifier {
   );
   void clearCurrentUserPicksHistory() =>
       predictionState.clearCurrentUserPicksHistory();
+
+  /// Reset picks for the current matchday: clear local + delete from Firestore.
+  Future<void> resetPicksForCurrentMatchday() async {
+    final day = cassandraMatchdayCursor;
+    // Clear live picks.
+    predictionState.clearCurrentUserPicks();
+    // Clear history entry for this matchday.
+    predictionState.clearPicksForMatchday(day);
+    // Delete from Firestore.
+    final fs = _firestoreService;
+    final uid = _profile.id.trim();
+    if (fs != null && uid.isNotEmpty) {
+      try {
+        await fs.deletePicks(
+          uid: uid,
+          seasonKey: currentSeasonKey,
+          dayNumber: day,
+          groupId: activeGroupId,
+        );
+      } catch (e) {
+        debugPrint('[resetPicks] Firestore delete failed: $e');
+      }
+    }
+    notifyListeners();
+  }
   Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) =>
       predictionState.picksForCurrentUserForMatchday(matchdayNumber);
 

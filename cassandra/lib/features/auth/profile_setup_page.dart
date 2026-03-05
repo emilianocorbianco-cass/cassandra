@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app/navigation/home_shell.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
@@ -63,7 +62,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   Future<void> _pickProfileImage() async {
-    final path = await ProfileImageHelper.pickAndSaveProfileImage();
+    final path = await ProfileImageHelper.pickAndSaveProfileImage(context);
     if (path == null || !mounted) return;
     setState(() => _photoPath = path);
   }
@@ -79,12 +78,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       await app.completeProfileSetup(rememberMe: _rememberMe);
       if (!mounted) return;
 
-      final destination = app.firestoreGroupIds.length >= 2
-          ? const GroupHubPage()
-          : const HomeShell();
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const GroupHubPage()),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }

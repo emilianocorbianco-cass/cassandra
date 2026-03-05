@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
-import '../../app/navigation/home_shell.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
@@ -40,10 +39,8 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
     Widget destination;
     if (app.needsProfileSetup) {
       destination = const ProfileSetupPage();
-    } else if (app.firestoreGroupIds.length >= 2) {
-      destination = const GroupHubPage();
     } else {
-      destination = const HomeShell();
+      destination = const GroupHubPage();
     }
     Navigator.of(
       context,

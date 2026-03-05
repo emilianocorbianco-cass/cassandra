@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:ui';
 
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
@@ -16,6 +17,7 @@ import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
 import '../../services/firestore/models/matchday_document.dart';
 import '../../services/api_football/models/api_football_standing.dart';
+import '../../services/storage/storage_service.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -24,7 +26,8 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell>
+    with SingleTickerProviderStateMixin {
   Timer? _liveSyncTimer;
   bool _liveSyncInFlight = false;
   bool _didInitialLiveSync = false;
@@ -55,6 +58,7 @@ class _HomeShellState extends State<HomeShell> {
     if (!_didInitialLiveSync) {
       _didInitialLiveSync = true;
       unawaited(_syncLiveFromBackend());
+      unawaited(_preWarmGroupMemberPhotos());
     }
   }
 
@@ -189,11 +193,77 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  /// Pre-warm member photo caches at app startup so photos are
+  /// instant when the user opens the group tab.
+  Future<void> _preWarmGroupMemberPhotos() async {
+    final app = CassandraScope.of(context);
+    if (!app.hasGroup || app.firestoreService == null) return;
+    try {
+      final members = await app.fetchFirestoreGroupMembers();
+      final fs = app.firestoreService!;
+      final storage = StorageService();
+
+      // Pre-warm StorageService byte cache for members who already
+      // have a storage:// photoUrl in their member doc.
+      for (final m in members) {
+        if (m.photoUrl != null &&
+            StorageService.isStorageReference(m.photoUrl!)) {
+          unawaited(storage.readBytesByReference(m.photoUrl!));
+        }
+      }
+
+      // For members with no photoUrl in member doc, fetch user docs.
+      final missingUids = <String>[
+        for (final m in members)
+          if (m.photoUrl == null &&
+              !GroupPage.memberPhotoCache.containsKey(m.id))
+            m.id,
+      ];
+      if (missingUids.isEmpty) return;
+
+      final profiles = await Future.wait(
+        missingUids.map((uid) => fs.getUserProfile(uid)),
+      );
+      for (var j = 0; j < missingUids.length; j++) {
+        final profile = profiles[j];
+        if (profile == null) continue;
+        final photo = ((profile['photoUrl'] as String?) ?? '').trim();
+        if (photo.isEmpty) continue;
+        GroupPage.memberPhotoCache[missingUids[j]] = photo;
+        if (StorageService.isStorageReference(photo)) {
+          unawaited(storage.readBytesByReference(photo));
+        }
+      }
+    } catch (_) {
+      // Best-effort — don't break app init.
+    }
+  }
+
   int _index = 0;
+  late final AnimationController _bubbleCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+  late final CurvedAnimation _bubbleCurve = CurvedAnimation(
+    parent: _bubbleCtrl,
+    curve: Curves.easeOutBack,
+  );
+  double _bubbleFrom = 0;
+  double _bubbleTo = 0;
+
+  void _selectTab(int i) {
+    if (i == _index) return;
+    setState(() {
+      _bubbleFrom = _index.toDouble();
+      _bubbleTo = i.toDouble();
+      _index = i;
+      _bubbleCtrl.forward(from: 0);
+    });
+  }
 
   static final _pages = <Widget>[
-    PredictionsPage(),
     GroupPage(),
+    PredictionsPage(),
     SerieAPage(),
     SettingsPage(),
   ];
@@ -202,6 +272,8 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _standingsSub?.cancel();
     _liveSyncTimer?.cancel();
+    _bubbleCurve.dispose();
+    _bubbleCtrl.dispose();
     super.dispose();
   }
 
@@ -210,95 +282,170 @@ class _HomeShellState extends State<HomeShell> {
     final l10n = AppLocalizations.of(context)!;
     final app = CassandraScope.of(context);
 
-    // Platinum background: sfondo unico dell'intera app.
-    // Le card e gli altri elementi si appoggiano sopra.
     return Scaffold(
-        backgroundColor: CassandraColors.bg,
-        // IndexedStack: mantiene lo stato delle pagine quando cambi tab.
-        body: Column(
-          children: [
-            if (app.hasBackendSyncError)
-              SafeArea(
-                bottom: false,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  color: CassandraColors.offlineBannerBg,
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.wifi_off_rounded,
-                        size: 16,
-                        color: CassandraColors.offlineContent,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          l10n.predictionsOfflineStatus,
-                          style: const TextStyle(
-                            color: CassandraColors.offlineContent,
-                            fontWeight: FontWeight.w700,
+      backgroundColor: CassandraColors.bg,
+      body: Stack(
+        children: [
+          // ── Content fills entire screen ────────────────────────────
+          Column(
+            children: [
+              if (app.hasBackendSyncError)
+                SafeArea(
+                  bottom: false,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    color: CassandraColors.offlineBannerBg,
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.wifi_off_rounded,
+                          size: 16,
+                          color: CassandraColors.offlineContent,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            l10n.predictionsOfflineStatus,
+                            style: const TextStyle(
+                              color: CassandraColors.offlineContent,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: IndexedStack(index: _index, children: _pages),
+              ),
+            ],
+          ),
+
+          // ── Floating liquid-glass tab bar ──────────────────────────
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 14,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  height: 68,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.50),
+                        Colors.black.withValues(alpha: 0.50),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      width: 0.8,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.20),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final tabW = constraints.maxWidth / 4;
+                      final barH = constraints.maxHeight;
+                      return Stack(
+                        children: [
+                          // ── Pill highlight (Fitness-style) ─────
+                          AnimatedBuilder(
+                            animation: _bubbleCtrl,
+                            builder: (context, _) {
+                              final t = _bubbleCurve.value;
+                              final pos = lerpDouble(
+                                _bubbleFrom,
+                                _bubbleTo,
+                                t,
+                              )!;
+                              const hPad = 4.0;
+                              const vPad = 5.0;
+                              final left = pos * tabW + hPad;
+                              final pillW = tabW - hPad * 2;
+                              final pillH = barH - vPad * 2;
+                              return Positioned(
+                                left: left,
+                                top: vPad,
+                                child: Container(
+                                  width: pillW,
+                                  height: pillH,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(22),
+                                    color: Colors.white.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          // ── Tab items (fill height, centered) ──
+                          SizedBox.expand(
+                            child: Row(
+                              children: [
+                                _NavTab(
+                                  icon: Icons.groups_outlined,
+                                  selectedIcon: Icons.groups,
+                                  label: l10n.tabGroup,
+                                  selected: _index == 0,
+                                  onTap: () => _selectTab(0),
+                                ),
+                                _NavTab(
+                                  icon: Icons.sports_soccer_outlined,
+                                  selectedIcon: Icons.sports_soccer,
+                                  label: l10n.tabPredictions,
+                                  selected: _index == 1,
+                                  onTap: () => _selectTab(1),
+                                ),
+                                _NavTab(
+                                  icon: Icons.live_tv_outlined,
+                                  selectedIcon: Icons.live_tv,
+                                  label: l10n.tabLive,
+                                  selected: _index == 2,
+                                  onTap: () => _selectTab(2),
+                                ),
+                                _NavTab(
+                                  icon: Icons.settings_outlined,
+                                  selectedIcon: Icons.settings,
+                                  label: l10n.tabSettings,
+                                  selected: _index == 3,
+                                  onTap: () => _selectTab(3),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-            Expanded(
-              child: IndexedStack(index: _index, children: _pages),
-            ),
-          ],
-        ),
-        bottomNavigationBar: Container(
-          color: CassandraColors.inkBlackV2,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 2),
-              child: Row(
-                children: [
-                  _NavTab(
-                    icon: Icons.sports_soccer_outlined,
-                    selectedIcon: Icons.sports_soccer,
-                    label: l10n.tabPredictions,
-                    selected: _index == 0,
-                    onTap: () => setState(() => _index = 0),
-                  ),
-                  _NavTab(
-                    icon: Icons.groups_outlined,
-                    selectedIcon: Icons.groups,
-                    label: l10n.tabGroup,
-                    selected: _index == 1,
-                    onTap: () => setState(() => _index = 1),
-                  ),
-                  _NavTab(
-                    icon: Icons.live_tv_outlined,
-                    selectedIcon: Icons.live_tv,
-                    label: l10n.tabLive,
-                    selected: _index == 2,
-                    onTap: () => setState(() => _index = 2),
-                  ),
-                  _NavTab(
-                    icon: Icons.settings_outlined,
-                    selectedIcon: Icons.settings,
-                    label: l10n.tabSettings,
-                    selected: _index == 3,
-                    onTap: () => setState(() => _index = 3),
-                  ),
-                ],
               ),
             ),
           ),
-        ),
-    ); // Scaffold
+        ],
+      ),
+    );
   }
 }
 
-class _NavTab extends StatelessWidget {
+class _NavTab extends StatefulWidget {
   const _NavTab({
     required this.icon,
     required this.selectedIcon,
@@ -314,31 +461,74 @@ class _NavTab extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_NavTab> createState() => _NavTabState();
+}
+
+class _NavTabState extends State<_NavTab> with SingleTickerProviderStateMixin {
+  late final AnimationController _flash = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+  );
+
+  bool _wasSelected = false;
+
+  @override
+  void didUpdateWidget(_NavTab old) {
+    super.didUpdateWidget(old);
+    if (widget.selected && !_wasSelected) {
+      _flash.forward(from: 0);
+    }
+    _wasSelected = widget.selected;
+  }
+
+  @override
+  void dispose() {
+    _flash.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              selected ? selectedIcon : icon,
-              color: CassandraColors.brightSnow,
-              size: selected ? 30 : 28,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                color: CassandraColors.brightSnow,
-                fontWeight: FontWeight.w700,
-                fontSize: 10,
-              ),
-            ),
-          ],
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _flash,
+          builder: (context, _) {
+            // Flash: quick amaranth burst then back to bright snow.
+            final f = _flash.value;
+            final flashColor = f > 0 && f < 1.0
+                ? Color.lerp(
+                    CassandraColors.primary,
+                    CassandraColors.brightSnow,
+                    Curves.easeOut.transform(f),
+                  )!
+                : CassandraColors.brightSnow;
+
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  widget.selected ? widget.selectedIcon : widget.icon,
+                  color: flashColor,
+                  size: widget.selected ? 30 : 28,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: flashColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
+

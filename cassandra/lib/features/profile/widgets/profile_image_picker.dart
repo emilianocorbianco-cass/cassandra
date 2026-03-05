@@ -8,23 +8,36 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../services/storage/storage_service.dart';
+import '../../shared/image_crop_screen.dart';
 
 class ProfileImageHelper {
   ProfileImageHelper._();
 
-  static Future<String?> pickAndSaveProfileImage() async {
+  static Future<String?> pickAndSaveProfileImage(BuildContext context) async {
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 768,
+      maxWidth: 1536,
     );
     if (xFile == null) return null;
 
     final dir = await getApplicationDocumentsDirectory();
-    final dest = File('${dir.path}/profile_image.jpg');
-    final bytes = await xFile.readAsBytes();
-    await dest.writeAsBytes(bytes);
-    return dest.path;
+    final dest = File('${dir.path}/profile_image.png');
+    final pickedFile = File(xFile.path);
+
+    if (!context.mounted) return null;
+    final croppedPath = await Navigator.of(context).push<String?>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageCropScreen(
+          imageFile: pickedFile,
+          outputSize: 768,
+          outputPath: dest.path,
+        ),
+      ),
+    );
+
+    return croppedPath;
   }
 }
 
@@ -38,11 +51,32 @@ class ProfileImageDisplay extends StatefulWidget {
   final String? imagePathOrUrl;
   final double radius;
 
+  /// Pre-warm the cache for a given source (call during splash).
+  static Future<void> preWarmCache(String? source) async {
+    final s = (source ?? '').trim();
+    if (s.isEmpty ||
+        _ProfileImageDisplayState._bytesCache.containsKey(s)) {
+      return;
+    }
+    if (!StorageService.isStorageReference(s)) {
+      return;
+    }
+    try {
+      final bytes = await StorageService().readBytesByReference(s);
+      if (bytes != null && bytes.isNotEmpty) {
+        _ProfileImageDisplayState._bytesCache[s] = bytes;
+      }
+    } catch (_) {}
+  }
+
   @override
   State<ProfileImageDisplay> createState() => _ProfileImageDisplayState();
 }
 
 class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
+  /// Static in-memory cache so Storage images are instant after first load.
+  static final Map<String, Uint8List> _bytesCache = {};
+
   String? _cachedSource;
   Future<Uint8List?>? _storageBytesFuture;
 
@@ -60,11 +94,17 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     }
   }
 
-  Future<Uint8List?> _loadStorageBytes(String source) {
+  Future<Uint8List?> _loadStorageBytes(String source) async {
+    final cached = _bytesCache[source];
+    if (cached != null) return cached;
     try {
-      return StorageService().readBytesByReference(source);
+      final bytes = await StorageService().readBytesByReference(source);
+      if (bytes != null && bytes.isNotEmpty) {
+        _bytesCache[source] = bytes;
+      }
+      return bytes;
     } catch (_) {
-      return Future<Uint8List?>.value(null);
+      return null;
     }
   }
 
@@ -85,7 +125,13 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     if (source == _cachedSource) return;
     _cachedSource = source;
     if (StorageService.isStorageReference(source)) {
-      _storageBytesFuture = _loadStorageBytes(source);
+      // Return instantly from cache if available.
+      final cached = _bytesCache[source];
+      if (cached != null) {
+        _storageBytesFuture = Future.value(cached);
+      } else {
+        _storageBytesFuture = _loadStorageBytes(source);
+      }
     } else {
       _storageBytesFuture = null;
     }

@@ -73,9 +73,6 @@ class GroupMatchdayPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final appState = CassandraScope.of(context);
-    final en = Localizations.localeOf(
-      context,
-    ).languageCode.toLowerCase().startsWith('en');
 
     // non notificano: safe in build
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -86,25 +83,6 @@ class GroupMatchdayPage extends StatelessWidget {
     final matches = matchday.matches;
 
     final totalMatches = matches.length;
-    final gradedCount = matches.where((m) {
-      final o = outcomes[m.id] ?? MatchOutcome.pending;
-      return !o.isPending;
-    }).length;
-
-    final daysLabel = formatMatchdayDays(
-      matches.map((m) => m.kickoff),
-      english: en,
-    );
-    final resultsLabel = gradedCount == totalMatches
-        ? l10n.groupResultsLabel(gradedCount, totalMatches)
-        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
-
-    final savedOutcomes = appState.hasSavedOutcomesForMatchday(
-      matchday.dayNumber,
-    );
-    final outcomesTag = savedOutcomes
-        ? l10n.groupOutcomesSavedTag
-        : l10n.groupOutcomesRuntimeTag;
 
     final rows = members.map((member) {
       final picks = _picksForMember(appState, member);
@@ -131,42 +109,21 @@ class GroupMatchdayPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          '${l10n.groupMatchdayTitle(matchday.dayNumber)} • $groupName',
-        ),
+        backgroundColor: CassandraColors.charcoal,
+        foregroundColor: Colors.white,
+        title: Text(groupName),
       ),
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        daysLabel,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        resultsLabel,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CassandraColors.slate,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        outcomesTag,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CassandraColors.slate,
-                        ),
-                      ),
-                    ],
-                  ),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                l10n.groupMatchdayTitle(matchday.dayNumber),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
+                textAlign: TextAlign.center,
               ),
             ),
             const Divider(height: 1),
@@ -179,9 +136,6 @@ class GroupMatchdayPage extends StatelessWidget {
                   final isMe = r.member.id == uid;
 
                   final total = formatOdds(r.day.total);
-                  final avg = r.day.averageOddsPlayed == null
-                      ? '-'
-                      : formatOdds(r.day.averageOddsPlayed!);
 
                   return Card(
                     child: ListTile(
@@ -214,7 +168,7 @@ class GroupMatchdayPage extends StatelessWidget {
                             : r.member.uiName,
                       ),
                       subtitle: Text(
-                        '${l10n.statsCorrect}: ${r.day.correctCount}/$totalMatches • bonus: ${r.day.bonusPoints} • ${l10n.statsAvgOdds}: $avg',
+                        '${l10n.statsCorrect}: ${r.day.correctCount}/$totalMatches • bonus: ${r.day.bonusPoints}',
                       ),
                       trailing: Text(
                         total,

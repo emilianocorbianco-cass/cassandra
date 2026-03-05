@@ -75,6 +75,54 @@ String _weekdayName(int weekday, {required bool english}) =>
 String _monthName(int month, {required bool english}) =>
     english ? _enMonths[month] : _itMonths[month];
 
+/// Weekday date range: "venerdì 6 marzo - lunedì 9 marzo".
+String formatMatchdayWeekdayRange(
+  Iterable<DateTime> kickoffs, {
+  bool english = false,
+}) {
+  final days =
+      kickoffs
+          .map((dt) => dt.toLocal())
+          .map((dt) => DateTime(dt.year, dt.month, dt.day))
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.compareTo(b));
+
+  if (days.isEmpty) return '';
+
+  String fmt(DateTime d) =>
+      '${_weekdayName(d.weekday, english: english)} ${d.day} ${_monthName(d.month, english: english)}';
+
+  if (days.length == 1) return fmt(days.first);
+
+  return '${fmt(days.first)} - ${fmt(days.last)}';
+}
+
+/// Compact date range: "6 marzo - 9 marzo" / "6 March - 9 March".
+String formatMatchdayDateRange(
+  Iterable<DateTime> kickoffs, {
+  bool english = false,
+}) {
+  final days =
+      kickoffs
+          .map((dt) => dt.toLocal())
+          .map((dt) => DateTime(dt.year, dt.month, dt.day))
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.compareTo(b));
+
+  if (days.isEmpty) return '';
+  if (days.length == 1) {
+    final d = days.first;
+    return '${d.day} ${_monthName(d.month, english: english)}';
+  }
+
+  final first = days.first;
+  final last = days.last;
+  return '${first.day} ${_monthName(first.month, english: english)} - '
+      '${last.day} ${_monthName(last.month, english: english)}';
+}
+
 /// Retrocompatibile: chiama la versione bilingue con english=false.
 String formatMatchdayDaysItalian(Iterable<DateTime> kickoffs) =>
     formatMatchdayDays(kickoffs, english: false);

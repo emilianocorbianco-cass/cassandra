@@ -778,7 +778,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupSyncRetry => 'Riprova';
 
   @override
-  String get tabGroup => 'Gruppi';
+  String get tabGroup => 'Gruppo';
 
   @override
   String get tabLive => 'Livescore';

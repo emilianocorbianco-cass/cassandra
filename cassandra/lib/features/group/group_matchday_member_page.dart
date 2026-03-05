@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../app/state/cassandra_scope.dart';
-import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/team_name.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
@@ -99,7 +98,8 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     appState.ensureOutcomesHistoryLoaded();
     appState.ensureCurrentUserPicksLoaded();
 
-    final matches = matchday.matches;
+    final matches = List.of(matchday.matches)
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
     final outcomes = _effectiveOutcomes(appState);
     final picks = _picksForMember(appState);
 
@@ -109,34 +109,10 @@ class GroupMatchdayMemberPage extends StatelessWidget {
       outcomesByMatchId: outcomes,
     );
 
-    final daysLabel = formatMatchdayDays(
+    final daysLabel = formatMatchdayDateRange(
       matches.map((m) => m.kickoff),
       english: en,
     );
-
-    final totalMatches = matches.length;
-    final gradedCount = matches.where((m) {
-      final o = outcomes[m.id] ?? MatchOutcome.pending;
-      return !o.isPending;
-    }).length;
-
-    final resultsLabel = gradedCount == totalMatches
-        ? l10n.groupResultsLabel(gradedCount, totalMatches)
-        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
-
-    final savedPicks =
-        appState.hasSavedPicksForMatchday(matchday.dayNumber) &&
-        member.id == appState.profile.id;
-    final savedOutcomes = appState.hasSavedOutcomesForMatchday(
-      matchday.dayNumber,
-    );
-
-    final picksTag = savedPicks
-        ? l10n.groupPicksSavedTag
-        : l10n.groupPicksDemoRuntimeTag;
-    final outcomesTag = savedOutcomes
-        ? l10n.groupOutcomesSavedTag
-        : l10n.groupOutcomesRuntimeTag;
 
     return Scaffold(
       appBar: AppBar(
@@ -157,20 +133,8 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                     children: [
                       Text(
                         daysLabel,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        resultsLabel,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CassandraColors.slate,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '$picksTag • $outcomesTag',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CassandraColors.slate,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -195,16 +159,6 @@ class GroupMatchdayMemberPage extends StatelessWidget {
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${l10n.groupAvgOddsPlayedLabel}: ${day.averageOddsPlayed == null ? '-' : formatOdds(day.averageOddsPlayed!)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${l10n.statsCorrect}: ${day.correctCount}/$totalMatches',
-                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),

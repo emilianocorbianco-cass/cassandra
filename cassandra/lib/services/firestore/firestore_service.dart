@@ -1293,6 +1293,25 @@ class FirestoreService {
     }
   }
 
+  Future<void> deletePicks({
+    required String uid,
+    required String seasonKey,
+    required int dayNumber,
+    String? groupId,
+  }) async {
+    final normalizedGroupId = _normalizedGroupId(groupId);
+    final docId = _picksDocId(
+      uid,
+      seasonKey,
+      dayNumber,
+      groupId: normalizedGroupId,
+    );
+    await _withTimeout(
+      _db.collection('picks').doc(docId).delete(),
+      operation: 'deletePicks',
+    );
+  }
+
   Future<PicksDocument?> getPicks({
     required String uid,
     required String seasonKey,

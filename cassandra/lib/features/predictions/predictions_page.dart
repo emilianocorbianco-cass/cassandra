@@ -12,6 +12,7 @@ import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
 import '../../l10n/app_localizations.dart';
 import '../../services/firestore/models/matchday_document.dart';
+import '../group/models/group_member.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/scoring_engine.dart';
@@ -45,6 +46,11 @@ class _PredictionsPageState extends State<PredictionsPage>
   bool _didLoadRealFixtures = false;
   bool _didLoadFixtures = false;
 
+  // ── Member picks overlay state ──
+  String? _expandedMatchId;
+  List<GroupMember>? _cachedGroupMembers;
+  bool _memberPicksFetched = false;
+
   bool get demoActive {
     final appState = CassandraScope.of(context);
     return appState.cachedPredictionMatches != null &&
@@ -54,8 +60,9 @@ class _PredictionsPageState extends State<PredictionsPage>
   List<PredictionMatch> get matches {
     final appState = CassandraScope.of(context);
     final cached = appState.cachedPredictionMatches;
-    if (cached != null && cached.isNotEmpty) return cached;
-    return _matches;
+    final source = (cached != null && cached.isNotEmpty) ? cached : _matches;
+    return List<PredictionMatch>.of(source)
+      ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
   }
 
   int get _matchdayNumber => CassandraScope.of(context).cassandraMatchdayCursor;
@@ -103,6 +110,14 @@ class _PredictionsPageState extends State<PredictionsPage>
         cached.isNotEmpty &&
         scope.cachedPredictionMatchesAreReal) {
       _usingRealFixtures = true;
+    }
+
+    // Restore submitted state from persisted picks history.
+    if (!_submitted) {
+      scope.ensureCurrentUserPicksHistoryLoaded();
+      if (scope.hasSavedPicksForMatchday(_effectiveMatchdayNumber)) {
+        _submitted = true;
+      }
     }
 
     if (_didLoadFixtures) return;
@@ -450,6 +465,66 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
   }
 
+  void _onToggleMatchExpand(String matchId) {
+    if (_expandedMatchId == matchId) {
+      setState(() => _expandedMatchId = null);
+      return;
+    }
+    setState(() => _expandedMatchId = matchId);
+    if (_memberPicksFetched) return;
+    _memberPicksFetched = true;
+    final appState = CassandraScope.of(context);
+    appState.fetchFirestoreGroupMembers().then((members) {
+      if (!mounted) return;
+      _cachedGroupMembers = members;
+      final uids = members.map((m) => m.id).toList();
+      if (uids.isEmpty) return;
+      appState
+          .fetchFirestorePicksForMatchday(
+            dayNumber: _effectiveMatchdayNumber,
+            uids: uids,
+          )
+          .then((picksByUid) {
+        if (!mounted) return;
+        appState.setMemberPicksBulk(picksByUid);
+        setState(() {});
+      });
+    });
+  }
+
+  List<_MemberPickData> _buildMemberRows(PredictionMatch match) {
+    final appState = CassandraScope.of(context);
+    final members = _cachedGroupMembers;
+    if (members == null) return [];
+    final allPicks = appState.memberPicksByMemberId;
+    final currentUid = appState.profile.id;
+    final rows = <_MemberPickData>[];
+    for (final member in members) {
+      if (member.id == currentUid) continue;
+      final memberPicks = allPicks[member.id];
+      final pick = memberPicks?[match.id] ?? PickOption.none;
+      if (pick.isNone) continue;
+      final odds = CassandraScoringEngine.oddsForPick(match, pick);
+      final isStarted = _isMatchStarted(match);
+      final isCorrect = isStarted && isPickCorrectForMatch(match, pick);
+      rows.add(_MemberPickData(
+        name: member.uiName,
+        pick: pick,
+        odds: odds,
+        isCorrect: isCorrect,
+        isStarted: isStarted,
+      ));
+    }
+    return rows;
+  }
+
+  static bool _isMatchStarted(PredictionMatch match) {
+    final s = match.statusShort;
+    return s != null &&
+        const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'FT', 'AET', 'PEN'}
+            .contains(s);
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -514,6 +589,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -545,15 +621,25 @@ class _PredictionsPageState extends State<PredictionsPage>
                                   (b) => b?.matchId == match.id,
                                   orElse: () => null,
                                 );
+                            final expanded =
+                                _locked && _expandedMatchId == match.id;
+                            final memberRows =
+                                expanded ? _buildMemberRows(match) : null;
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: _CompactMatchCard(
                                 match: match,
                                 pick: pick,
                                 locked: _locked,
+                                submitted: _submitted,
                                 onPick: (p) => _setPick(match.id, p),
                                 outcome: outcome,
                                 matchBreakdown: breakdown,
+                                expanded: expanded,
+                                onToggleExpand: _locked
+                                    ? () => _onToggleMatchExpand(match.id)
+                                    : null,
+                                memberRows: memberRows,
                               ),
                             );
                           }, childCount: matches.length),
@@ -563,7 +649,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                         SliverToBoxAdapter(
                           child: SerieAStandingsTable(standings: standings),
                         ),
-                      const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+                      const SliverPadding(padding: EdgeInsets.only(bottom: 90)),
                     ],
                   ),
 
@@ -626,6 +712,28 @@ class _PredictionsPageState extends State<PredictionsPage>
 // ─────────────────────────────────────────────────────────────────────────────
 // Hero Score Card
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Whether [pick] matches the current scoreline of [match].
+bool isPickCorrectForMatch(PredictionMatch match, PickOption pick) {
+  final h = match.homeGoals ?? 0;
+  final a = match.awayGoals ?? 0;
+  switch (pick) {
+    case PickOption.home:
+      return h > a;
+    case PickOption.draw:
+      return h == a;
+    case PickOption.away:
+      return a > h;
+    case PickOption.homeDraw:
+      return h >= a;
+    case PickOption.drawAway:
+      return a >= h;
+    case PickOption.homeAway:
+      return h != a;
+    case PickOption.none:
+      return false;
+  }
+}
 
 /// Whether [pick] matches the live [outcome].
 bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
@@ -700,26 +808,33 @@ class _HeroScoreCard extends StatelessWidget {
     }).toList();
   }
 
-  /// Max score: all picks correct + bonus(10).
-  /// For picked matches: +odds of the pick.
-  /// For unpicked matches: +max(1/X/2) odds (best possible single).
+  /// Max score: all picks correct + bonus(pickedCount).
+  /// After submission, unpicked matches are locked as -max(1/X/2).
+  /// Before submission, unpicked matches assume best possible pick.
   double _computeMaxScore() {
     double base = 0;
+    int maxCorrect = 0;
     for (final m in matches) {
       final pick = pickFor(m.id);
       if (pick.isNone) {
-        base += _max1X2(m.odds);
+        if (submitted) {
+          // Submitted without pick → penalty is locked in.
+          base -= _max1X2(m.odds);
+        } else {
+          // Not yet submitted → optimistic: could still pick correctly.
+          base += _max1X2(m.odds);
+          maxCorrect++;
+        }
       } else {
         base += CassandraScoringEngine.oddsForPick(m, pick);
+        maxCorrect++;
       }
     }
-    return base + CassandraScoringEngine.bonusForCorrectCount(10);
+    return base + CassandraScoringEngine.bonusForCorrectCount(maxCorrect);
   }
 
   /// Min score: all picks wrong + bonus(0).
-  /// For picked single: -odds of that pick.
-  /// For picked double: -(sum of the two component odds).
-  /// For unpicked: -max(1/X/2) odds.
+  /// After submission, unpicked matches are locked as -max(1/X/2).
   double _computeMinScore() {
     double base = 0;
     for (final m in matches) {
@@ -800,7 +915,7 @@ class _HeroScoreCard extends StatelessWidget {
       useSolidRing = true;
       ringCenter = Center(
         child: GestureDetector(
-          onTap: onSubmit,
+          onTap: submitted ? null : onSubmit,
           child: Container(
             width: 114,
             height: 114,
@@ -1174,17 +1289,25 @@ class _CompactMatchCard extends StatelessWidget {
     required this.match,
     required this.pick,
     required this.locked,
+    this.submitted = false,
     required this.onPick,
     this.outcome,
     this.matchBreakdown,
+    this.expanded = false,
+    this.onToggleExpand,
+    this.memberRows,
   });
 
   final PredictionMatch match;
   final PickOption pick;
   final bool locked;
+  final bool submitted;
   final ValueChanged<PickOption> onPick;
   final MatchOutcome? outcome;
   final MatchScoreBreakdown? matchBreakdown;
+  final bool expanded;
+  final VoidCallback? onToggleExpand;
+  final List<_MemberPickData>? memberRows;
 
   bool get _isLive {
     final s = match.statusShort;
@@ -1267,7 +1390,7 @@ class _CompactMatchCard extends StatelessWidget {
     final homeInitial = match.homeTeam.isNotEmpty ? match.homeTeam[0] : '?';
     final awayInitial = match.awayTeam.isNotEmpty ? match.awayTeam[0] : '?';
 
-    return Container(
+    Widget card = Container(
       decoration: BoxDecoration(
         color: CassandraColors.inkBlackV2,
         borderRadius: BorderRadius.circular(16),
@@ -1285,10 +1408,41 @@ class _CompactMatchCard extends StatelessWidget {
           color: CassandraColors.platinum,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: locked
-            ? _buildPostLockLayout(homeInitial, awayInitial)
-            : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            locked
+                ? _buildPostLockLayout(homeInitial, awayInitial)
+                : _buildPreMatchLayout(centerText, homeInitial, awayInitial),
+            if (expanded) _buildMemberPicksOverlay(),
+          ],
+        ),
       ),
+    );
+
+    if (onToggleExpand != null) {
+      card = GestureDetector(onTap: onToggleExpand, child: card);
+    }
+
+    return card;
+  }
+
+  Widget _buildMemberPicksOverlay() {
+    final rows = memberRows;
+    if (rows == null || rows.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 8),
+        Container(height: 1, color: CassandraColors.charcoal),
+        const SizedBox(height: 8),
+        for (final row in rows)
+          _MemberPickRow(data: row),
+      ],
     );
   }
 
@@ -1366,42 +1520,42 @@ class _CompactMatchCard extends StatelessWidget {
               label: '1',
               odds: match.odds.home,
               selected: pick == PickOption.home,
-              locked: locked,
+              locked: locked || submitted,
               onPressed: () => onPick(PickOption.home),
             ),
             _CompactOddsButton(
               label: 'X',
               odds: match.odds.draw,
               selected: pick == PickOption.draw,
-              locked: locked,
+              locked: locked || submitted,
               onPressed: () => onPick(PickOption.draw),
             ),
             _CompactOddsButton(
               label: '2',
               odds: match.odds.away,
               selected: pick == PickOption.away,
-              locked: locked,
+              locked: locked || submitted,
               onPressed: () => onPick(PickOption.away),
             ),
             _CompactOddsButton(
               label: '1X',
               odds: match.odds.homeDraw,
               selected: pick == PickOption.homeDraw,
-              locked: locked,
+              locked: locked || submitted,
               onPressed: () => onPick(PickOption.homeDraw),
             ),
             _CompactOddsButton(
               label: 'X2',
               odds: match.odds.drawAway,
               selected: pick == PickOption.drawAway,
-              locked: locked,
+              locked: locked || submitted,
               onPressed: () => onPick(PickOption.drawAway),
             ),
             _CompactOddsButton(
               label: '12',
               odds: match.odds.homeAway,
               selected: pick == PickOption.homeAway,
-              locked: locked,
+              locked: locked || submitted,
               onPressed: () => onPick(PickOption.homeAway),
             ),
           ],
@@ -1821,6 +1975,69 @@ class _TeamLogo extends StatelessWidget {
             color: CassandraColors.slate,
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Member Pick Data + Row
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MemberPickData {
+  final String name;
+  final PickOption pick;
+  final double odds;
+  final bool isCorrect;
+  final bool isStarted;
+
+  const _MemberPickData({
+    required this.name,
+    required this.pick,
+    required this.odds,
+    required this.isCorrect,
+    required this.isStarted,
+  });
+}
+
+class _MemberPickRow extends StatelessWidget {
+  const _MemberPickRow({required this.data});
+
+  final _MemberPickData data;
+
+  static const _mintLeaf = Color(0xFF00B884);
+  static const _amaranth = Color(0xFFE01E48);
+
+  @override
+  Widget build(BuildContext context) {
+    Color? bubbleBg;
+    if (data.isStarted) {
+      bubbleBg = data.isCorrect ? _mintLeaf : _amaranth;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              data.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: CassandraColors.inkBlackV2,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _PostLockPickBubble(
+            label: data.pick.label,
+            odds: data.odds,
+            bgColor: bubbleBg,
+          ),
+        ],
       ),
     );
   }

@@ -9,15 +9,12 @@ import 'package:flutter/services.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/state/app_state.dart';
 import '../../app/theme/cassandra_colors.dart';
-import 'widgets/group_image_picker.dart';
-import '../badges/badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/mock_prediction_data.dart';
 import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
-import '../profile/user_hub_page.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/ranking_rules.dart';
@@ -25,11 +22,14 @@ import '../scoring/scoring_engine.dart';
 import '../stats/stats_page.dart';
 
 import 'create_group_page.dart';
+import 'group_hub_page.dart';
 import 'join_group_page.dart';
 import 'mock_group_data.dart';
 import 'group_matchday_page.dart';
 import 'models/group_member.dart';
 import '../leaderboards/mock_season_data.dart';
+import '../../services/firestore/firestore_service.dart';
+import '../../services/storage/storage_service.dart';
 import '../../services/firestore/models/picks_document.dart';
 import '../../services/firestore/models/group_document.dart';
 import '../../services/firestore/models/matchday_document.dart';
@@ -39,6 +39,10 @@ const _kLiveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'};
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
+
+  /// Cached uid → photoUrl from user docs. Public static so HomeShell
+  /// can pre-warm it at app startup for instant photo display.
+  static final Map<String, String> memberPhotoCache = <String, String>{};
 
   @override
   State<GroupPage> createState() => _GroupPageState();
@@ -229,6 +233,42 @@ class _GroupPageState extends State<GroupPage> {
       }
 
       final members = await appState.fetchFirestoreGroupMembers();
+
+      // Self-repair: ensure own member doc has current profile data
+      final ownIdx = members.indexWhere((m) => m.id == appState.profile.id);
+      if (ownIdx >= 0) {
+        final own = members[ownIdx];
+        final profilePhoto = (appState.profile.photoUrl ?? '').trim();
+        final memberPhoto = (own.photoUrl ?? '').trim();
+        if (profilePhoto != memberPhoto ||
+            own.displayName != appState.profile.displayName ||
+            own.teamName != appState.profile.teamName) {
+          unawaited(
+            appState.firestoreService!.updateGroupMemberProfileInGroups(
+              uid: appState.profile.id,
+              groupIds: [groupId],
+              displayName: appState.profile.displayName,
+              teamName: appState.profile.teamName,
+              avatarSeed: appState.currentUserAvatarSeed,
+              favoriteTeam: appState.profile.favoriteTeam,
+              photoUrl: appState.profile.photoUrl,
+            ),
+          );
+          members[ownIdx] = GroupMember(
+            id: own.id,
+            displayName: appState.profile.displayName,
+            teamName: appState.profile.teamName,
+            avatarSeed: appState.currentUserAvatarSeed,
+            favoriteTeam: appState.profile.favoriteTeam,
+            photoUrl: profilePhoto.isEmpty ? null : profilePhoto,
+          );
+        }
+      }
+
+      // Apply cached photoUrls synchronously; fetch unknowns in background
+      final enriched = _applyPhotoCache(members);
+      _fetchMissingPhotosInBackground(enriched, fs);
+
       final uids = members.map((m) => m.id).toList(growable: false);
       final matchdayData = await fs.getMatchdayData(
         seasonKey: appState.currentSeasonKey,
@@ -259,7 +299,7 @@ class _GroupPageState extends State<GroupPage> {
         _firestoreGroupId = groupId;
         _firestoreSeasonKey = appState.currentSeasonKey;
         _firestoreDayNumber = appState.uiMatchdayNumber;
-        _firestoreMembers = members;
+        _firestoreMembers = enriched;
         _firestoreCurrentMatchday = matchdayData;
         _firestoreSeasonPicksDocs = filteredSeasonDocs;
         _firestorePicksByMemberId = picks;
@@ -348,7 +388,7 @@ class _GroupPageState extends State<GroupPage> {
                 )
                 .toList(growable: false);
             setState(() {
-              _firestoreMembers = members;
+              _firestoreMembers = _applyPhotoCache(members);
             });
             _recomputeFirestoreDerived(appState);
           },
@@ -398,6 +438,71 @@ class _GroupPageState extends State<GroupPage> {
     _firestoreSeasonPicksSub = null;
     _firestoreMatchdaySub?.cancel();
     _firestoreMatchdaySub = null;
+  }
+
+  /// Apply [GroupPage.memberPhotoCache] to a members list, replacing null photoUrls
+  /// with cached values from previous user-doc lookups.
+  List<GroupMember> _applyPhotoCache(List<GroupMember> members) {
+    var changed = false;
+    final result = List<GroupMember>.of(members);
+    for (var i = 0; i < result.length; i++) {
+      if (result[i].photoUrl == null) {
+        final cached = GroupPage.memberPhotoCache[result[i].id];
+        if (cached != null) {
+          result[i] = GroupMember(
+            id: result[i].id,
+            displayName: result[i].displayName,
+            teamName: result[i].teamName,
+            avatarSeed: result[i].avatarSeed,
+            favoriteTeam: result[i].favoriteTeam,
+            photoUrl: cached,
+          );
+          changed = true;
+        }
+      }
+    }
+    return changed ? result : members;
+  }
+
+  /// Fire-and-forget: fetch user docs for members with missing photoUrl
+  /// that aren't in cache yet. Updates [GroupPage.memberPhotoCache], pre-warms the
+  /// StorageService byte cache for storage:// URLs, and refreshes
+  /// [_firestoreMembers] via setState when done.
+  void _fetchMissingPhotosInBackground(
+    List<GroupMember> members,
+    FirestoreService fs,
+  ) {
+    final missingUids = <String>[
+      for (final m in members)
+        if (m.photoUrl == null && !GroupPage.memberPhotoCache.containsKey(m.id)) m.id,
+    ];
+    if (missingUids.isEmpty) return;
+
+    final storage = StorageService();
+    Future.wait(missingUids.map((uid) => fs.getUserProfile(uid))).then((
+      profiles,
+    ) {
+      if (!mounted) return;
+      var anyNew = false;
+      for (var j = 0; j < missingUids.length; j++) {
+        final profile = profiles[j];
+        if (profile == null) continue;
+        final photo = ((profile['photoUrl'] as String?) ?? '').trim();
+        if (photo.isEmpty) continue;
+        GroupPage.memberPhotoCache[missingUids[j]] = photo;
+        anyNew = true;
+        // Pre-warm StorageService byte cache so AvatarWithBadges
+        // finds bytes already loaded when it renders.
+        if (StorageService.isStorageReference(photo)) {
+          storage.readBytesByReference(photo);
+        }
+      }
+      if (anyNew && _firestoreMembers != null) {
+        setState(() {
+          _firestoreMembers = _applyPhotoCache(_firestoreMembers!);
+        });
+      }
+    });
   }
 
   Map<String, List<PicksDocument>> _buildSeasonPicksByMember(
@@ -633,19 +738,6 @@ class _GroupPageState extends State<GroupPage> {
     }
   }
 
-  String _matchdayLabelFor(
-    int matchdayNumber,
-    List<PredictionMatch> matches, {
-    required bool english,
-    required AppLocalizations l10n,
-  }) {
-    final days = formatMatchdayDays(
-      matches.map((m) => m.kickoff),
-      english: english,
-    );
-    return l10n.groupMatchdayLabel(matchdayNumber, days);
-  }
-
   Rect? _shareOriginFromContext(BuildContext sourceContext) {
     final renderObject = sourceContext.findRenderObject();
     if (renderObject is! RenderBox) return null;
@@ -699,6 +791,7 @@ class _GroupPageState extends State<GroupPage> {
           ),
         ),
         body: SafeArea(
+          bottom: false,
           child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -822,16 +915,6 @@ class _GroupPageState extends State<GroupPage> {
 
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
-
-    final totalMatches = currentMatches.length;
-    final gradedCount = currentMatches.where((m) {
-      final o = outcomesByMatchId[m.id] ?? MatchOutcome.pending;
-      return !o.isPending;
-    }).length;
-
-    final resultsLabel = gradedCount == totalMatches
-        ? l10n.groupResultsLabel(gradedCount, totalMatches)
-        : l10n.groupResultsLabelPartial(gradedCount, totalMatches);
 
     final overrideMember = GroupMember(
       id: appState.profile.id,
@@ -996,33 +1079,35 @@ class _GroupPageState extends State<GroupPage> {
       );
     });
 
-    final seasonMatchdaysDesc = seasonMatchdays.toList()
+    // Only show matchdays where at least one group member has picks.
+    final playedDays = <int>{
+      for (final docs in seasonPicksByMemberId.values)
+        for (final pd in docs)
+          if (pd.dayNumber > 0) pd.dayNumber,
+    };
+    final seasonMatchdaysDesc = seasonMatchdays
+        .where((md) => playedDays.contains(md.dayNumber))
+        .toList()
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
+        backgroundColor: CassandraColors.charcoal,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () {
+            Navigator.of(context, rootNavigator: true).pushReplacement(
+              MaterialPageRoute(builder: (_) => const GroupHubPage()),
+            );
+          },
+        ),
         title: Text(
-          l10n.tabGroup,
+          groupName,
           style: const TextStyle(fontWeight: FontWeight.w700),
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.group_add),
-            tooltip: l10n.groupJoinTooltip,
-            onPressed: () {
-              Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute(
-                  builder: (_) => JoinGroupPage(
-                    onJoined: () {
-                      Navigator.of(context, rootNavigator: true).pop();
-                      setState(() {});
-                    },
-                  ),
-                ),
-              );
-            },
-          ),
           Builder(
             builder: (buttonContext) => IconButton(
               icon: const Icon(Icons.share),
@@ -1040,6 +1125,7 @@ class _GroupPageState extends State<GroupPage> {
         ],
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Padding(
@@ -1047,48 +1133,6 @@ class _GroupPageState extends State<GroupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      GroupImageDisplay(
-                        imagePath: appState.groupImagePath,
-                        radius: 28,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              groupName,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: CassandraColors.brightSnow,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _matchdayLabelFor(
-                                appState.uiMatchdayNumber,
-                                currentMatches,
-                                english: en,
-                                l10n: l10n,
-                              ),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: CassandraColors.brightSnow,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    resultsLabel,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CassandraColors.brightSnow,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
                   SegmentedButton<int>(
                     showSelectedIcon: false,
                     segments: [
@@ -1131,42 +1175,27 @@ class _GroupPageState extends State<GroupPage> {
                   : useFirestoreMembers && members.isEmpty
                   ? Center(child: Text(l10n.commonNoDataAvailable))
                   : _segment == 2
-                  ? const StatsPage(embedded: true, lockToGroup: true)
+                  ? const StatsPage(embedded: true, lockToPersonal: true)
                   : _segment == 1
                   ? RefreshIndicator(
                       onRefresh: _refreshFromFirestore,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
                         itemCount: seasonMatchdaysDesc.length,
                         itemBuilder: (context, i) {
                           final md = seasonMatchdaysDesc[i];
 
-                          final daysLabel = formatMatchdayDays(
+                          final daysLabel = formatMatchdayWeekdayRange(
                             md.matches.map((m) => m.kickoff),
                             english: en,
                           );
 
-                          final graded = md.matches.where((m) {
-                            final o = md.outcomesByMatchId[m.id];
-                            return o != null && o != MatchOutcome.pending;
-                          }).length;
-
-                          final total = md.matches.length;
-                          final mdResultsLabel = graded == total
-                              ? l10n.groupResultsShort(graded, total)
-                              : l10n.groupResultsShortPartial(graded, total);
-
                           final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
-
-                          final mdResultsPrefix = l10n.groupResultsPrefix;
 
                           return Card(
                             child: ListTile(
                               title: Text(mdTitle),
-                              subtitle: Text(
-                                '$daysLabel\n$mdResultsPrefix: $mdResultsLabel',
-                              ),
-                              isThreeLine: true,
+                              subtitle: Text(daysLabel),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () {
                                 Navigator.of(context, rootNavigator: true).push(
@@ -1193,45 +1222,15 @@ class _GroupPageState extends State<GroupPage> {
                   : RefreshIndicator(
                       onRefresh: _refreshFromFirestore,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
                         itemCount: generalEntries.length,
                         itemBuilder: (context, i) {
                           final e = generalEntries[i];
-
-                          final badges =
-                              CassandraBadgeEngine.badgesForGroupMatchday(
-                                member: e.member,
-                                rank: i + 1,
-                                totalPlayers: generalEntries.length,
-                                matches: currentMatches,
-                                picksByMatchId: e.currentDayPicksByMatchId,
-                                outcomesByMatchId: outcomesByMatchId,
-                                day: e.currentDay,
-                              );
 
                           final pts = formatOdds(e.totalPoints);
 
                           return Card(
                             child: ListTile(
-                              onTap: () {
-                                final md = MatchdayData(
-                                  dayNumber: currentMatchdayNumber,
-                                  matches: currentMatches,
-                                  outcomesByMatchId: outcomesByMatchId,
-                                );
-
-                                Navigator.of(context, rootNavigator: true).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => UserHubPage(
-                                      member: e.member,
-                                      matchday: md,
-                                      picksByMatchId:
-                                          e.currentDayPicksByMatchId,
-                                      initialTabIndex: 0,
-                                    ),
-                                  ),
-                                );
-                              },
                               leading: SizedBox(
                                 width: 64,
                                 child: Row(
@@ -1253,7 +1252,7 @@ class _GroupPageState extends State<GroupPage> {
                                       radius: 18,
                                       backgroundColor: CassandraColors.primary,
                                       text: e.member.avatarInitial,
-                                      badges: badges,
+                                      badges: const [],
                                       imagePathOrUrl: e.member.photoUrl,
                                     ),
                                   ],

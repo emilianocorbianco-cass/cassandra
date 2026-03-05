@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
-import '../../app/navigation/home_shell.dart';
 import '../../app/state/app_settings.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
@@ -175,10 +174,8 @@ class _LoginPageState extends State<LoginPage> {
     Widget destination;
     if (app.needsProfileSetup) {
       destination = const ProfileSetupPage();
-    } else if (app.firestoreGroupIds.length >= 2) {
-      destination = const GroupHubPage();
     } else {
-      destination = const HomeShell();
+      destination = const GroupHubPage();
     }
 
     Navigator.of(

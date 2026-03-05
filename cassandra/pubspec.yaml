@@ -76,6 +76,7 @@ flutter:
   assets:
     - .env
     - assets/logos/
+    - assets/icon/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -110,6 +111,6 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icon/testicon.png"
+  image_path: "assets/icon/testicon2.png"
   remove_alpha_ios: true
   min_sdk_android: 21

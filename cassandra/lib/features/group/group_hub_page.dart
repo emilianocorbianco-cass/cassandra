@@ -22,10 +22,13 @@ class GroupHubPage extends StatefulWidget {
 
 class _GroupHubPageState extends State<GroupHubPage> {
   Future<List<GroupDocument>>? _groupsFuture;
+  bool _didLoad = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_didLoad) return;
+    _didLoad = true;
     _loadGroups();
   }
 
@@ -46,8 +49,11 @@ class _GroupHubPageState extends State<GroupHubPage> {
 
   void _selectGroup(String groupId) {
     final app = CassandraScope.of(context);
+    // setActiveGroupId already triggers refreshActiveGroupMetadataFromFirestore
+    // and history hydration in the background.
     app.setActiveGroupId(groupId);
-    app.refreshActiveGroupMetadataFromFirestore();
+
+    // Navigate immediately — predictions page loads its own fixtures.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const HomeShell()),
     );
@@ -110,6 +116,7 @@ class _GroupHubPageState extends State<GroupHubPage> {
     return Scaffold(
       backgroundColor: CassandraColors.bg,
       body: SafeArea(
+        bottom: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
@@ -118,14 +125,14 @@ class _GroupHubPageState extends State<GroupHubPage> {
               // ── Profile section ──
               ProfileImageDisplay(
                 imagePathOrUrl: app.profile.photoUrl,
-                radius: 36,
+                radius: 65,
               ),
               const SizedBox(height: 12),
               Text(
                 l10n.welcomeBackTitle(handle),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: CassandraColors.primary,
+                  color: CassandraColors.brightSnow,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -140,8 +147,8 @@ class _GroupHubPageState extends State<GroupHubPage> {
                       label: Text(l10n.groupHubCreateGroup),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        foregroundColor: CassandraColors.slate,
-                        side: const BorderSide(color: CassandraColors.slate),
+                        foregroundColor: CassandraColors.brightSnow,
+                        side: const BorderSide(color: CassandraColors.brightSnow),
                       ),
                     ),
                   ),
@@ -153,65 +160,53 @@ class _GroupHubPageState extends State<GroupHubPage> {
                       label: Text(l10n.groupHubJoinGroup),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        foregroundColor: CassandraColors.slate,
-                        side: const BorderSide(color: CassandraColors.slate),
+                        foregroundColor: CassandraColors.brightSnow,
+                        side: const BorderSide(color: CassandraColors.brightSnow),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               // ── Separator ──
-              Row(
-                children: [
-                  const Expanded(child: Divider()),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      l10n.groupHubSubtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CassandraColors.slate.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                  const Expanded(child: Divider()),
-                ],
-              ),
-              const SizedBox(height: 16),
+              const Divider(color: CassandraColors.brightSnow, thickness: 0.5, height: 0.5),
               // ── Group list ──
               Expanded(
-                child: FutureBuilder<List<GroupDocument>>(
-                  future: _groupsFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                child: ClipRect(
+                  child: FutureBuilder<List<GroupDocument>>(
+                    future: _groupsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                    final groups = snapshot.data ?? const [];
-                    if (groups.isEmpty) {
-                      return Center(
-                        child: Text(
-                          l10n.groupHubSubtitle,
-                          style: const TextStyle(
-                            color: CassandraColors.slate,
+                      final groups = snapshot.data ?? const [];
+                      if (groups.isEmpty) {
+                        return Center(
+                          child: Text(
+                            l10n.groupHubSubtitle,
+                            style: const TextStyle(
+                              color: CassandraColors.slate,
+                            ),
                           ),
-                        ),
-                      );
-                    }
-
-                    return ListView.separated(
-                      itemCount: groups.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final group = groups[index];
-                        return _GroupCard(
-                          group: group,
-                          onTap: () => _selectGroup(group.id),
                         );
-                      },
-                    );
-                  },
+                      }
+
+                      return ListView.separated(
+                        padding: const EdgeInsets.only(top: 16),
+                        clipBehavior: Clip.none,
+                        itemCount: groups.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final group = groups[index];
+                          return _GroupCard(
+                            group: group,
+                            onTap: () => _selectGroup(group.id),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -233,7 +228,7 @@ class _GroupCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
 
     return Material(
-      color: CassandraColors.navBarBg,
+      color: CassandraColors.platinum,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -254,7 +249,7 @@ class _GroupCard extends StatelessWidget {
                     Text(
                       group.name,
                       style: const TextStyle(
-                        color: CassandraColors.navBarFg,
+                        color: CassandraColors.inkBlack,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -265,7 +260,7 @@ class _GroupCard extends StatelessWidget {
                     Text(
                       l10n.groupHubMemberCount(group.memberCount),
                       style: TextStyle(
-                        color: CassandraColors.navBarFg.withValues(alpha: 0.6),
+                        color: CassandraColors.inkBlack.withValues(alpha: 0.6),
                         fontSize: 13,
                       ),
                     ),
@@ -274,7 +269,7 @@ class _GroupCard extends StatelessWidget {
               ),
               const Icon(
                 Icons.chevron_right,
-                color: CassandraColors.navBarFg,
+                color: CassandraColors.inkBlack,
               ),
             ],
           ),

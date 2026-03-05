@@ -219,6 +219,13 @@ class PredictionState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clear picks for a single matchday (local only).
+  void clearPicksForMatchday(int dayNumber) {
+    _currentUserPicksByMatchday.remove(dayNumber);
+    _persistCurrentUserPicksHistoryToPrefs();
+    notifyListeners();
+  }
+
   /// Ritorna i pick per una giornata: storico se disponibile, altrimenti live.
   Map<String, PickOption> picksForCurrentUserForMatchday(int matchdayNumber) {
     final saved = _currentUserPicksByMatchday[matchdayNumber];

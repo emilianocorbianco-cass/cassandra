@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
+import '../../../app/theme/cassandra_colors.dart';
 import '../../leaderboards/models/season_leaderboard_entry.dart';
 import '../../predictions/models/formatters.dart';
 import '../models/player_season_stats.dart';
@@ -54,7 +55,7 @@ class PersonalStatsView extends StatelessWidget {
         : 'G${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
       children: [
         if (entries.isNotEmpty)
           Card(
@@ -64,6 +65,7 @@ class PersonalStatsView extends StatelessWidget {
                 child: DropdownButton<String>(
                   value: selectedMemberId,
                   isExpanded: true,
+                  dropdownColor: CassandraColors.platinum,
                   items: entries.map((e) {
                     return DropdownMenuItem(
                       value: e.member.id,

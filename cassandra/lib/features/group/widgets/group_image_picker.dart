@@ -7,23 +7,36 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../services/storage/storage_service.dart';
+import '../../shared/image_crop_screen.dart';
 
 class GroupImageHelper {
   GroupImageHelper._();
 
-  static Future<String?> pickAndSaveGroupImage() async {
+  static Future<String?> pickAndSaveGroupImage(BuildContext context) async {
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 512,
+      maxWidth: 1024,
     );
     if (xFile == null) return null;
 
     final dir = await getApplicationDocumentsDirectory();
-    final dest = File('${dir.path}/group_image.jpg');
-    final bytes = await xFile.readAsBytes();
-    await dest.writeAsBytes(bytes);
-    return dest.path;
+    final dest = File('${dir.path}/group_image.png');
+    final pickedFile = File(xFile.path);
+
+    if (!context.mounted) return null;
+    final croppedPath = await Navigator.of(context).push<String?>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageCropScreen(
+          imageFile: pickedFile,
+          outputSize: 512,
+          outputPath: dest.path,
+        ),
+      ),
+    );
+
+    return croppedPath;
   }
 }
 

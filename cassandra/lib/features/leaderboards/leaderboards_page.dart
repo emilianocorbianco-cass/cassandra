@@ -10,7 +10,6 @@ import '../../app/state/cassandra_scope.dart';
 import '../../services/firestore/models/picks_document.dart';
 import '../../app/theme/cassandra_colors.dart';
 import '../../app/widgets/demo_banner.dart';
-import '../badges/season_badge_engine.dart';
 import '../badges/widgets/avatar_with_badges.dart';
 import '../group/models/group_member.dart';
 import '../predictions/models/formatters.dart';
@@ -500,13 +499,6 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                         itemBuilder: (context, i) {
                           final e = sorted[i];
 
-                          final badges =
-                              CassandraSeasonBadgeEngine.badgesForSeason(
-                                entry: e,
-                                rank: i + 1,
-                                totalPlayers: sorted.length,
-                              );
-
                           final metricLabel =
                               _generalMode == _GeneralMode.points
                               ? formatOdds(e.totalPoints)
@@ -561,7 +553,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                                       e.member.avatarSeed,
                                     ),
                                     text: e.member.avatarInitial,
-                                    badges: badges,
+                                    badges: const [],
                                     imagePathOrUrl: e.member.photoUrl,
                                   ),
                                 ],

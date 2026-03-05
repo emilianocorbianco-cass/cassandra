@@ -1544,7 +1544,7 @@ abstract class AppLocalizations {
   /// No description provided for @tabGroup.
   ///
   /// In en, this message translates to:
-  /// **'Groups'**
+  /// **'Group'**
   String get tabGroup;
 
   /// No description provided for @tabLive.
