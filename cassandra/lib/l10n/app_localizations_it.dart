@@ -99,7 +99,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get createGroupButton => 'Crea gruppo';
 
   @override
-  String get createGroupHaveInviteCode => 'Hai un codice invito?';
+  String get createGroupHaveInviteCode => 'Invita un amico';
 
   @override
   String get createGroupCreated => 'Gruppo creato!';
@@ -394,7 +394,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsProfile => 'Profilo';
 
   @override
-  String get settingsProfileImageLabel => 'Carica la tua immagine di profilo';
+  String get settingsProfileImageLabel => 'Immagine del profilo';
 
   @override
   String get settingsDisplayNameLabel => 'Nome utente';
@@ -445,7 +445,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsAccount => 'Account';
 
   @override
-  String get settingsLanguage => 'Lingua';
+  String get settingsLanguage => 'Selezione lingua';
 
   @override
   String get settingsLanguageSystem => 'Sistema';

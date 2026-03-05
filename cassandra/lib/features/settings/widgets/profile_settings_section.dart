@@ -1,4 +1,5 @@
 import 'package:cassandra/app/state/app_state.dart';
+import 'package:cassandra/app/theme/cassandra_colors.dart';
 import 'package:cassandra/features/profile/widgets/profile_image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -190,7 +191,7 @@ class _ProfileSettingsSectionState extends State<ProfileSettingsSection> {
   }
 
   Future<void> _pickProfileImage(AppState app) async {
-    final path = await ProfileImageHelper.pickAndSaveProfileImage();
+    final path = await ProfileImageHelper.pickAndSaveProfileImage(context);
     if (path == null) return;
     await app.updateProfilePhotoPath(path);
   }
@@ -205,79 +206,132 @@ class _ProfileSettingsSectionState extends State<ProfileSettingsSection> {
         ? widget.selectedFavoriteTeam
         : null;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          l10n.settingsProfile,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
-            leading: ProfileImageDisplay(
-              imagePathOrUrl: app.profile.photoUrl,
-              radius: 20,
-            ),
-            title: Text(l10n.settingsProfileImageLabel),
-            trailing: const Icon(Icons.chevron_right),
+    return Card(
+      color: CassandraColors.platinum,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+        children: [
+          GestureDetector(
             onTap: () => _pickProfileImage(app),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: widget.displayNameController,
-          textInputAction: TextInputAction.next,
-          decoration: InputDecoration(
-            labelText: l10n.settingsDisplayNameLabel,
-            hintText: l10n.settingsDisplayNameHint,
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: widget.teamNameController,
-          textInputAction: TextInputAction.next,
-          onChanged: (_) => _normalizeHandleController(),
-          decoration: InputDecoration(
-            labelText: l10n.settingsHandleLabel,
-            hintText: l10n.settingsHandleHint,
-          ),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          key: ValueKey(
-            'fav-team-${selectedValue ?? 'none'}-${_favoriteTeamOptions.length}',
-          ),
-          isExpanded: true,
-          initialValue: selectedValue,
-          items: _favoriteTeamOptions
-              .map(
-                (o) => DropdownMenuItem<String>(
-                  value: o.name,
-                  child: _favoriteTeamItem(o),
+            child: Row(
+              children: [
+                ProfileImageDisplay(
+                  imagePathOrUrl: app.profile.photoUrl,
+                  radius: 30,
                 ),
-              )
-              .toList(),
-          onChanged: _favoriteTeamOptions.isEmpty
-              ? null
-              : widget.onFavoriteTeamChanged,
-          decoration: InputDecoration(
-            labelText: l10n.settingsFavoriteTeamLabel,
-            hintText: _favoriteTeamsLoading
-                ? l10n.groupDataRefreshing
-                : l10n.settingsFavoriteTeamHint,
-            suffixIcon:
-                (widget.selectedFavoriteTeam != null &&
-                    widget.selectedFavoriteTeam!.isNotEmpty)
-                ? IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => widget.onFavoriteTeamChanged(null),
-                  )
-                : null,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    l10n.settingsProfileImageLabel,
+                    style: const TextStyle(
+                      color: CassandraColors.inkBlack,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  color: CassandraColors.inkBlack,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+                controller: widget.displayNameController,
+                textInputAction: TextInputAction.next,
+                style: const TextStyle(color: CassandraColors.inkBlack, fontWeight: FontWeight.w700),
+                decoration: InputDecoration(
+                  labelText: l10n.settingsDisplayNameLabel,
+                  labelStyle: const TextStyle(color: CassandraColors.inkBlack),
+                  hintText: l10n.settingsDisplayNameHint,
+                  hintStyle: TextStyle(
+                    color: CassandraColors.inkBlack.withValues(alpha: 0.5),
+                  ),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: CassandraColors.inkBlack),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: CassandraColors.inkBlack, width: 2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: widget.teamNameController,
+                textInputAction: TextInputAction.next,
+                onChanged: (_) => _normalizeHandleController(),
+                style: const TextStyle(color: CassandraColors.inkBlack, fontWeight: FontWeight.w700),
+                decoration: InputDecoration(
+                  labelText: l10n.settingsHandleLabel,
+                  labelStyle: const TextStyle(color: CassandraColors.inkBlack),
+                  hintText: l10n.settingsHandleHint,
+                  hintStyle: TextStyle(
+                    color: CassandraColors.inkBlack.withValues(alpha: 0.5),
+                  ),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: CassandraColors.inkBlack),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: CassandraColors.inkBlack, width: 2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'fav-team-${selectedValue ?? 'none'}-${_favoriteTeamOptions.length}',
+                ),
+                isExpanded: true,
+                initialValue: selectedValue,
+                style: const TextStyle(color: CassandraColors.inkBlack, fontWeight: FontWeight.w700),
+                items: _favoriteTeamOptions
+                    .map(
+                      (o) => DropdownMenuItem<String>(
+                        value: o.name,
+                        child: _favoriteTeamItem(o),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _favoriteTeamOptions.isEmpty
+                    ? null
+                    : widget.onFavoriteTeamChanged,
+                decoration: InputDecoration(
+                  labelText: l10n.settingsFavoriteTeamLabel,
+                  labelStyle: const TextStyle(color: CassandraColors.inkBlack),
+                  hintText: _favoriteTeamsLoading
+                      ? l10n.groupDataRefreshing
+                      : l10n.settingsFavoriteTeamHint,
+                  hintStyle: TextStyle(
+                    color: CassandraColors.inkBlack.withValues(alpha: 0.5),
+                  ),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: CassandraColors.inkBlack),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: CassandraColors.inkBlack, width: 2),
+                  ),
+                  suffixIcon:
+                      (widget.selectedFavoriteTeam != null &&
+                          widget.selectedFavoriteTeam!.isNotEmpty)
+                      ? IconButton(
+                          icon: const Icon(
+                            Icons.close,
+                            color: CassandraColors.inkBlack,
+                          ),
+                          onPressed: () => widget.onFavoriteTeamChanged(null),
+                        )
+                      : null,
+                ),
+              ),
+            ],
           ),
         ),
-      ],
-    );
+      );
   }
 }
 

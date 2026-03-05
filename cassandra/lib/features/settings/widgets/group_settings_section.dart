@@ -1,6 +1,5 @@
 import 'package:cassandra/app/state/app_state.dart';
 import 'package:cassandra/features/group/group_hub_page.dart';
-import 'package:cassandra/features/group/widgets/group_image_picker.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:cassandra/services/firestore/models/group_document.dart';
 import 'package:flutter/material.dart';
@@ -78,45 +77,14 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final app = widget.app;
-    final l10n = AppLocalizations.of(context)!;
-
-    if (!app.hasGroup) {
-      return const SizedBox.shrink();
-    }
-
-    _syncActiveGroupDocFuture(app);
-
+  Widget _buildAdminCard(AppState app, AppLocalizations l10n) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 24),
-        Text(
-          l10n.settingsGroup,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
         const SizedBox(height: 8),
         Card(
           child: Column(
             children: [
-              ListTile(
-                leading: GroupImageDisplay(
-                  imagePath: app.groupImagePath,
-                  radius: 20,
-                ),
-                title: Text(l10n.settingsGroupImageTitle),
-                subtitle: Text(l10n.settingsGroupImageSubtitle),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final path = await GroupImageHelper.pickAndSaveGroupImage();
-                  if (path != null) {
-                    app.updateGroupImagePath(path);
-                  }
-                },
-              ),
-              const Divider(height: 1),
               SwitchListTile(
                 title: Text(l10n.settingsAdminApprovalTitle),
                 subtitle: Text(l10n.settingsAdminApprovalSubtitle),
@@ -132,70 +100,58 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
                   title: Text(l10n.settingsSwitchGroup),
                   onTap: () {
                     Navigator.of(context, rootNavigator: true).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => const GroupHubPage(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const GroupHubPage()),
                     );
                   },
                 ),
               ],
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.preview, color: Colors.orange),
-                title: const Text(
-                  'Test: Group Hub Page',
-                  style: TextStyle(color: Colors.orange),
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: Text(
+                  l10n.settingsDeleteGroup,
+                  style: const TextStyle(color: Colors.red),
                 ),
-                onTap: () {
-                  Navigator.of(context, rootNavigator: true).push(
-                    MaterialPageRoute(
-                      builder: (_) => const GroupHubPage(),
-                    ),
-                  );
-                },
+                onTap: () => _confirmDeleteGroup(app),
               ),
-              if (app.firestoreService == null) ...[
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.delete_forever, color: Colors.red),
-                  title: Text(
-                    l10n.settingsDeleteGroup,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  onTap: () => _confirmDeleteGroup(app),
-                ),
-              ] else if (_activeGroupDocFuture != null)
-                FutureBuilder<GroupDocument?>(
-                  future: _activeGroupDocFuture,
-                  builder: (context, snapshot) {
-                    final doc = snapshot.data;
-                    final isAdmin =
-                        doc != null && doc.adminUid == app.profile.id;
-                    if (!isAdmin) {
-                      return const SizedBox.shrink();
-                    }
-                    return Column(
-                      children: [
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(
-                            Icons.delete_forever,
-                            color: Colors.red,
-                          ),
-                          title: Text(
-                            l10n.settingsDeleteGroup,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                          onTap: () => _confirmDeleteGroup(app),
-                        ),
-                      ],
-                    );
-                  },
-                ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final l10n = AppLocalizations.of(context)!;
+
+    if (!app.hasGroup) {
+      return const SizedBox.shrink();
+    }
+
+    _syncActiveGroupDocFuture(app);
+
+    // Offline fallback: show card unconditionally.
+    if (app.firestoreService == null) {
+      return _buildAdminCard(app, l10n);
+    }
+
+    // Online: only show for admin.
+    if (_activeGroupDocFuture == null) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<GroupDocument?>(
+      future: _activeGroupDocFuture,
+      builder: (context, snapshot) {
+        final doc = snapshot.data;
+        final isAdmin = doc != null && doc.adminUid == app.profile.id;
+        if (!isAdmin) {
+          return const SizedBox.shrink();
+        }
+        return _buildAdminCard(app, l10n);
+      },
     );
   }
 }

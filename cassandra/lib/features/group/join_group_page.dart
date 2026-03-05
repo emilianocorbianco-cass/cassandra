@@ -85,61 +85,130 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
 
     return Scaffold(
       backgroundColor: CassandraColors.bg,
-      appBar: AppBar(title: Text(l10n.joinGroupTitle)),
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.group_add, size: 64, color: CassandraColors.primary),
-                const SizedBox(height: 16),
-                Text(
-                  l10n.joinGroupEnterInviteCode,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CassandraColors.slate,
-                  ),
-                  textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            // ── Back button ──
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(
+                  Icons.chevron_left,
+                  color: CassandraColors.brightSnow,
+                  size: 28,
                 ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _codeController,
-                  textCapitalization: TextCapitalization.characters,
-                  maxLength: 9, // CASS-XXXX
-                  decoration: InputDecoration(
-                    labelText: l10n.joinGroupInviteCode,
-                    hintText: l10n.joinGroupCodeHint,
-                    border: const OutlineInputBorder(),
-                    errorText: _error,
-                  ),
-                  onChanged: (_) => setState(() => _error = null),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _loading || _codeController.text.trim().isEmpty
-                        ? null
-                        : _onJoin,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: CassandraColors.primary,
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(l10n.joinGroupButton),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            // ── Top third: title + subtitle ──
+            Expanded(
+              flex: 1,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      l10n.joinGroupTitle,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: CassandraColors.brightSnow,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.joinGroupEnterInviteCode,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: CassandraColors.slate,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // ── Middle: icon + code field ──
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 50),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.group_add,
+                          size: 84,
+                          color: CassandraColors.primary,
+                        ),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _codeController,
+                          textCapitalization: TextCapitalization.characters,
+                          maxLength: 9,
+                          style: const TextStyle(color: CassandraColors.brightSnow),
+                          decoration: InputDecoration(
+                            labelText: l10n.joinGroupInviteCode,
+                            labelStyle: const TextStyle(color: CassandraColors.brightSnow),
+                            hintText: l10n.joinGroupCodeHint,
+                            hintStyle: TextStyle(
+                              color: CassandraColors.brightSnow.withValues(alpha: 0.5),
+                            ),
+                            counterStyle: const TextStyle(color: CassandraColors.brightSnow),
+                            errorText: _error,
+                            border: const OutlineInputBorder(
+                              borderSide: BorderSide(color: CassandraColors.brightSnow),
+                            ),
+                            enabledBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: CassandraColors.brightSnow),
+                            ),
+                            focusedBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: CassandraColors.brightSnow, width: 2),
+                            ),
+                          ),
+                          onChanged: (_) => setState(() => _error = null),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // ── Bottom fifth: button ──
+            Expanded(
+              flex: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Center(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _loading || _codeController.text.trim().isEmpty
+                          ? null
+                          : _onJoin,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: CassandraColors.brightSnow,
+                        disabledForegroundColor: CassandraColors.brightSnow.withValues(alpha: 0.5),
+                        side: const BorderSide(color: CassandraColors.brightSnow),
+                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: CassandraColors.brightSnow,
+                              ),
+                            )
+                          : Text(l10n.joinGroupButton),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

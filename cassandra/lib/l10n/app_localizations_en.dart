@@ -99,7 +99,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createGroupButton => 'Create group';
 
   @override
-  String get createGroupHaveInviteCode => 'Have an invite code?';
+  String get createGroupHaveInviteCode => 'Invite a friend';
 
   @override
   String get createGroupCreated => 'Group created!';
@@ -394,7 +394,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsProfile => 'Profile';
 
   @override
-  String get settingsProfileImageLabel => 'Upload your profile image';
+  String get settingsProfileImageLabel => 'Profile image';
 
   @override
   String get settingsDisplayNameLabel => 'User name';
@@ -445,7 +445,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAccount => 'Account';
 
   @override
-  String get settingsLanguage => 'Language';
+  String get settingsLanguage => 'Language selection';
 
   @override
   String get settingsLanguageSystem => 'System';

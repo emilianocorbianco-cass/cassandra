@@ -32,8 +32,8 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   }
 
   Future<void> _pickImage() async {
-    final path = await GroupImageHelper.pickAndSaveGroupImage();
-    if (path != null) {
+    final path = await GroupImageHelper.pickAndSaveGroupImage(context);
+    if (path != null && mounted) {
       setState(() => _pickedImagePath = path);
     }
   }
@@ -134,112 +134,175 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     return Scaffold(
       backgroundColor: CassandraColors.bg,
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  l10n.createGroupTitle,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: CassandraColors.primary,
-                  ),
-                  textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            // ── Back button ──
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(
+                  Icons.chevron_left,
+                  color: CassandraColors.brightSnow,
+                  size: 28,
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  l10n.createGroupSubtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CassandraColors.slate,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Column(
-                    children: [
-                      GroupImageDisplay(
-                        imagePath: _pickedImagePath,
-                        radius: 40,
+              ),
+            ),
+            // ── Top third: title + subtitle ──
+            Expanded(
+              flex: 1,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      l10n.createGroupTitle,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: CassandraColors.brightSnow,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        l10n.createGroupTapAddPhoto,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CassandraColors.slate,
-                          fontSize: 11,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.createGroupSubtitle,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: CassandraColors.slate,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // ── Middle: image + name field, centered ──
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 50),
+                    child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _pickImage,
+                        child: Column(
+                          children: [
+                            GroupImageDisplay(
+                              imagePath: _pickedImagePath,
+                              radius: 52,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              l10n.createGroupTapAddPhoto,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: CassandraColors.slate,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: _nameController,
+                        maxLength: 30,
+                        style: const TextStyle(color: CassandraColors.brightSnow),
+                        decoration: InputDecoration(
+                          labelText: l10n.createGroupNameLabel,
+                          labelStyle: const TextStyle(color: CassandraColors.brightSnow),
+                          counterStyle: const TextStyle(color: CassandraColors.brightSnow),
+                          border: const OutlineInputBorder(
+                            borderSide: BorderSide(color: CassandraColors.brightSnow),
+                          ),
+                          enabledBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(color: CassandraColors.brightSnow),
+                          ),
+                          focusedBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(color: CassandraColors.brightSnow, width: 2),
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          _error!,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ],
+                  ),
+                  ),
+                ),
+              ),
+            ),
+            // ── Bottom fifth: buttons ──
+            Expanded(
+              flex: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _creating || _nameController.text.trim().isEmpty
+                              ? null
+                              : _onCreate,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: CassandraColors.brightSnow,
+                            disabledForegroundColor: CassandraColors.brightSnow.withValues(alpha: 0.5),
+                            side: const BorderSide(color: CassandraColors.brightSnow),
+                          ),
+                          child: _creating
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: CassandraColors.brightSnow,
+                                  ),
+                                )
+                              : Text(l10n.createGroupButton),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            Navigator.of(context, rootNavigator: true).push(
+                              MaterialPageRoute(
+                                builder: (_) => JoinGroupPage(
+                                  onJoined: () {
+                                    Navigator.of(context, rootNavigator: true).pop();
+                                    widget.onGroupCreated?.call();
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: CassandraColors.brightSnow,
+                            side: const BorderSide(color: CassandraColors.brightSnow),
+                          ),
+                          child: Text(l10n.createGroupHaveInviteCode),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _nameController,
-                  maxLength: 30,
-                  decoration: InputDecoration(
-                    labelText: l10n.createGroupNameLabel,
-                    border: const OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _creating || _nameController.text.trim().isEmpty
-                        ? null
-                        : _onCreate,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: CassandraColors.primary,
-                    ),
-                    child: _creating
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(l10n.createGroupButton),
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    _error!,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.of(context, rootNavigator: true).push(
-                        MaterialPageRoute(
-                          builder: (_) => JoinGroupPage(
-                            onJoined: () {
-                              Navigator.of(context, rootNavigator: true).pop();
-                              widget.onGroupCreated?.call();
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                    child: Text(l10n.createGroupHaveInviteCode),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

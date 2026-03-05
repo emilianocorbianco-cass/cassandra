@@ -26,12 +26,23 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _selectedFavoriteTeam;
   int _settingsSegment = 0; // 0 = my settings, 1 = my stats
   CassandraLanguage _language = CassandraLanguage.system;
+  AppState? _app;
 
   @override
   void dispose() {
+    _saveIfNeeded();
     _displayNameCtrl.dispose();
     _teamNameCtrl.dispose();
     super.dispose();
+  }
+
+  void _saveIfNeeded() {
+    final app = _app;
+    if (app == null) return;
+    app.updateDisplayName(_displayNameCtrl.text);
+    app.updateTeamName(_teamNameCtrl.text);
+    app.updateFavoriteTeam(_selectedFavoriteTeam ?? '');
+    app.updateLanguage(_language);
   }
 
   @override
@@ -41,6 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_initialized) return;
 
     final app = CassandraScope.of(context);
+    _app = app;
     _displayNameCtrl.text = app.profile.displayName;
     _teamNameCtrl.text = normalizeHandleDraft(app.teamName);
     _selectedFavoriteTeam = app.favoriteTeam.trim().isEmpty
@@ -51,66 +63,18 @@ class _SettingsPageState extends State<SettingsPage> {
     _initialized = true;
   }
 
-  Future<void> _save(AppState app) async {
-    final l10n = AppLocalizations.of(context)!;
-    await app.updateDisplayName(_displayNameCtrl.text);
-    await app.updateTeamName(_teamNameCtrl.text);
-    await app.updateFavoriteTeam(_selectedFavoriteTeam ?? '');
-    await app.updateLanguage(_language);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.settingsSaved)));
-  }
-
-  Future<void> _reset(AppState app) async {
-    final l10n = AppLocalizations.of(context)!;
-    await app.resetAll();
-
-    setState(() {
-      _displayNameCtrl.text = app.profile.displayName;
-      _teamNameCtrl.text = normalizeHandleDraft(app.teamName);
-      _selectedFavoriteTeam = app.favoriteTeam.trim().isEmpty
-          ? null
-          : app.favoriteTeam.trim();
-      _language = app.language;
-    });
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.settingsResetDone)));
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.bug_report_outlined),
-          tooltip: l10n.settingsBackendDiagnosticsTitle,
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ApiFootballDiagnosticsPage(),
-              ),
-            );
-          },
-        ),
-        title: Text(
-          l10n.tabSettings,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              padding: const EdgeInsets.fromLTRB(12, 17, 12, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -140,12 +104,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 2),
             const Divider(height: 1),
             Expanded(
               child: _settingsSegment == 1
                   ? const StatsPage(embedded: true, lockToPersonal: true)
                   : ListView(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 90),
                       children: [
                         ProfileSettingsSection(
                           app: app,
@@ -164,26 +129,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             setState(() => _language = value);
                           },
                         ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton(
-                                onPressed: () => _save(app),
-                                child: Text(l10n.settingsSave),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => _reset(app),
-                                child: Text(l10n.settingsReset),
-                              ),
-                            ),
-                          ],
-                        ),
                         const SizedBox(height: 32),
-                        // ── Debug: mock lock state ───────────────
+                        // ── Debug ───────────────
                         Text(
                           'Debug',
                           style: TextStyle(
@@ -193,6 +140,60 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: Icon(
+                              Icons.bug_report_outlined,
+                              color: Colors.orange.shade800,
+                            ),
+                            label: Text(
+                              l10n.settingsBackendDiagnosticsTitle,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange.shade800,
+                              side: BorderSide(color: Colors.orange.shade800),
+                            ),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const ApiFootballDiagnosticsPage(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: Colors.orange.shade800,
+                            ),
+                            label: Text(
+                              'Reset Picks (Giornata ${app.cassandraMatchdayCursor})',
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange.shade800,
+                              side: BorderSide(color: Colors.orange.shade800),
+                            ),
+                            onPressed: () async {
+                              final day = app.cassandraMatchdayCursor;
+                              await app.resetPicksForCurrentMatchday();
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Picks giornata $day cancellati (locale + Firestore)',
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(

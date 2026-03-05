@@ -141,15 +141,9 @@ class AccountSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 24),
-        Text(
-          l10n.settingsAccount,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
         const SizedBox(height: 8),
         _buildAccountSection(context, app),
       ],

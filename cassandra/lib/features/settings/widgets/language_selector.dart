@@ -1,4 +1,5 @@
 import 'package:cassandra/app/state/app_settings.dart';
+import 'package:cassandra/app/theme/cassandra_colors.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 
@@ -22,27 +23,34 @@ class LanguageSelector extends StatelessWidget {
         const SizedBox(height: 24),
         Text(
           l10n.settingsLanguage,
-          style: Theme.of(context).textTheme.titleMedium,
+          style: const TextStyle(
+            color: CassandraColors.brightSnow,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
-        SegmentedButton<CassandraLanguage>(
-          showSelectedIcon: false,
-          segments: <ButtonSegment<CassandraLanguage>>[
-            ButtonSegment(
-              value: CassandraLanguage.system,
-              label: Text(l10n.settingsLanguageSystem),
-            ),
-            ButtonSegment(
-              value: CassandraLanguage.it,
-              label: Text(l10n.settingsLanguageIt),
-            ),
-            ButtonSegment(
-              value: CassandraLanguage.en,
-              label: Text(l10n.settingsLanguageEn),
-            ),
-          ],
-          selected: <CassandraLanguage>{currentValue},
-          onSelectionChanged: (value) => onChanged(value.first),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<CassandraLanguage>(
+            showSelectedIcon: false,
+            segments: <ButtonSegment<CassandraLanguage>>[
+              ButtonSegment(
+                value: CassandraLanguage.system,
+                label: Text(l10n.settingsLanguageSystem),
+              ),
+              ButtonSegment(
+                value: CassandraLanguage.it,
+                label: Text(l10n.settingsLanguageIt),
+              ),
+              ButtonSegment(
+                value: CassandraLanguage.en,
+                label: Text(l10n.settingsLanguageEn),
+              ),
+            ],
+            selected: <CassandraLanguage>{currentValue},
+            onSelectionChanged: (value) => onChanged(value.first),
+          ),
         ),
       ],
     );

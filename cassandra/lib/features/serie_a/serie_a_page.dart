@@ -191,17 +191,12 @@ class _SerieAPageState extends State<SerieAPage> {
               ));
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          l10n.tabLive,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              padding: const EdgeInsets.fromLTRB(12, 17, 12, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -230,6 +225,7 @@ class _SerieAPageState extends State<SerieAPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 2),
             const Divider(height: 1),
             Expanded(
               child: _segment == 1
@@ -267,7 +263,7 @@ class _SerieAPageState extends State<SerieAPage> {
     return RefreshIndicator(
       onRefresh: _reload,
       child: ListView(
-        padding: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.only(bottom: 90),
         children: [SerieAStandingsTable(standings: standings)],
       ),
     );
@@ -287,7 +283,7 @@ class _SerieAPageState extends State<SerieAPage> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 90),
       itemCount: matches.length,
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, i) {

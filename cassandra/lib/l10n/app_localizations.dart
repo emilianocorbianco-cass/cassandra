@@ -266,7 +266,7 @@ abstract class AppLocalizations {
   /// No description provided for @createGroupHaveInviteCode.
   ///
   /// In en, this message translates to:
-  /// **'Have an invite code?'**
+  /// **'Invite a friend'**
   String get createGroupHaveInviteCode;
 
   /// No description provided for @createGroupCreated.
@@ -800,7 +800,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsProfileImageLabel.
   ///
   /// In en, this message translates to:
-  /// **'Upload your profile image'**
+  /// **'Profile image'**
   String get settingsProfileImageLabel;
 
   /// No description provided for @settingsDisplayNameLabel.
@@ -902,7 +902,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLanguage.
   ///
   /// In en, this message translates to:
-  /// **'Language'**
+  /// **'Language selection'**
   String get settingsLanguage;
 
   /// No description provided for @settingsLanguageSystem.
