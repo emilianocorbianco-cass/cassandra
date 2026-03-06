@@ -21,6 +21,7 @@ import 'models/mock_prediction_data.dart';
 import 'models/pick_option.dart';
 import 'models/prediction_match.dart';
 import 'predictions_history_page.dart';
+import '../serie_a/live_standings_overlay.dart';
 import 'widgets/serie_a_standings_table.dart';
 
 enum VisibilityChoice { private, public }
@@ -535,7 +536,10 @@ class _PredictionsPageState extends State<PredictionsPage>
     final isEnglish = l10n.localeName.startsWith('en');
     final usingRealFixturesNow =
         _usingRealFixtures || appState.cachedPredictionMatchesAreReal;
-    final standings = appState.cachedSeasonStandings;
+    final standings = computeLiveStandings(
+      appState.cachedSeasonStandings,
+      appState.cachedPredictionMatches ?? const [],
+    );
 
     // Loading guard
     if (matches.isEmpty) {

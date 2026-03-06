@@ -914,23 +914,28 @@ class FirestoreService {
     );
 
     // Defensive cleanup: remove any stale invite docs still pointing to groupId.
-    final staleInvites = await _withTimeout(
-      _db
-          .collection(_kGroupInvitesCollection)
-          .where('groupId', isEqualTo: groupId)
-          .limit(20)
-          .get(),
-      operation: 'deleteGroupAsAdmin.findStaleInvites',
-    );
-    if (staleInvites.docs.isNotEmpty) {
-      final staleBatch = _db.batch();
-      for (final doc in staleInvites.docs) {
-        staleBatch.delete(doc.reference);
-      }
-      await _withTimeout(
-        staleBatch.commit(),
-        operation: 'deleteGroupAsAdmin.deleteStaleInvites',
+    // Best-effort — don't let cleanup errors fail the entire deletion.
+    try {
+      final staleInvites = await _withTimeout(
+        _db
+            .collection(_kGroupInvitesCollection)
+            .where('groupId', isEqualTo: groupId)
+            .limit(20)
+            .get(),
+        operation: 'deleteGroupAsAdmin.findStaleInvites',
       );
+      if (staleInvites.docs.isNotEmpty) {
+        final staleBatch = _db.batch();
+        for (final doc in staleInvites.docs) {
+          staleBatch.delete(doc.reference);
+        }
+        await _withTimeout(
+          staleBatch.commit(),
+          operation: 'deleteGroupAsAdmin.deleteStaleInvites',
+        );
+      }
+    } catch (_) {
+      // Stale invite cleanup is non-critical.
     }
   }
 

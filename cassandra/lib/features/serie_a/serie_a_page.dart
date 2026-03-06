@@ -14,6 +14,7 @@ import '../scoring/models/match_outcome.dart';
 import '../../app/state/cassandra_scope.dart';
 import '../../services/firestore/models/matchday_document.dart';
 import 'live_match_details_page.dart';
+import 'live_standings_overlay.dart';
 
 class SerieAPage extends StatefulWidget {
   const SerieAPage({super.key});
@@ -251,8 +252,8 @@ class _SerieAPageState extends State<SerieAPage> {
 
   Widget _buildSerieAStandings(BuildContext context, AppState appState) {
     final l10n = AppLocalizations.of(context)!;
-    final standings = appState.cachedSeasonStandings;
-    if (standings.isEmpty) {
+    final baseStandings = appState.cachedSeasonStandings;
+    if (baseStandings.isEmpty) {
       return ListView(
         children: [
           const SizedBox(height: 120),
@@ -260,6 +261,9 @@ class _SerieAPageState extends State<SerieAPage> {
         ],
       );
     }
+    // Overlay live match results on top of official standings.
+    final liveMatches = appState.cachedPredictionMatches ?? const [];
+    final standings = computeLiveStandings(baseStandings, liveMatches);
     return RefreshIndicator(
       onRefresh: _reload,
       child: ListView(

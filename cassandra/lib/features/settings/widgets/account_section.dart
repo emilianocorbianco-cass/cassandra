@@ -1,4 +1,5 @@
 import 'package:cassandra/app/state/app_state.dart';
+import 'package:cassandra/app/theme/cassandra_colors.dart';
 import 'package:cassandra/features/auth/login_page.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart';
@@ -45,16 +46,28 @@ class AccountSection extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n.settingsDeleteAccount),
-        content: Text(l10n.settingsDeleteAccountQuestion),
+        backgroundColor: CassandraColors.inkBlack,
+        title: Text(
+          l10n.settingsDeleteAccount,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
+        content: Text(
+          l10n.settingsDeleteAccountQuestion,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.settingsCancel),
+            child: Text(
+              l10n.settingsCancel,
+              style: const TextStyle(color: CassandraColors.brightSnow),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(
+              foregroundColor: CassandraColors.primary,
+            ),
             child: Text(l10n.settingsDelete),
           ),
         ],

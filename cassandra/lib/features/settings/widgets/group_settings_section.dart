@@ -45,16 +45,28 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n.settingsDeleteGroup),
-        content: Text(l10n.settingsDeleteGroupQuestion),
+        backgroundColor: CassandraColors.inkBlack,
+        title: Text(
+          l10n.settingsDeleteGroup,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
+        content: Text(
+          l10n.settingsDeleteGroupQuestion,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.settingsCancel),
+            child: Text(
+              l10n.settingsCancel,
+              style: const TextStyle(color: CassandraColors.brightSnow),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(
+              foregroundColor: CassandraColors.primary,
+            ),
             child: Text(l10n.settingsDelete),
           ),
         ],
@@ -63,26 +75,12 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
 
     if (confirmed != true || !mounted) return;
 
-    final err = await app.deleteActiveGroupIfAdmin();
-    if (!mounted) return;
+    // Navigate to group hub immediately, delete in background.
+    Navigator.of(context, rootNavigator: true).pushReplacement(
+      MaterialPageRoute(builder: (_) => const GroupHubPage()),
+    );
 
-    if (err == null) {
-      _activeGroupDocFuture = null;
-      _activeGroupDocFutureGroupId = null;
-      setState(() {});
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.settingsDeleteGroupDone)));
-      return;
-    }
-
-    final msg = err == 'Not admin'
-        ? l10n.settingsDeleteGroupOnlyAdmin
-        : err == 'Not authenticated'
-        ? l10n.groupSignInRequired
-        : l10n.settingsDeleteGroupFailed;
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    app.deleteActiveGroupIfAdmin();
   }
 
   Widget _buildCard(AppState app, AppLocalizations l10n, bool isAdmin) {
