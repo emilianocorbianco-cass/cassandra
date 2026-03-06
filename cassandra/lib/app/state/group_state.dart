@@ -108,13 +108,25 @@ class GroupState extends ChangeNotifier {
   // ===== Firestore group IDs =====
 
   void setFirestoreGroupIds(List<String> ids) {
-    _firestoreGroupIds = ids
+    final incoming = ids
         .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
         .toSet()
         .toList(growable: false);
-    if (_activeGroupId == null ||
-        !_firestoreGroupIds.contains(_activeGroupId)) {
+
+    // If _activeGroupId was set locally (e.g. just created/joined a group)
+    // but the remote list doesn't include it yet, merge it in so a stale
+    // remote fetch doesn't overwrite the user's intent.
+    final active = _activeGroupId;
+    if (active != null &&
+        active.isNotEmpty &&
+        !incoming.contains(active)) {
+      _firestoreGroupIds = [...incoming, active];
+    } else {
+      _firestoreGroupIds = incoming;
+    }
+
+    if (_activeGroupId == null) {
       _activeGroupId = _firestoreGroupIds.isNotEmpty
           ? _firestoreGroupIds.first
           : null;
