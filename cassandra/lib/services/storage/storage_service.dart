@@ -36,6 +36,9 @@ class StorageService {
   static const Duration _cacheTtl = Duration(minutes: 10);
   static const int _maxCacheEntries = 50;
 
+  // ── Download-URL cache (storage:// → HTTPS, never expires) ────────────
+  static final Map<String, String> _downloadUrlCache = {};
+
   static bool isStorageReference(String value) {
     final lower = value.trim().toLowerCase();
     return lower.startsWith(_kStorageReferenceScheme);
@@ -242,14 +245,55 @@ class StorageService {
     _cache[key] = _CacheEntry(bytes);
   }
 
+  /// Synchronous byte-cache lookup. Returns cached bytes if available
+  /// and not expired, or null without triggering any network request.
+  static Uint8List? getCachedBytes(String reference) {
+    final key = reference.trim();
+    if (key.isEmpty) return null;
+    final cached = _cache[key];
+    if (cached != null &&
+        DateTime.now().difference(cached.fetchedAt) < _cacheTtl) {
+      return cached.bytes;
+    }
+    return null;
+  }
+
+  /// Resolve a storage:// reference to an HTTPS download URL.
+  /// The mapping is cached permanently in memory.
+  Future<String?> getDownloadUrl(String reference) async {
+    final key = reference.trim();
+    if (key.isEmpty) return null;
+    final cached = _downloadUrlCache[key];
+    if (cached != null) return cached;
+    final ref = _referenceFromAny(reference);
+    if (ref == null) return null;
+    try {
+      final url = await ref.getDownloadURL().timeout(_requestTimeout);
+      _downloadUrlCache[key] = url;
+      return url;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Seed the download-URL cache (e.g. right after uploading).
+  static void seedDownloadUrlCache(String reference, String downloadUrl) {
+    final key = reference.trim();
+    if (key.isNotEmpty && downloadUrl.isNotEmpty) {
+      _downloadUrlCache[key] = downloadUrl;
+    }
+  }
+
   /// Evict a specific reference from the cache (e.g. after upload/delete).
   static void evictCache(String reference) {
     _cache.remove(reference.trim());
+    _downloadUrlCache.remove(reference.trim());
   }
 
   /// Clear the entire byte cache.
   static void clearCache() {
     _cache.clear();
+    _downloadUrlCache.clear();
   }
 
   Future<void> deleteByDownloadUrl(String? downloadUrl) async {
@@ -288,9 +332,10 @@ class StorageService {
         .putData(payload.bytes, SettableMetadata(contentType: payload.mimeType))
         .timeout(_requestTimeout);
     final url = await task.ref.getDownloadURL().timeout(_requestTimeout);
-    // Seed cache so the just-uploaded image is available instantly.
+    // Seed caches so the just-uploaded image is available instantly.
     final storageRef = toStorageReference(path);
     _putCache(storageRef, payload.bytes);
+    seedDownloadUrlCache(storageRef, url);
     return StorageUploadResult(
       downloadUrl: url,
       storagePath: path,

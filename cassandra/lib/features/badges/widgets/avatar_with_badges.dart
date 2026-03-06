@@ -53,16 +53,34 @@ class _AvatarWithBadgesState extends State<AvatarWithBadges> {
       return;
     }
 
-    // storage:// reference — fetch asincrono, setState quando arriva
+    // storage:// reference — check byte cache first (instant if pre-warmed),
+    // otherwise resolve to download URL and use NetworkImage (CDN-fast).
     if (StorageService.isStorageReference(source)) {
-      StorageService().readBytesByReference(source).then((bytes) {
+      final cached = StorageService.getCachedBytes(source);
+      if (cached != null && cached.isNotEmpty) {
+        _resolvedProvider = MemoryImage(cached);
+        return;
+      }
+      final storage = StorageService();
+      storage.getDownloadUrl(source).then((url) {
         if (!mounted) return;
         if ((widget.imagePathOrUrl ?? '').trim() != source) return;
-        setState(() {
-          _resolvedProvider = (bytes != null && bytes.isNotEmpty)
-              ? MemoryImage(bytes)
-              : null;
-        });
+        if (url != null) {
+          setState(() {
+            _resolvedProvider = NetworkImage(url);
+          });
+        } else {
+          // Fallback: download raw bytes
+          storage.readBytesByReference(source).then((bytes) {
+            if (!mounted) return;
+            if ((widget.imagePathOrUrl ?? '').trim() != source) return;
+            setState(() {
+              _resolvedProvider = (bytes != null && bytes.isNotEmpty)
+                  ? MemoryImage(bytes)
+                  : null;
+            });
+          });
+        }
       });
       return;
     }
