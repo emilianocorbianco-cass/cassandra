@@ -34,8 +34,8 @@ import '../../services/firestore/models/picks_document.dart';
 import '../../services/firestore/models/group_document.dart';
 import '../../services/firestore/models/matchday_document.dart';
 
-// Status codes API-Football per partite in corso (usati per lo scoring provvisorio).
-const _kLiveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'};
+// Status codes API-Football per partite iniziate/finite (usati per lo scoring provvisorio).
+const _kLiveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'FT', 'AET', 'PEN'};
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -1242,8 +1242,9 @@ class _GroupPageState extends State<GroupPage> {
                                         '${i + 1}',
                                         textAlign: TextAlign.center,
                                         style: const TextStyle(
+                                          fontSize: 16,
                                           fontWeight: FontWeight.w700,
-                                          color: CassandraColors.primary,
+                                          color: CassandraColors.inkBlack,
                                         ),
                                       ),
                                     ),
@@ -1264,8 +1265,8 @@ class _GroupPageState extends State<GroupPage> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: e.totalPoints >= 0
-                                      ? CassandraColors.primary
-                                      : CassandraColors.slate,
+                                      ? CassandraColors.inkBlack
+                                      : CassandraColors.primary,
                                 ),
                               ),
                             ),
