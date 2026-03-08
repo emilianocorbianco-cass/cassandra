@@ -48,6 +48,7 @@ class PredictionMatch {
   final int? homeGoals;
   final int? awayGoals;
   final String? statusShort;
+  final int? elapsed;
   final List<MatchLiveEvent> liveEvents;
 
   const PredictionMatch({
@@ -61,6 +62,7 @@ class PredictionMatch {
     this.homeGoals,
     this.awayGoals,
     this.statusShort,
+    this.elapsed,
     this.liveEvents = const [],
   });
 }

@@ -2200,18 +2200,24 @@ class _MatchStatusColumn extends StatelessWidget {
 
     // Live (1H, 2H, ET) → minute + half label
     if (s == '1H' || s == '2H' || s == 'ET' || s == 'BT' || s == 'LIVE') {
-      final diffMin = DateTime.now().difference(match.kickoff).inMinutes;
+      final apiElapsed = match.elapsed;
       final int minute;
       final String halfLabel;
       if (s == '1H' || s == 'LIVE') {
-        minute = (diffMin + 1).clamp(1, 45);
+        minute = apiElapsed?.clamp(1, 45) ??
+            (DateTime.now().difference(match.kickoff).inMinutes + 1)
+                .clamp(1, 45);
         halfLabel = isEn ? '1H' : '1T';
       } else if (s == '2H') {
-        minute = (diffMin - 14).clamp(46, 90);
+        minute = apiElapsed?.clamp(46, 90) ??
+            (DateTime.now().difference(match.kickoff).inMinutes - 21)
+                .clamp(46, 90);
         halfLabel = isEn ? '2H' : '2T';
       } else {
         // ET / BT
-        minute = (diffMin - 14).clamp(91, 120);
+        minute = apiElapsed?.clamp(91, 120) ??
+            (DateTime.now().difference(match.kickoff).inMinutes - 36)
+                .clamp(91, 120);
         halfLabel = isEn ? 'ET' : 'TS';
       }
       return SizedBox(

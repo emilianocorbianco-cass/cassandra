@@ -27,6 +27,7 @@ interface ApiFixture {
   homeLogo: string | null;
   awayLogo: string | null;
   statusShort: string;
+  elapsed: number | null;
   homeGoals: number | null;
   awayGoals: number | null;
   round: string | null;
@@ -51,6 +52,7 @@ interface MatchDoc {
   homeGoals?: number | null;
   awayGoals?: number | null;
   statusShort?: string;
+  elapsed?: number | null;
   events?: MatchEventDoc[];
   odds: {
     home: number;
@@ -210,6 +212,7 @@ function parseFixtures(json: Record<string, unknown>): ApiFixture[] {
         homeLogo: home["logo"] ? String(home["logo"]) : null,
         awayLogo: away["logo"] ? String(away["logo"]) : null,
         statusShort: String(status["short"] ?? ""),
+        elapsed: status["elapsed"] != null ? Number(status["elapsed"]) : null,
         homeGoals:
           goals["home"] != null ? Number(goals["home"]) : null,
         awayGoals:
@@ -1170,6 +1173,7 @@ function buildMatchDoc(
   if (f.awayLogo) doc.awayLogo = f.awayLogo;
   if (f.homeGoals != null) doc.homeGoals = f.homeGoals;
   if (f.awayGoals != null) doc.awayGoals = f.awayGoals;
+  if (f.elapsed != null) doc.elapsed = f.elapsed;
   if (events != null) {
     doc.events = events;
   }
@@ -1201,6 +1205,7 @@ function mergeLiveFieldsIntoExistingMatches(
         ...m,
         kickoff: fixture.kickoffUtc,
         statusShort: fixture.statusShort,
+        elapsed: fixture.elapsed,
         homeGoals: fixture.homeGoals,
         awayGoals: fixture.awayGoals,
       };

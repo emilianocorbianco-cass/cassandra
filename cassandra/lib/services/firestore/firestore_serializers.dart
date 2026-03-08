@@ -97,6 +97,7 @@ class FirestoreSerializers {
       if (m.awayGoals != null) 'awayGoals': m.awayGoals,
       if (m.statusShort != null && m.statusShort!.isNotEmpty)
         'statusShort': m.statusShort,
+      if (m.elapsed != null) 'elapsed': m.elapsed,
       if (m.liveEvents.isNotEmpty)
         'events': m.liveEvents
             .map(
@@ -153,6 +154,7 @@ class FirestoreSerializers {
       homeGoals: _asNullableInt(j['homeGoals']),
       awayGoals: _asNullableInt(j['awayGoals']),
       statusShort: (rawStatus == null || rawStatus.isEmpty) ? null : rawStatus,
+      elapsed: _asNullableInt(j['elapsed']),
       liveEvents: rawEvents
           .map((e) {
             return MatchLiveEvent(
