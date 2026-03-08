@@ -12,9 +12,13 @@ import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
 import '../../l10n/app_localizations.dart';
 import '../../services/firestore/models/matchday_document.dart';
+import '../../services/firestore/models/picks_document.dart';
+import '../badges/widgets/avatar_with_badges.dart';
 import '../group/models/group_member.dart';
+import '../leaderboards/models/matchday_data.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/models/score_breakdown.dart';
+import '../scoring/ranking_rules.dart';
 import '../scoring/scoring_engine.dart';
 import 'models/formatters.dart';
 import 'models/mock_prediction_data.dart';
@@ -51,6 +55,10 @@ class _PredictionsPageState extends State<PredictionsPage>
   String? _expandedMatchId;
   List<GroupMember>? _cachedGroupMembers;
   bool _memberPicksFetched = false;
+
+  // ── Group leaderboard (post-lock) ──
+  List<_LeaderboardEntry> _leaderboardEntries = const [];
+  bool _leaderboardFetched = false;
 
   bool get demoActive {
     final appState = CassandraScope.of(context);
@@ -499,6 +507,11 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (members == null) return [];
     final allPicks = appState.memberPicksByMemberId;
     final currentUid = appState.profile.id;
+    final s = match.statusShort;
+    final isLive = s != null &&
+        const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'}.contains(s);
+    final isFT = s == 'FT' || s == 'AET' || s == 'PEN';
+    final isStarted = isLive || isFT;
     final rows = <_MemberPickData>[];
     for (final member in members) {
       if (member.id == currentUid) continue;
@@ -506,30 +519,234 @@ class _PredictionsPageState extends State<PredictionsPage>
       final pick = memberPicks?[match.id] ?? PickOption.none;
       if (pick.isNone) continue;
       final odds = CassandraScoringEngine.oddsForPick(match, pick);
-      final isStarted = _isMatchStarted(match);
       final isCorrect = isStarted && isPickCorrectForMatch(match, pick);
       rows.add(_MemberPickData(
         name: member.uiName,
         pick: pick,
         odds: odds,
+        opposingLabel: _opposingLabelFor(pick),
+        opposingOdds: _loseOddsFor(match, pick),
         isCorrect: isCorrect,
-        isStarted: isStarted,
+        isLive: isLive,
+        isFT: isFT,
       ));
     }
     return rows;
   }
 
-  static bool _isMatchStarted(PredictionMatch match) {
-    final s = match.statusShort;
-    return s != null &&
-        const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'FT', 'AET', 'PEN'}
-            .contains(s);
+  static String _opposingLabelFor(PickOption pick) {
+    switch (pick) {
+      case PickOption.home:     return 'X2';
+      case PickOption.draw:     return '12';
+      case PickOption.away:     return '1X';
+      case PickOption.homeDraw: return '2';
+      case PickOption.drawAway: return '1';
+      case PickOption.homeAway: return 'X';
+      case PickOption.none:     return '-';
+    }
+  }
+
+  static double _loseOddsFor(PredictionMatch match, PickOption pick) {
+    if (pick.isNone) return 0;
+    if (pick.isSingle) {
+      switch (pick) {
+        case PickOption.home:  return match.odds.drawAway;
+        case PickOption.draw:  return match.odds.homeAway;
+        case PickOption.away:  return match.odds.homeDraw;
+        default:               return 0;
+      }
+    }
+    switch (pick) {
+      case PickOption.homeDraw: return match.odds.away * 2;
+      case PickOption.drawAway: return match.odds.home * 2;
+      case PickOption.homeAway: return match.odds.draw * 2;
+      default:                  return 0;
+    }
+  }
+
+
+
+  void _fetchGroupLeaderboardIfNeeded() {
+    if (_leaderboardFetched) return;
+    final appState = CassandraScope.of(context);
+    if (!_locked || !appState.hasGroup) return;
+    _leaderboardFetched = true;
+
+    final fs = appState.firestoreService;
+    if (fs == null) return;
+
+    final seasonKey = appState.currentSeasonKey;
+    final groupId = appState.activeGroupId;
+    if (groupId == null) return;
+
+    final currentMatchdayNumber = _effectiveMatchdayNumber;
+    final currentMatches = matches
+        .where((m) {
+          final origin = appState.originKickoffFor(
+            matchId: m.id,
+            fallbackKickoff: m.kickoff,
+          );
+          return m.kickoff.difference(origin) <= const Duration(hours: 48);
+        })
+        .toList(growable: false);
+    // Base outcomes from Firestore cache
+    final baseOutcomes = <String, MatchOutcome>{
+      for (final m in currentMatches)
+        if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
+          m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+    };
+    // Live overrides: derive outcome from live homeGoals/awayGoals
+    const liveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'FT', 'AET', 'PEN'};
+    final liveOverrides = <String, MatchOutcome>{
+      for (final m in currentMatches)
+        if (liveStatuses.contains(m.statusShort) &&
+            m.homeGoals != null &&
+            m.awayGoals != null)
+          m.id: m.homeGoals! > m.awayGoals!
+              ? MatchOutcome.home
+              : m.homeGoals! < m.awayGoals!
+                  ? MatchOutcome.away
+                  : MatchOutcome.draw,
+    };
+    final effectiveOutcomesByMatchId = <String, MatchOutcome>{
+      ...baseOutcomes,
+      ...liveOverrides,
+    };
+
+    appState.fetchFirestoreGroupMembers().then((members) async {
+      if (!mounted) return;
+      final seasonDocs = await fs.getPicksForSeason(
+        seasonKey: seasonKey,
+        groupId: groupId,
+      );
+      if (!mounted) return;
+
+      final memberIdSet = members.map((m) => m.id).toSet();
+      final filteredDocs = seasonDocs
+          .where((d) => memberIdSet.contains(d.uid))
+          .toList(growable: false);
+      final seasonPicksByMemberId = <String, List<PicksDocument>>{};
+      for (final doc in filteredDocs) {
+        seasonPicksByMemberId
+            .putIfAbsent(doc.uid, () => <PicksDocument>[])
+            .add(doc);
+      }
+
+      appState.ensureMatchdayMatchesLoaded();
+      final seasonDaySet = <int>{
+        ...appState.currentUserPicksByMatchday.keys,
+        ...appState.matchesByMatchday.keys,
+        ...appState.recentMatchesByMatchday.keys,
+        ...appState.outcomesByMatchday.keys,
+        for (final docs in seasonPicksByMemberId.values)
+          for (final pd in docs)
+            if (pd.dayNumber > 0) pd.dayNumber,
+      };
+      final seasonDays = seasonDaySet.toList()..sort();
+      final seasonMatchdayByDay = <int, MatchdayData>{};
+      for (final day in seasonDays) {
+        final savedMatches = appState.matchesByMatchday[day];
+        final recentMatches = appState.recentMatchesByMatchday[day];
+        final matchesForDay =
+            (savedMatches != null && savedMatches.isNotEmpty)
+            ? savedMatches
+            : (recentMatches ?? const <PredictionMatch>[]);
+        final savedOutcomes = appState.outcomesByMatchday[day];
+        final recentOutcomes = appState.recentOutcomesByMatchday[day];
+        final outcomesForDay = <String, MatchOutcome>{
+          if (recentOutcomes != null) ...recentOutcomes,
+          if (savedOutcomes != null) ...savedOutcomes,
+        };
+        seasonMatchdayByDay[day] = MatchdayData(
+          dayNumber: day,
+          matches: matchesForDay,
+          outcomesByMatchId: outcomesForDay,
+        );
+      }
+
+      final entries = members.map((member) {
+        final docs = seasonPicksByMemberId[member.id] ??
+            const <PicksDocument>[];
+        var totalPoints = 0.0;
+        final avgOddsValues = <double>[];
+
+        for (final pd in docs) {
+          if (pd.dayNumber == currentMatchdayNumber) continue;
+          final score = pd.score;
+          if (score != null) {
+            totalPoints += score.total;
+            if (score.averageOddsPlayed != null) {
+              avgOddsValues.add(score.averageOddsPlayed!);
+            }
+            continue;
+          }
+          final md = seasonMatchdayByDay[pd.dayNumber];
+          if (md == null || md.matches.isEmpty) continue;
+          final dayScore = CassandraScoringEngine.computeDayScore(
+            matches: md.matches,
+            picksByMatchId: pd.picksByMatchId,
+            outcomesByMatchId: md.outcomesByMatchId,
+          );
+          totalPoints += dayScore.total;
+          if (dayScore.averageOddsPlayed != null) {
+            avgOddsValues.add(dayScore.averageOddsPlayed!);
+          }
+        }
+
+        // Current matchday picks for this member
+        final currentDoc = docs
+            .cast<PicksDocument?>()
+            .firstWhere(
+              (d) => d?.dayNumber == currentMatchdayNumber,
+              orElse: () => null,
+            );
+        final currentPicks =
+            currentDoc?.picksByMatchId ?? const <String, PickOption>{};
+        final currentDayScore = CassandraScoringEngine.computeDayScore(
+          matches: currentMatches,
+          picksByMatchId: currentPicks,
+          outcomesByMatchId: effectiveOutcomesByMatchId,
+        );
+        totalPoints += currentDayScore.total;
+        if (currentDayScore.averageOddsPlayed != null) {
+          avgOddsValues.add(currentDayScore.averageOddsPlayed!);
+        }
+
+        final avgOdds = avgOddsValues.isEmpty
+            ? null
+            : avgOddsValues.reduce((a, b) => a + b) /
+                avgOddsValues.length;
+
+        return _LeaderboardEntry(
+          member: member,
+          totalPoints: totalPoints,
+          averageOddsPlayed: avgOdds,
+        );
+      }).toList();
+
+      entries.sort((a, b) => compareCassandraRanking(
+        aTotal: a.totalPoints,
+        bTotal: b.totalPoints,
+        aAverageOddsPlayed: a.averageOddsPlayed,
+        bAverageOddsPlayed: b.averageOddsPlayed,
+        aTeamName: a.member.teamName,
+        bTeamName: b.member.teamName,
+      ));
+
+      if (!mounted) return;
+      setState(() => _leaderboardEntries = entries);
+    }).catchError((Object e) {
+      if (kDebugMode) {
+        debugPrint('[predictions] leaderboard fetch failed: $e');
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     _scheduleLockRefreshIfNeeded();
+    _fetchGroupLeaderboardIfNeeded();
 
     final appState = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
@@ -649,9 +866,18 @@ class _PredictionsPageState extends State<PredictionsPage>
                           }, childCount: matches.length),
                         ),
                       ),
-                      if (standings.isNotEmpty)
+                      const SliverToBoxAdapter(
+                        child: Divider(height: 32, thickness: 1),
+                      ),
+                      if (!_locked && standings.isNotEmpty)
                         SliverToBoxAdapter(
                           child: SerieAStandingsTable(standings: standings),
+                        ),
+                      if (_locked && _leaderboardEntries.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: _GroupLeaderboardSection(
+                            entries: _leaderboardEntries,
+                          ),
                         ),
                       const SliverPadding(padding: EdgeInsets.only(bottom: 90)),
                     ],
@@ -812,6 +1038,14 @@ class _HeroScoreCard extends StatelessWidget {
     }).toList();
   }
 
+  List<bool> _segmentLive() {
+    return matches.map((m) {
+      final s = m.statusShort;
+      return s != null &&
+          const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'}.contains(s);
+    }).toList();
+  }
+
   /// Max score: all picks correct + bonus(pickedCount).
   /// After submission, unpicked matches are locked as -max(1/X/2).
   /// Before submission, unpicked matches assume best possible pick.
@@ -871,6 +1105,7 @@ class _HeroScoreCard extends StatelessWidget {
 
     final segColors = _segmentColors();
     final segVoided = _segmentVoided();
+    final segLive = _segmentLive();
 
     final matchdayTitle = isEnglish
         ? 'Matchday $matchdayNumber'
@@ -991,6 +1226,7 @@ class _HeroScoreCard extends StatelessWidget {
                     painter: _RingPainter(
                       segmentColors: segColors,
                       segmentVoided: segVoided,
+                      segmentLive: segLive,
                       solid: useSolidRing,
                     ),
                     child: ringCenter,
@@ -1176,11 +1412,13 @@ class _RingPainter extends CustomPainter {
   _RingPainter({
     required this.segmentColors,
     required this.segmentVoided,
+    required this.segmentLive,
     this.solid = false,
   });
 
   final List<Color> segmentColors;
   final List<bool> segmentVoided;
+  final List<bool> segmentLive;
   final bool solid;
 
   // Gap between each of the 10 segments (uniform).
@@ -1248,6 +1486,31 @@ class _RingPainter extends CustomPainter {
     final baseColor = index < segmentColors.length
         ? segmentColors[index]
         : CassandraColors.cardBg;
+    final isLive = index < segmentLive.length && segmentLive[index];
+    final isColored = baseColor != CassandraColors.cardBg &&
+        baseColor != Colors.transparent;
+
+    if (isLive && isColored) {
+      // Live match with provisional result: fill neutral, stroke inner border.
+      final fillPaint = Paint()
+        ..style = PaintingStyle.fill
+        ..color = CassandraColors.cardBg;
+      canvas.drawPath(path, fillPaint);
+
+      final arcPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0
+        ..color = baseColor;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: innerR + 1.5),
+        startAngle,
+        sweepAngle,
+        false,
+        arcPaint,
+      );
+      return;
+    }
+
     final paint = Paint()
       ..style = PaintingStyle.fill
       ..color = baseColor;
@@ -1280,6 +1543,7 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(_RingPainter oldDelegate) {
     return oldDelegate.segmentColors != segmentColors ||
         oldDelegate.segmentVoided != segmentVoided ||
+        oldDelegate.segmentLive != segmentLive ||
         oldDelegate.solid != solid;
   }
 }
@@ -1613,54 +1877,38 @@ class _CompactMatchCard extends StatelessWidget {
   static const _mintLeaf = Color(0xFF00B884);
   static const _amaranth = Color(0xFFE01E48);
 
-  /// Background for the played-odds bubble: mint leaf when correct.
+  /// Background for the played-odds bubble (solid fill only when FT).
   Color? get _playedBubbleBg {
-    if (pick.isNone || !_isStarted) return null;
+    if (pick.isNone || !_isFT) return null;
     return _isCurrentlyCorrect ? _mintLeaf : null;
   }
 
-  /// Background for the opposing-odds bubble: amaranth when wrong.
+  /// Background for the opposing-odds bubble (solid fill only when FT).
   Color? get _opposingBubbleBg {
-    if (pick.isNone || !_isStarted) return null;
+    if (pick.isNone || !_isFT) return null;
+    return _isCurrentlyCorrect ? null : _amaranth;
+  }
+
+  /// Border color for the played-odds bubble (outline only while live).
+  Color? get _playedBubbleBorder {
+    if (pick.isNone || !_isLive) return null;
+    return _isCurrentlyCorrect ? _mintLeaf : null;
+  }
+
+  /// Border color for the opposing-odds bubble (outline only while live).
+  Color? get _opposingBubbleBorder {
+    if (pick.isNone || !_isLive) return null;
     return _isCurrentlyCorrect ? null : _amaranth;
   }
 
   /// Post-lock: status | teams + score | 2 pick bubbles.
   Widget _buildPostLockLayout(String homeInitial, String awayInitial) {
     final hasPick = !pick.isNone;
-    final kickoff = match.kickoff.toLocal();
-    final dateStr =
-        '${kickoff.day.toString().padLeft(2, '0')}/${kickoff.month.toString().padLeft(2, '0')}';
-    final timeStr =
-        '${kickoff.hour.toString().padLeft(2, '0')}:${kickoff.minute.toString().padLeft(2, '0')}';
 
     return Row(
       children: [
-        // ── Left: date/time ────────────────────────────────────────
-        SizedBox(
-          width: 50,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                dateStr,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: CassandraColors.inkBlackV2,
-                ),
-              ),
-              Text(
-                timeStr,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: CassandraColors.inkBlackV2,
-                ),
-              ),
-            ],
-          ),
-        ),
+        // ── Left: date/time or live status ────────────────────────
+        _MatchStatusColumn(match: match),
         const SizedBox(width: 4),
 
         // ── Center: team rows with logos, names & scores ──────────────
@@ -1750,12 +1998,14 @@ class _CompactMatchCard extends StatelessWidget {
             label: pick.label,
             odds: _winOdds,
             bgColor: _playedBubbleBg,
+            borderColor: _playedBubbleBorder,
           ),
           const SizedBox(width: 4),
           _PostLockPickBubble(
             label: _opposingPickLabel(),
             odds: _loseOdds,
             bgColor: _opposingBubbleBg,
+            borderColor: _opposingBubbleBorder,
           ),
         ] else
           const SizedBox(width: 114),
@@ -1850,17 +2100,20 @@ class _PostLockPickBubble extends StatelessWidget {
     required this.label,
     required this.odds,
     this.bgColor,
+    this.borderColor,
   });
 
   final String label;
   final double odds;
   final Color? bgColor;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
-    final isColored = bgColor != null;
+    final hasFill = bgColor != null;
     final bg = bgColor ?? CassandraColors.brightSnow;
-    final fg = isColored
+    final border = borderColor ?? CassandraColors.inkBlackV2;
+    final fg = hasFill
         ? CassandraColors.brightSnow
         : CassandraColors.inkBlackV2;
     return Container(
@@ -1869,7 +2122,10 @@ class _PostLockPickBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: CassandraColors.inkBlackV2, width: 1.0),
+        border: Border.all(
+          color: border,
+          width: borderColor != null ? 2.0 : 1.0,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1888,6 +2144,127 @@ class _PostLockPickBubble extends StatelessWidget {
               color: fg,
               fontSize: 12,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Match Status Column (left of logos in post-lock layout)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MatchStatusColumn extends StatelessWidget {
+  const _MatchStatusColumn({required this.match});
+
+  final PredictionMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = match.statusShort;
+    final isEn = Localizations.localeOf(context).languageCode == 'en';
+
+    // Halftime or finished → single centered label
+    if (s == 'HT') {
+      return SizedBox(
+        width: 50,
+        child: Center(
+          child: Text(
+            isEn ? 'HT' : 'INT',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: CassandraColors.inkBlackV2,
+            ),
+          ),
+        ),
+      );
+    }
+    if (s == 'FT' || s == 'AET' || s == 'PEN') {
+      return SizedBox(
+        width: 50,
+        child: Center(
+          child: Text(
+            isEn ? 'FT' : 'FINE',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: CassandraColors.inkBlackV2,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Live (1H, 2H, ET) → minute + half label
+    if (s == '1H' || s == '2H' || s == 'ET' || s == 'BT' || s == 'LIVE') {
+      final diffMin = DateTime.now().difference(match.kickoff).inMinutes;
+      final int minute;
+      final String halfLabel;
+      if (s == '1H' || s == 'LIVE') {
+        minute = (diffMin + 1).clamp(1, 45);
+        halfLabel = isEn ? '1H' : '1T';
+      } else if (s == '2H') {
+        minute = (diffMin - 14).clamp(46, 90);
+        halfLabel = isEn ? '2H' : '2T';
+      } else {
+        // ET / BT
+        minute = (diffMin - 14).clamp(91, 120);
+        halfLabel = isEn ? 'ET' : 'TS';
+      }
+      return SizedBox(
+        width: 50,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "$minute'",
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: CassandraColors.inkBlackV2,
+              ),
+            ),
+            Text(
+              halfLabel,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: CassandraColors.inkBlackV2,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Pre-match → date + time
+    final kickoff = match.kickoff.toLocal();
+    final dateStr =
+        '${kickoff.day.toString().padLeft(2, '0')}/${kickoff.month.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${kickoff.hour.toString().padLeft(2, '0')}:${kickoff.minute.toString().padLeft(2, '0')}';
+    return SizedBox(
+      width: 50,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            dateStr,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: CassandraColors.inkBlackV2,
+            ),
+          ),
+          Text(
+            timeStr,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: CassandraColors.inkBlackV2,
             ),
           ),
         ],
@@ -1992,15 +2369,21 @@ class _MemberPickData {
   final String name;
   final PickOption pick;
   final double odds;
+  final String opposingLabel;
+  final double opposingOdds;
   final bool isCorrect;
-  final bool isStarted;
+  final bool isLive;
+  final bool isFT;
 
   const _MemberPickData({
     required this.name,
     required this.pick,
     required this.odds,
+    required this.opposingLabel,
+    required this.opposingOdds,
     required this.isCorrect,
-    required this.isStarted,
+    required this.isLive,
+    required this.isFT,
   });
 }
 
@@ -2014,9 +2397,22 @@ class _MemberPickRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color? bubbleBg;
-    if (data.isStarted) {
-      bubbleBg = data.isCorrect ? _mintLeaf : _amaranth;
+    // Played bubble: fill on FT, border on live
+    Color? playedBg;
+    Color? playedBorder;
+    if (data.isFT && data.isCorrect) {
+      playedBg = _mintLeaf;
+    } else if (data.isLive && data.isCorrect) {
+      playedBorder = _mintLeaf;
+    }
+
+    // Opposing bubble: fill on FT, border on live
+    Color? opposingBg;
+    Color? opposingBorder;
+    if (data.isFT && !data.isCorrect) {
+      opposingBg = _amaranth;
+    } else if (data.isLive && !data.isCorrect) {
+      opposingBorder = _amaranth;
     }
 
     return Padding(
@@ -2039,9 +2435,99 @@ class _MemberPickRow extends StatelessWidget {
           _PostLockPickBubble(
             label: data.pick.label,
             odds: data.odds,
-            bgColor: bubbleBg,
+            bgColor: playedBg,
+            borderColor: playedBorder,
+          ),
+          const SizedBox(width: 4),
+          _PostLockPickBubble(
+            label: data.opposingLabel,
+            odds: data.opposingOdds,
+            bgColor: opposingBg,
+            borderColor: opposingBorder,
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group leaderboard (post-lock)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LeaderboardEntry {
+  _LeaderboardEntry({
+    required this.member,
+    required this.totalPoints,
+    required this.averageOddsPlayed,
+  });
+
+  final GroupMember member;
+  final double totalPoints;
+  final double? averageOddsPlayed;
+}
+
+class _GroupLeaderboardSection extends StatelessWidget {
+  const _GroupLeaderboardSection({required this.entries});
+
+  final List<_LeaderboardEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < entries.length; i++)
+            _leaderboardTile(entries[i], i),
+        ],
+      ),
+    );
+  }
+
+  Widget _leaderboardTile(_LeaderboardEntry e, int index) {
+    final pts = formatOdds(e.totalPoints);
+    return Card(
+      child: ListTile(
+        leading: SizedBox(
+          width: 64,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 22,
+                child: Text(
+                  '${index + 1}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: CassandraColors.inkBlack,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              AvatarWithBadges(
+                radius: 18,
+                backgroundColor: CassandraColors.primary,
+                text: e.member.avatarInitial,
+                badges: const [],
+                imagePathOrUrl: e.member.photoUrl,
+              ),
+            ],
+          ),
+        ),
+        title: Text(e.member.uiName),
+        trailing: Text(
+          pts,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: e.totalPoints >= 0
+                ? CassandraColors.inkBlack
+                : CassandraColors.primary,
+          ),
+        ),
       ),
     );
   }
