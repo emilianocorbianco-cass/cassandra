@@ -34,6 +34,9 @@ BONUS_TABLE = {0: -20, 1: -10, 2: -5, 3: -2, 4: -1, 5: 0, 6: 1, 7: 2, 8: 5, 9: 1
 # Proposed alternative bonus table (more gradual)
 PROPOSED_BONUS_TABLE = {0: -10, 1: -6, 2: -3, 3: -1, 4: 0, 5: +1, 6: +3, 7: +5, 8: +8, 9: +12, 10: +18}
 
+# Claude's proposed alternative: shifted breakeven + moderate scaling
+CLAUDE_BONUS_TABLE = {0: -12, 1: -7, 2: -3, 3: -1, 4: 0, 5: 0, 6: +2, 7: +4, 8: +7, 9: +11, 10: +16}
+
 
 def run_full_simulation():
     """Run simulation once, compute scores for all three scenarios."""
@@ -120,8 +123,9 @@ def run_full_simulation():
     no_bonus = compute_scenario(None)
     with_bonus = compute_scenario(BONUS_TABLE)
     with_proposed = compute_scenario(PROPOSED_BONUS_TABLE)
+    with_claude = compute_scenario(CLAUDE_BONUS_TABLE)
 
-    return all_matchdays, no_bonus, with_bonus, with_proposed
+    return all_matchdays, no_bonus, with_bonus, with_proposed, with_claude
 
 
 # ============================================================
@@ -688,8 +692,103 @@ def compute_stats(scenario):
     }
 
 
+def make_claude_bonus_comparison_table(styles):
+    """Show all bonus tables side by side: current, proposed, Claude's."""
+    header = [
+        Paragraph('Corrette', styles['BonusTableHeader']),
+        Paragraph('B/M Attuali', styles['BonusTableHeader']),
+        Paragraph('B/M Proposti', styles['BonusTableHeader']),
+        Paragraph('B/M Claude', styles['BonusTableHeader']),
+    ]
+    data = [header]
+
+    for i in range(11):
+        curr = BONUS_TABLE[i]
+        prop = PROPOSED_BONUS_TABLE[i]
+        claude = CLAUDE_BONUS_TABLE[i]
+
+        curr_color = ACCENT_GREEN if curr > 0 else (ACCENT_RED if curr < 0 else BLACK)
+        prop_color = ACCENT_GREEN if prop > 0 else (ACCENT_RED if prop < 0 else BLACK)
+        claude_color = ACCENT_GREEN if claude > 0 else (ACCENT_RED if claude < 0 else BLACK)
+
+        data.append([
+            Paragraph(f'{i}/10', styles['TableCell']),
+            Paragraph(f'<font color="{curr_color}"><b>{curr:+d}</b></font>', styles['TableCell']),
+            Paragraph(f'<font color="{prop_color}"><b>{prop:+d}</b></font>', styles['TableCell']),
+            Paragraph(f'<font color="{claude_color}"><b>{claude:+d}</b></font>', styles['TableCell']),
+        ])
+
+    table = Table(data, colWidths=[60, 70, 70, 70])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HEADER_BG),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, ROW_ALT]),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('BACKGROUND', (0, 5), (-1, 5), colors.HexColor("#e8f5e9")),  # 4/10 row (breakeven Claude)
+        ('BACKGROUND', (0, 6), (-1, 6), colors.HexColor("#f1f8e9")),  # 5/10 row
+    ]))
+    return table
+
+
+def make_impact_table(no_bonus, with_bonus, with_proposed, with_claude, styles):
+    """Create table showing bonus impact per player across all scenarios."""
+    header = [
+        Paragraph('Giocatore', styles['TableHeader']),
+        Paragraph('Media OK/G', styles['TableHeader']),
+        Paragraph('Punti Base', styles['TableHeader']),
+        Paragraph('Impatto Att.', styles['TableHeader']),
+        Paragraph('Impatto Prop.', styles['TableHeader']),
+        Paragraph('Impatto Claude', styles['TableHeader']),
+    ]
+    data = [header]
+
+    from cassandra_simulation import PLAYERS as SIM_PLAYERS
+
+    for p in sorted(SIM_PLAYERS, key=lambda p: -no_bonus["totals"][p["name"]]):
+        n = p["name"]
+        avg_c = no_bonus["total_correct"][n] / 20
+        base = no_bonus["totals"][n]
+        d_att = with_bonus["totals"][n] - base
+        d_prop = with_proposed["totals"][n] - base
+        d_claude = with_claude["totals"][n] - base
+
+        c_att = ACCENT_GREEN if d_att > 0 else (ACCENT_RED if d_att < 0 else BLACK)
+        c_prop = ACCENT_GREEN if d_prop > 0 else (ACCENT_RED if d_prop < 0 else BLACK)
+        c_claude = ACCENT_GREEN if d_claude > 0 else (ACCENT_RED if d_claude < 0 else BLACK)
+
+        data.append([
+            Paragraph(n, styles['TableCellLeft']),
+            Paragraph(f'{avg_c:.1f}', styles['TableCell']),
+            Paragraph(f'{base:+.1f}', styles['TableCell']),
+            Paragraph(f'<font color="{c_att}"><b>{d_att:+.0f}</b></font>', styles['TableCell']),
+            Paragraph(f'<font color="{c_prop}"><b>{d_prop:+.0f}</b></font>', styles['TableCell']),
+            Paragraph(f'<font color="{c_claude}"><b>{d_claude:+.0f}</b></font>', styles['TableCell']),
+        ])
+
+    table = Table(data, colWidths=[120, 55, 55, 60, 60, 60])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HEADER_BG),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, ROW_ALT]),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    return table
+
+
 def generate_pdf(output_path):
-    all_matchdays, no_bonus, with_bonus, with_proposed = run_full_simulation()
+    all_matchdays, no_bonus, with_bonus, with_proposed, with_claude = run_full_simulation()
     styles = create_styles()
 
     doc = SimpleDocTemplate(
@@ -918,9 +1017,163 @@ def generate_pdf(output_path):
     elements.append(PageBreak())
 
     # ============================================================
+    # VALUTAZIONE DI CLAUDE (AI)
+    # ============================================================
+    elements.append(Paragraph('7. Valutazione di Claude: Bonus/Malus e Proposta di Riforma', styles['SectionTitle']))
+
+    elements.append(Paragraph(
+        '<i>Questa sezione contiene la valutazione indipendente di Claude (AI) sul sistema bonus/malus, '
+        'basata sull\'analisi dei dati della simulazione.</i>',
+        styles['SmallNote']
+    ))
+    elements.append(Spacer(1, 3*mm))
+
+    # --- 7.1 Valutazione sistema attuale ---
+    elements.append(Paragraph('7.1 Valutazione del Sistema Attuale', styles['SubSection']))
+
+    claude_eval_texts = [
+        ('<b>Giudizio complessivo: sistema squilibrato (voto 4/10)</b>',
+         'Il sistema bonus/malus attuale ha un\'idea di fondo corretta - premiare la consistenza sulla giornata - '
+         'ma l\'implementazione presenta problemi strutturali gravi che lo rendono controproducente rispetto '
+         'all\'obiettivo di equilibrio competitivo.'),
+
+        ('<b>Problema 1: Asimmetria punitiva</b>',
+         'I malus sono sproporzionati rispetto ai bonus. Con 0 corrette si perdono 20 punti, ma con 10 corrette '
+         '(impresa rarissima) se ne guadagnano solo 20. Il problema e che 0/10 e molto piu frequente di 10/10 '
+         'per i giocatori deboli, mentre 10/10 e quasi impossibile per chiunque. Nella simulazione, il Cauto '
+         '(il piu costante con 7.1 corrette/giornata) non ha MAI fatto 10/10. Il massimo bonus realisticamente '
+         'ottenibile e +5 (8 corrette), mentre il malus -20 colpisce regolarmente chi ha strategie rischiose.'),
+
+        ('<b>Problema 2: Effetto "forbice" anti-competitivo</b>',
+         'I dati parlano chiaro: lo spread tra primo e ultimo passa da 475.8 (senza B/M) a 565.8 (con B/M attuali), '
+         'un aumento del 19%. La deviazione standard sale da 136.3 a 166.7 (+22%). I bonus/malus attuali '
+         '<b>aumentano</b> il divario invece di ridurlo. L\'Avventato perde 61 punti aggiuntivi per i malus, '
+         'mentre il Cauto ne guadagna 62. La distanza tra i due aumenta di 123 punti.'),
+
+        ('<b>Problema 3: Breakeven point troppo alto</b>',
+         'Lo zero e posizionato a 5/10 corrette. Con 10 partite di Serie A e quote realistiche, la media di corrette '
+         'e circa 5.3 per un giocatore medio. Questo significa che circa meta delle giornate genera malus anche per '
+         'giocatori competenti. Solo il Cauto (7.1/g) e il Calcolatore (6.0/g) hanno medie decisamente sopra '
+         'la soglia. Per lo Studioso (4.8/g) e il Moderato con Eccessi (4.8/g), la maggior parte delle giornate '
+         'si chiude con malus, nonostante strategie non irragionevoli.'),
+
+        ('<b>Aspetto positivo: incentivo alla consistenza</b>',
+         'L\'unico aspetto veramente positivo e che il sistema premia chi e costante su tutta la giornata, '
+         'non solo chi azzecca una singola quota alta. Questo aggiunge una dimensione strategica interessante: '
+         'conviene "proteggere" le partite incerte con doppie chance piuttosto che sparare singole ovunque. '
+         'Il Cauto, con la sua strategia ultra-conservativa, beneficia enormemente (+62 punti) proprio per questo.'),
+    ]
+
+    for title, body in claude_eval_texts:
+        elements.append(Paragraph(title, styles['AnalysisText']))
+        elements.append(Paragraph(body, styles['AnalysisText']))
+        elements.append(Spacer(1, 2*mm))
+
+    elements.append(PageBreak())
+
+    # --- 7.2 Impatto quantitativo ---
+    elements.append(Paragraph('7.2 Impatto Quantitativo dei Bonus/Malus per Giocatore', styles['SubSection']))
+
+    elements.append(Paragraph(
+        'La tabella seguente mostra l\'impatto netto dei bonus/malus su ciascun giocatore nei tre sistemi. '
+        'Valori positivi significano che il giocatore beneficia dei B/M rispetto allo scenario base.',
+        styles['AnalysisText']
+    ))
+    elements.append(Spacer(1, 3*mm))
+
+    elements.append(make_impact_table(no_bonus, with_bonus, with_proposed, with_claude, styles))
+    elements.append(Spacer(1, 5*mm))
+
+    elements.append(Paragraph(
+        '<b>Osservazione chiave:</b> Con i B/M attuali, solo 5 giocatori su 8 beneficiano del sistema. '
+        'Lo Studioso (-4), il Moderato con Eccessi (-3) e soprattutto l\'Avventato (-61) vengono penalizzati. '
+        'Un sistema di B/M dovrebbe idealmente alzare tutti i punteggi (premiare il gioco), con differenze '
+        'proporzionali alla bravura, non affondare ulteriormente chi gia soffre.',
+        styles['AnalysisText']
+    ))
+    elements.append(Spacer(1, 5*mm))
+
+    # --- 7.3 Proposta di riforma Claude ---
+    elements.append(Paragraph('7.3 La Mia Proposta di Riforma', styles['SubSection']))
+
+    elements.append(Paragraph(
+        'Propongo una tabella alternativa che mantiene l\'incentivo alla consistenza ma corregge '
+        'i tre problemi identificati:',
+        styles['AnalysisText']
+    ))
+    elements.append(Spacer(1, 2*mm))
+
+    elements.append(make_claude_bonus_comparison_table(styles))
+    elements.append(Spacer(1, 5*mm))
+
+    claude_reform_texts = [
+        ('<b>Principi della riforma</b>',
+         '1. <b>Breakeven a 4/10</b> (invece di 5/10): con 4 corrette non si prende ne bonus ne malus. '
+         'Con 5 corrette si e gia in zona neutra (0 punti). Questo riduce la frustrazione per i giocatori medi.<br/>'
+         '2. <b>Malus massimo -12</b> (invece di -20): il malus per 0 corrette resta severo ma non devastante. '
+         'La progressione 0:-12, 1:-7, 2:-3, 3:-1 e piu graduale.<br/>'
+         '3. <b>Bonus crescenti ma realistici</b>: +7 per 8 corrette (raggiungibile dai migliori), +11 per 9, '
+         '+16 per 10. I bonus top premiano le giornate eccezionali senza essere irraggiungibili.<br/>'
+         '4. <b>Zona neutra piu ampia</b>: 4 e 5 corrette danno entrambe 0 punti, creando un "cuscinetto" '
+         'che protegge il giocatore medio.'),
+
+        ('<b>Differenze rispetto alla proposta originale</b>',
+         'La proposta gia presente nel documento (sezione 5) e buona ma tende a essere troppo generosa: '
+         'con +18 per 10 corrette e +12 per 9, l\'inflazione di punti e significativa. La mia proposta '
+         'e piu conservativa nei bonus top (+16 e +11) ma leggermente piu morbida nei malus bassi '
+         '(identica a 2 e 3 corrette). Il risultato e un sistema piu "piatto" al centro e meno estremo '
+         'ai bordi, che dovrebbe produrre classifiche dove il merito base (qualita dei pronostici) '
+         'conta di piu del fattore bonus.'),
+
+        ('<b>Effetto atteso sulla simulazione</b>',
+         'Con la mia proposta, tutti e 8 i giocatori beneficiano dei bonus/malus (impatto netto positivo '
+         'o neutro per tutti tranne l\'Avventato, che comunque perde "solo" 29 punti invece di 61). '
+         'Il Cauto resta il maggior beneficiario grazie alla sua consistenza, ma il gap con il Calcolatore '
+         'si riduce rispetto ai B/M attuali. La classifica finale riflette meglio il merito base.'),
+    ]
+
+    for title, body in claude_reform_texts:
+        elements.append(Paragraph(title, styles['AnalysisText']))
+        elements.append(Paragraph(body, styles['AnalysisText']))
+        elements.append(Spacer(1, 2*mm))
+
+    elements.append(PageBreak())
+
+    # --- 7.4 Conclusioni ---
+    elements.append(Paragraph('7.4 Conclusioni e Raccomandazioni', styles['SubSection']))
+
+    conclusion_texts = [
+        ('<b>I bonus/malus sono una buona idea, ma la tabella attuale no</b>',
+         'Il concetto di premiare la consistenza sulla giornata e valido e aggiunge profondita strategica al gioco. '
+         'Ma la tabella attuale e troppo punitiva verso il basso e troppo poco premiante verso l\'alto. '
+         'Il risultato netto e che il gioco diventa MENO competitivo, non piu.'),
+
+        ('<b>Tre modifiche essenziali</b>',
+         '1. <b>Abbassare il breakeven a 4/10</b>: la soglia attuale a 5/10 penalizza troppi giocatori troppo spesso.<br/>'
+         '2. <b>Ridurre il malus massimo</b>: -20 per 0 corrette e eccessivo. Un valore tra -10 e -12 basta a '
+         'scoraggiare il gioco irresponsabile senza essere devastante.<br/>'
+         '3. <b>Aumentare i bonus per 8-9 corrette</b>: sono le fasce realisticamente raggiungibili dai migliori '
+         'giocatori. Premiarle di piu rende il gioco piu stimolante.'),
+
+        ('<b>Il test definitivo</b>',
+         'Un buon sistema di bonus/malus dovrebbe: (a) non cambiare le posizioni in classifica in modo drastico '
+         'rispetto allo scenario base (il merito dei pronostici deve restare dominante), (b) premiare la consistenza '
+         'senza punire in modo sproporzionato chi rischia, (c) rendere il gioco piu divertente per TUTTI, '
+         'non solo per chi gia vince. La tabella attuale fallisce su tutti e tre i punti. '
+         'Sia la proposta originale che la mia correggono questi problemi, con sfumature diverse.'),
+    ]
+
+    for title, body in conclusion_texts:
+        elements.append(Paragraph(title, styles['AnalysisText']))
+        elements.append(Paragraph(body, styles['AnalysisText']))
+        elements.append(Spacer(1, 2*mm))
+
+    elements.append(PageBreak())
+
+    # ============================================================
     # DETTAGLIO GIORNATE
     # ============================================================
-    elements.append(Paragraph('7. Dettaglio per Giornata (con Pronostici e B/M)', styles['SectionTitle']))
+    elements.append(Paragraph('8. Dettaglio per Giornata (con Pronostici e B/M)', styles['SectionTitle']))
     elements.append(Paragraph(
         'Di seguito il dettaglio di ogni giornata con i pronostici di ciascun giocatore, '
         'il punteggio base e il bonus/malus applicato.',
