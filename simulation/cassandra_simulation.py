@@ -64,7 +64,12 @@ def generate_calendar():
         # Ruota
         rotating = rotating[1:] + rotating[:1]
 
-    # Prendi solo le prime 20 giornate
+    # Con 20 squadre si generano esattamente 19 giornate (andata).
+    # Per arrivare a 20, aggiungiamo la prima giornata di ritorno (invertendo casa/trasferta).
+    if len(calendar) < 20:
+        extra = [(away, home) for home, away in calendar[0]]
+        calendar.append(extra)
+
     return calendar[:20]
 
 
