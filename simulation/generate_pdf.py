@@ -66,7 +66,7 @@ def run_full_simulation():
             pname = player["name"]
             picks = []
             for i, (home, away) in enumerate(matches):
-                pick = player["pick_fn"](home, away, match_odds_list[i], result_history)
+                pick = player["pick_fn"](home, away, match_odds_list[i], result_history, match_results[i])
                 points, correct = score_pick(pick, match_results[i], match_odds_list[i])
                 played_odds = get_played_odds(pick, match_odds_list[i])
                 picks.append({
@@ -78,7 +78,10 @@ def run_full_simulation():
                 })
             gday_data["player_picks"][pname] = picks
 
-        result_history.append(match_results)
+        result_history.append([
+            (matches[j][0], matches[j][1], match_results[j])
+            for j in range(len(matches))
+        ])
         all_matchdays.append(gday_data)
 
     # Now compute three scenarios
@@ -603,14 +606,14 @@ def make_matchday_detail_tables(all_matchdays, no_bonus, with_bonus, styles):
 def make_player_profiles_table(no_bonus, with_bonus, styles):
     """Create a table with each player's personality description and performance."""
     profiles = {
-        "Il Calcolatore": "Segue le quote al millimetro. Analizza le probabilita implicite e sceglie sempre il value bet ottimale. Usa doppie chance solo nei match molto equilibrati.",
-        "Il Cauto": "Gioca sempre sul sicuro con molte doppie chance. Non rischia mai una singola su match incerti. Altissimo tasso di corrette ma guadagni contenuti.",
-        "Tu (Il Moderato)": "Equilibrato e razionale. Segue la logica senza eccessi, mix di singole e doppie. Non si lascia trasportare ne dalla prudenza estrema ne dal rischio.",
-        "Il Tifoso (Lecce)": "Ragionevole su tutte le partite tranne quelle del Lecce: gioca SEMPRE la vittoria della sua squadra del cuore, nonostante sia in bassa classifica.",
-        "Il Superficiale": "Conosce solo le big (Inter, Juve, Milan, Napoli). Per le altre partite va quasi a caso. Quote alte giocate senza cognizione di causa.",
-        "Lo Studioso": "Studia il calcio, analizza la forma, i precedenti. Tende a giocare singole pure con frequenti tentativi di X nei big match. A volte troppo coraggioso.",
-        "Il Moderato con Eccessi": "Di base moderato, ma nel 20% delle partite ha un 'momento di follia' e gioca come l'Avventato. Quelle giornate lo affondano.",
-        "L'Avventato": "Ama le sorprese, gioca spesso la sfavorita. Quote altissime (media 3.88), percentuale di corrette bassissima. Un disastro annunciato.",
+        "Marco (Istintivo)": "Istintivo e deciso: sceglie con criterio e non cambia mai idea. Buon istinto calcistico, gioca la favorita con decisione. Usa le DC solo nei match equilibrati.",
+        "Andrea (Indeciso)": "Si secondguessa costantemente, cambia idea cento volte. Sbaglia spesso le scommesse facili ('troppo ovvio!') ma azzecca quelle complesse per eccesso di analisi.",
+        "Paolo (Meticoloso)": "Meticoloso e preciso. Studia la forma delle squadre nelle ultime 5 partite e punta su chi e in forma migliore. Usa DC quando i dati non sono chiari.",
+        "Alessandro (Cacciatore)": "Cerca i risultati piu probabili ma tenta il colpo: scommette sulle squadre con lunga striscia di sconfitte, credendo nel rimbalzo.",
+        "Nicola (Rischioso)": "Gioca SOLO quote secche (1/X/2), MAI doppie chance. Per lui le DC sono da vigliacchi. Ama il brivido della singola pura.",
+        "Luca (Formichina)": "Gioca almeno 6 doppie chance per giornata. Preferisce fare la formichina con piccoli guadagni sicuri. Altissimo tasso di corrette ma quote basse.",
+        "Tommaso (Freak)": "Freak capellone: ama risultati pazzi per stupire. Gioca tantissime X e upset. Spesso sbaglia ma quando i risultati sono folli come lui, prende tutto.",
+        "Carlo (Fortunato)": "Non capisce troppo di calcio ma ha la fortuna del non-connoisseur. Becca risultati che tutti gli altri sbagliano, specialmente sugli upset.",
     }
 
     data = [[
@@ -811,10 +814,10 @@ def generate_pdf(output_path):
     elements.append(Spacer(1, 15*mm))
 
     cover_info = [
-        "8 giocatori con personalita distinte",
+        "8 giocatori: Marco, Andrea, Paolo, Alessandro, Nicola, Luca, Tommaso, Carlo",
         "200 pronostici ciascuno (10 partite x 20 giornate)",
         "Quote realistiche basate sulla forza delle squadre Serie A",
-        "Confronto tra 3 scenari: senza B/M, con B/M attuali, con B/M proposti",
+        "Confronto tra 4 scenari: senza B/M, con B/M attuali, proposti e Claude",
     ]
     for info in cover_info:
         elements.append(Paragraph(f'- {info}', styles['BodyText2']))
@@ -969,6 +972,30 @@ def generate_pdf(output_path):
     # ============================================================
     elements.append(Paragraph('6. Analisi: I Bonus/Malus Rendono il Gioco Equilibrato?', styles['SectionTitle']))
 
+    # Compute dynamic stats for analysis
+    spread_no = stats_no["spread"]
+    spread_with = stats_with["spread"]
+    spread_pct = round((spread_with - spread_no) / spread_no * 100)
+    std_no = stats_no["std_dev"]
+    std_with = stats_with["std_dev"]
+    std_pct = round((std_with - std_no) / std_no * 100)
+
+    # Find best and worst players and their B/M impact
+    sorted_by_base = sorted(PLAYERS, key=lambda p: -no_bonus["totals"][p["name"]])
+    best_player = sorted_by_base[0]["name"]
+    worst_player = sorted_by_base[-1]["name"]
+    best_avg_correct = no_bonus["total_correct"][best_player] / 20
+    worst_avg_correct = no_bonus["total_correct"][worst_player] / 20
+    best_delta = with_bonus["totals"][best_player] - no_bonus["totals"][best_player]
+    worst_delta = with_bonus["totals"][worst_player] - no_bonus["totals"][worst_player]
+
+    # Find the player who benefits most from B/M
+    deltas = {p["name"]: with_bonus["totals"][p["name"]] - no_bonus["totals"][p["name"]] for p in PLAYERS}
+    most_helped = max(deltas, key=deltas.get)
+    most_hurt = min(deltas, key=deltas.get)
+    most_helped_avg = no_bonus["total_correct"][most_helped] / 20
+    n_benefiting = sum(1 for d in deltas.values() if d > 0)
+
     analysis_texts = [
         ('<b>I bonus/malus attuali rendono il gioco piu equilibrato?</b>',
          'La risposta breve e: <b>no, lo rendono meno equilibrato</b>. I dati della simulazione lo dimostrano chiaramente.'),
@@ -979,34 +1006,29 @@ def generate_pdf(output_path):
          'Questo crea un effetto "forbice": chi gia gioca male viene punito ancora di piu, chi gioca bene riceve un premio '
          'insufficiente a compensare. Il risultato e che la distanza tra primo e ultimo aumenta, non diminuisce.'),
 
-        ('<b>Effetto sui diversi archetipi</b>',
-         'L\'Avventato, che gia ha il peggior punteggio base, viene ulteriormente massacrato dai malus perche con sole '
-         '59 corrette su 200 (circa 3/10 per giornata) accumula malus pesantissimi (-5 o -10 a giornata). Al contrario, '
-         'il Cauto con 137 corrette (circa 7/10) riceve bonus modesti (+2 a giornata). La forbice si allarga.'),
+        ('<b>Effetto sui giocatori della simulazione</b>',
+         f'{most_hurt}, che gia ha un punteggio base negativo, viene ulteriormente penalizzato dai malus ({deltas[most_hurt]:+.0f} punti) '
+         f'perche con una media di {no_bonus["total_correct"][most_hurt]/20:.1f} corrette/giornata accumula malus pesanti. '
+         f'Al contrario, {most_helped} con {most_helped_avg:.1f} corrette/giornata e il maggior beneficiario ({deltas[most_helped]:+.0f} punti). '
+         f'Solo {n_benefiting} giocatori su 8 beneficiano del sistema attuale - gli altri vengono penalizzati.'),
 
         ('<b>Il breakeven point a 5/10 e troppo alto</b>',
-         'Con 10 partite a giornata e le quote della Serie A, azzeccare 5 partite su 10 e gia un buon risultato per '
-         'molti profili di giocatore. Posizionare lo zero a 5 corrette significa che la maggior parte dei giocatori '
-         'riceve malus nella maggior parte delle giornate, rendendo i punteggi globalmente piu negativi.'),
+         f'Con 10 partite a giornata e le quote della Serie A, la media di corrette per giocatore e circa '
+         f'{sum(no_bonus["total_correct"][p["name"]] for p in PLAYERS) / (8*20):.1f}/giornata. '
+         f'Posizionare lo zero a 5 corrette significa che la maggior parte dei giocatori riceve malus nella maggior parte '
+         f'delle giornate. Lo spread tra primo e ultimo passa da {spread_no:.1f} a {spread_with:.1f} ({spread_pct:+d}%), '
+         f'la deviazione standard da {std_no:.1f} a {std_with:.1f} ({std_pct:+d}%). I B/M <b>aumentano</b> il divario.'),
 
         ('<b>I bonus/malus rendono il gioco piu interessante?</b>',
          'Si, concettualmente sono un\'ottima meccanica di gioco. Aggiungono una dimensione strategica: non conta solo '
-         'indovinare le singole partite, ma avere una performance complessiva sulla giornata. Tuttavia, la tabella attuale '
-         'e troppo punitiva e non sufficientemente premiante, il che scoraggia chi e in difficolta e non entusiasma chi va bene.'),
-
-        ('<b>Proposta di modifica</b>',
-         'La tabella proposta (0:-10, 1:-6, 2:-3, 3:-1, 4:0, 5:+1, 6:+3, 7:+5, 8:+8, 9:+12, 10:+18) ha questi vantaggi:<br/>'
-         '- <b>Breakeven a 4/10 invece di 5/10</b>: piu accessibile, meno frustrante<br/>'
-         '- <b>Malus piu morbidi</b>: -10 max invece di -20, evita di affondare chi gia soffre<br/>'
-         '- <b>Bonus piu generosi per le prestazioni top</b>: +12 per 9 corrette, +18 per 10<br/>'
-         '- <b>Progressione piu graduale</b>: ogni corretta in piu ha un impatto crescente ma non esagerato<br/>'
-         '- <b>Effetto netto</b>: premia di piu la bravura senza massacrare chi e in difficolta'),
+         'indovinare le singole partite, ma avere una performance complessiva sulla giornata. Il caso di Luca (Formichina) '
+         'e emblematico: la sua strategia ultra-conservativa con molte doppie chance gli da un tasso altissimo di corrette '
+         'che i B/M premiano. Ma la tabella attuale e troppo punitiva per chi rischia e non sufficientemente premiante verso l\'alto.'),
 
         ('<b>Conclusione</b>',
          'I bonus/malus sono un\'aggiunta che <b>rende piu interessante il gioco</b> come meccanica, ma la tabella attuale '
          'va ribilanciata. La versione proposta mantiene l\'incentivo a giocare bene l\'intera giornata, ma riduce l\'effetto '
-         '"ricchi sempre piu ricchi, poveri sempre piu poveri" che la tabella attuale genera. '
-         'Il gioco ideale premia chi rischia con cognizione di causa e non punisce in modo sproporzionato chi sbaglia.'),
+         '"ricchi sempre piu ricchi, poveri sempre piu poveri" che la tabella attuale genera.'),
     ]
 
     for title, body in analysis_texts:
@@ -1038,30 +1060,34 @@ def generate_pdf(output_path):
          'all\'obiettivo di equilibrio competitivo.'),
 
         ('<b>Problema 1: Asimmetria punitiva</b>',
-         'I malus sono sproporzionati rispetto ai bonus. Con 0 corrette si perdono 20 punti, ma con 10 corrette '
-         '(impresa rarissima) se ne guadagnano solo 20. Il problema e che 0/10 e molto piu frequente di 10/10 '
-         'per i giocatori deboli, mentre 10/10 e quasi impossibile per chiunque. Nella simulazione, il Cauto '
-         '(il piu costante con 7.1 corrette/giornata) non ha MAI fatto 10/10. Il massimo bonus realisticamente '
-         'ottenibile e +5 (8 corrette), mentre il malus -20 colpisce regolarmente chi ha strategie rischiose.'),
+         f'I malus sono sproporzionati rispetto ai bonus. Con 0 corrette si perdono 20 punti, ma con 10 corrette '
+         f'(impresa rarissima) se ne guadagnano solo 20. Nella simulazione, il giocatore piu costante '
+         f'({most_helped}, {most_helped_avg:.1f} corrette/giornata) ha raggiunto al massimo '
+         f'{max(no_bonus["matchday_correct"][most_helped])} corrette in una giornata. '
+         f'Il bonus +20 per 10 corrette e puramente teorico.'),
 
         ('<b>Problema 2: Effetto "forbice" anti-competitivo</b>',
-         'I dati parlano chiaro: lo spread tra primo e ultimo passa da 475.8 (senza B/M) a 565.8 (con B/M attuali), '
-         'un aumento del 19%. La deviazione standard sale da 136.3 a 166.7 (+22%). I bonus/malus attuali '
-         '<b>aumentano</b> il divario invece di ridurlo. L\'Avventato perde 61 punti aggiuntivi per i malus, '
-         'mentre il Cauto ne guadagna 62. La distanza tra i due aumenta di 123 punti.'),
+         f'I dati parlano chiaro: lo spread tra primo e ultimo passa da {spread_no:.1f} (senza B/M) '
+         f'a {spread_with:.1f} (con B/M attuali), un aumento del {spread_pct}%. '
+         f'La deviazione standard sale da {std_no:.1f} a {std_with:.1f} (+{std_pct}%). '
+         f'I bonus/malus attuali <b>aumentano</b> il divario invece di ridurlo. '
+         f'{most_hurt} perde {abs(deltas[most_hurt]):.0f} punti extra per i malus, '
+         f'mentre {most_helped} ne guadagna {deltas[most_helped]:+.0f}.'),
 
         ('<b>Problema 3: Breakeven point troppo alto</b>',
-         'Lo zero e posizionato a 5/10 corrette. Con 10 partite di Serie A e quote realistiche, la media di corrette '
-         'e circa 5.3 per un giocatore medio. Questo significa che circa meta delle giornate genera malus anche per '
-         'giocatori competenti. Solo il Cauto (7.1/g) e il Calcolatore (6.0/g) hanno medie decisamente sopra '
-         'la soglia. Per lo Studioso (4.8/g) e il Moderato con Eccessi (4.8/g), la maggior parte delle giornate '
-         'si chiude con malus, nonostante strategie non irragionevoli.'),
+         f'Lo zero e posizionato a 5/10 corrette. La media globale dei giocatori e circa '
+         f'{sum(no_bonus["total_correct"][p["name"]] for p in PLAYERS) / (8*20):.1f} corrette/giornata. '
+         f'Questo significa che la maggioranza delle giornate genera malus anche per giocatori competenti. '
+         f'Solo chi ha una media superiore a 5 (come {most_helped}) beneficia in modo netto. '
+         f'Per Andrea ({no_bonus["total_correct"]["Andrea (Indeciso)"]/20:.1f}/g) e Tommaso '
+         f'({no_bonus["total_correct"]["Tommaso (Freak)"]/20:.1f}/g), i malus sono devastanti.'),
 
         ('<b>Aspetto positivo: incentivo alla consistenza</b>',
          'L\'unico aspetto veramente positivo e che il sistema premia chi e costante su tutta la giornata, '
          'non solo chi azzecca una singola quota alta. Questo aggiunge una dimensione strategica interessante: '
          'conviene "proteggere" le partite incerte con doppie chance piuttosto che sparare singole ovunque. '
-         'Il Cauto, con la sua strategia ultra-conservativa, beneficia enormemente (+62 punti) proprio per questo.'),
+         f'{most_helped}, con la sua strategia conservativa, beneficia enormemente '
+         f'({deltas[most_helped]:+.0f} punti) proprio per questo.'),
     ]
 
     for title, body in claude_eval_texts:
@@ -1084,11 +1110,16 @@ def generate_pdf(output_path):
     elements.append(make_impact_table(no_bonus, with_bonus, with_proposed, with_claude, styles))
     elements.append(Spacer(1, 5*mm))
 
+    # Dynamic observation
+    deltas_claude = {p["name"]: with_claude["totals"][p["name"]] - no_bonus["totals"][p["name"]] for p in PLAYERS}
+    n_claude_pos = sum(1 for d in deltas_claude.values() if d > 0)
+    most_hurt_claude = min(deltas_claude, key=deltas_claude.get)
+
     elements.append(Paragraph(
-        '<b>Osservazione chiave:</b> Con i B/M attuali, solo 5 giocatori su 8 beneficiano del sistema. '
-        'Lo Studioso (-4), il Moderato con Eccessi (-3) e soprattutto l\'Avventato (-61) vengono penalizzati. '
-        'Un sistema di B/M dovrebbe idealmente alzare tutti i punteggi (premiare il gioco), con differenze '
-        'proporzionali alla bravura, non affondare ulteriormente chi gia soffre.',
+        f'<b>Osservazione chiave:</b> Con i B/M attuali, solo {n_benefiting} giocatori su 8 beneficiano del sistema. '
+        f'{most_hurt} e il piu penalizzato ({deltas[most_hurt]:+.0f} punti). '
+        f'Con la proposta Claude, {n_claude_pos} giocatori ne beneficiano e {most_hurt_claude} perde '
+        f'"solo" {abs(deltas_claude[most_hurt_claude]):.0f} punti invece di {abs(deltas[most_hurt_claude]):.0f}.',
         styles['AnalysisText']
     ))
     elements.append(Spacer(1, 5*mm))
@@ -1120,16 +1151,16 @@ def generate_pdf(output_path):
         ('<b>Differenze rispetto alla proposta originale</b>',
          'La proposta gia presente nel documento (sezione 5) e buona ma tende a essere troppo generosa: '
          'con +18 per 10 corrette e +12 per 9, l\'inflazione di punti e significativa. La mia proposta '
-         'e piu conservativa nei bonus top (+16 e +11) ma leggermente piu morbida nei malus bassi '
-         '(identica a 2 e 3 corrette). Il risultato e un sistema piu "piatto" al centro e meno estremo '
-         'ai bordi, che dovrebbe produrre classifiche dove il merito base (qualita dei pronostici) '
-         'conta di piu del fattore bonus.'),
+         'e piu conservativa nei bonus top (+16 e +11) ma leggermente piu morbida nei malus bassi. '
+         'Il risultato e un sistema piu "piatto" al centro e meno estremo ai bordi, dove il merito base '
+         '(qualita dei pronostici) conta di piu del fattore bonus.'),
 
-        ('<b>Effetto atteso sulla simulazione</b>',
-         'Con la mia proposta, tutti e 8 i giocatori beneficiano dei bonus/malus (impatto netto positivo '
-         'o neutro per tutti tranne l\'Avventato, che comunque perde "solo" 29 punti invece di 61). '
-         'Il Cauto resta il maggior beneficiario grazie alla sua consistenza, ma il gap con il Calcolatore '
-         'si riduce rispetto ai B/M attuali. La classifica finale riflette meglio il merito base.'),
+        ('<b>Effetto sulla simulazione</b>',
+         f'Con la proposta Claude, lo spread e {compute_stats(with_claude)["spread"]:.1f} '
+         f'(vs {spread_with:.1f} con B/M attuali e {spread_no:.1f} senza B/M). '
+         f'{most_helped} resta il maggior beneficiario grazie alla sua consistenza, ma l\'impatto e piu proporzionato. '
+         f'Il giocatore piu penalizzato ({most_hurt_claude}) perde {abs(deltas_claude[most_hurt_claude]):.0f} punti '
+         f'invece di {abs(deltas[most_hurt_claude]):.0f} con il sistema attuale.'),
     ]
 
     for title, body in claude_reform_texts:
