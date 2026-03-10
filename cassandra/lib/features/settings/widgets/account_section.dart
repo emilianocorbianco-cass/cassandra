@@ -15,16 +15,29 @@ class AccountSection extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n.settingsConfirm),
-        content: Text(l10n.settingsSignOutQuestion),
+        backgroundColor: CassandraColors.inkBlack,
+        title: Text(
+          l10n.settingsConfirm,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
+        content: Text(
+          l10n.settingsSignOutQuestion,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.settingsCancel),
+            child: Text(
+              l10n.settingsCancel,
+              style: const TextStyle(color: CassandraColors.brightSnow),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.settingsSignOut),
+            child: Text(
+              l10n.settingsSignOut,
+              style: const TextStyle(color: CassandraColors.brightSnow),
+            ),
           ),
         ],
       ),

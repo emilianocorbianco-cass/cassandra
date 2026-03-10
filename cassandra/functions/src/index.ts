@@ -1,5 +1,6 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineString } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
 import {
@@ -89,6 +90,7 @@ interface PicksScoreDoc {
   bonusPoints: number;
   total: number;
   correctCount: number;
+  winningOddsSum: number;
   averageOddsPlayed?: number;
 }
 
@@ -300,23 +302,15 @@ function parsePickOptionValue(value: unknown): PickOptionValue {
   return "none";
 }
 
-const BONUS_BY_CORRECT_COUNT: Record<number, number> = {
-  0: -20,
-  1: -10,
-  2: -5,
-  3: -2,
-  4: -1,
-  5: 0,
-  6: 1,
-  7: 2,
-  8: 5,
-  9: 10,
-  10: 20,
-};
-
-function bonusForCorrectCount(correctCount: number): number {
-  const normalized = Math.max(0, Math.min(10, Math.trunc(correctCount)));
-  return BONUS_BY_CORRECT_COUNT[normalized] ?? 0;
+function bonusForWinningOddsSum(winningOddsSum: number): number {
+  if (winningOddsSum < 3) return -10;
+  if (winningOddsSum < 5) return -4;
+  if (winningOddsSum < 7) return -1;
+  if (winningOddsSum < 10) return 0;
+  if (winningOddsSum < 12) return 1;
+  if (winningOddsSum < 14) return 4;
+  if (winningOddsSum < 20) return 10;
+  return 20;
 }
 
 function max1X2(odds: ScoringMatchDoc["odds"]): number {
@@ -460,6 +454,8 @@ function parseStoredScore(value: unknown): PicksScoreDoc | null {
   const bonusPoints = Number(raw["bonusPoints"]);
   const total = Number(raw["total"]);
   const correctCount = Number(raw["correctCount"]);
+  const winningOddsSumRaw = raw["winningOddsSum"];
+  const winningOddsSum = winningOddsSumRaw == null ? 0 : Number(winningOddsSumRaw);
   const averageRaw = raw["averageOddsPlayed"];
   const averageOddsPlayed =
     averageRaw == null ? undefined : Number(averageRaw);
@@ -478,6 +474,7 @@ function parseStoredScore(value: unknown): PicksScoreDoc | null {
     bonusPoints: Math.trunc(bonusPoints),
     total,
     correctCount: Math.trunc(correctCount),
+    winningOddsSum,
   };
   if (averageOddsPlayed != null && Number.isFinite(averageOddsPlayed)) {
     parsed.averageOddsPlayed = averageOddsPlayed;
@@ -501,6 +498,7 @@ function isSameScore(a: PicksScoreDoc | null, b: PicksScoreDoc): boolean {
     a.bonusPoints === b.bonusPoints &&
     almostEqual(a.total, b.total) &&
     a.correctCount === b.correctCount &&
+    almostEqual(a.winningOddsSum, b.winningOddsSum) &&
     sameAvg
   );
 }
@@ -512,6 +510,7 @@ function computeScoreForPicks(
 ): PicksScoreDoc {
   let baseTotal = 0;
   let correctCount = 0;
+  let winningOddsSum = 0;
   const playedOdds: number[] = [];
 
   for (const match of matches) {
@@ -537,7 +536,10 @@ function computeScoreForPicks(
       const singlePlayed = played ?? 0;
       const correct = isCorrectSingle(pick, outcome);
       baseTotal += correct ? singlePlayed : -singlePlayed;
-      if (correct) correctCount += 1;
+      if (correct) {
+        correctCount += 1;
+        winningOddsSum += singlePlayed;
+      }
       playedOdds.push(singlePlayed);
       continue;
     }
@@ -547,6 +549,7 @@ function computeScoreForPicks(
     if (correct) {
       baseTotal += doublePlayed;
       correctCount += 1;
+      winningOddsSum += doublePlayed;
     } else {
       baseTotal -= wrongDoublePenaltySumSingles(match, pick);
     }
@@ -557,7 +560,7 @@ function computeScoreForPicks(
     const outcome = outcomesByMatchId[m.id];
     return outcome != null && outcome !== "pending";
   });
-  const bonusPoints = allGraded ? bonusForCorrectCount(correctCount) : 0;
+  const bonusPoints = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
   const total = baseTotal + bonusPoints;
   const averageOddsPlayed =
     playedOdds.length === 0
@@ -569,6 +572,7 @@ function computeScoreForPicks(
     bonusPoints,
     total,
     correctCount,
+    winningOddsSum,
   };
   if (averageOddsPlayed != null) {
     score.averageOddsPlayed = averageOddsPlayed;
@@ -2301,5 +2305,51 @@ export const maintenanceGroupIntegrity = onSchedule(
   async () => {
     const db = getFirestore();
     await repairGroupIntegrity(db, "maintenance-integrity");
+  }
+);
+
+// ─── One-off migration: recompute all picks scores with new bonus rules ──────
+
+export const migratePicksScores = onCall(
+  {
+    region: "europe-west1",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async (request) => {
+    // Only authenticated users can trigger this.
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    }
+
+    const db = getFirestore();
+    const logPrefix = "migrate-picks-scores";
+
+    // Collect all season/matchday combos from matchdays collection.
+    const seasonsSnap = await db.collection("seasons").get();
+    let totalUpdated = 0;
+
+    for (const seasonDoc of seasonsSnap.docs) {
+      const seasonKey = seasonDoc.id;
+      const matchdaysSnap = await seasonDoc.ref.collection("matchdays").get();
+
+      for (const mdDoc of matchdaysSnap.docs) {
+        const dayNumber = parseInt(mdDoc.id, 10);
+        if (isNaN(dayNumber)) continue;
+
+        await recomputePicksScoresForMatchday(
+          db,
+          seasonKey,
+          dayNumber,
+          logPrefix
+        );
+        totalUpdated += 1;
+      }
+    }
+
+    console.log(
+      `[${logPrefix}] Migration complete. Processed ${totalUpdated} matchdays.`
+    );
+    return { success: true, matchdaysProcessed: totalUpdated };
   }
 );

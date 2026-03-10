@@ -42,7 +42,7 @@ class _SplashScreenState extends State<SplashScreen>
       ProfileImageDisplay.preWarmCache(app.profile.photoUrl);
     });
 
-    _timer = Timer(const Duration(milliseconds: 4200), () {
+    _timer = Timer(const Duration(milliseconds: 3200), () {
       if (!mounted) return;
 
       final app = CassandraScope.of(context);
@@ -69,9 +69,13 @@ class _SplashScreenState extends State<SplashScreen>
         destination = const LoginPage();
       }
 
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => destination));
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (_, _, _) => destination,
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+        ),
+      );
     });
   }
 

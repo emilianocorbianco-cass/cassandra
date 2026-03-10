@@ -22,7 +22,6 @@ import '../scoring/scoring_engine.dart';
 import '../stats/stats_page.dart';
 
 import 'create_group_page.dart';
-import 'group_hub_page.dart';
 import 'join_group_page.dart';
 import 'mock_group_data.dart';
 import 'group_matchday_page.dart';
@@ -1020,25 +1019,28 @@ class _GroupPageState extends State<GroupPage> {
 
       for (final pd in docs) {
         if (pd.dayNumber == currentMatchdayNumber) continue;
-        final score = pd.score;
-        if (score != null) {
-          totalPoints += score.total;
-          if (score.averageOddsPlayed != null) {
-            avgOddsValues.add(score.averageOddsPlayed!);
-          }
-          continue;
-        }
 
         final md = seasonMatchdayByDay[pd.dayNumber];
-        if (md == null || md.matches.isEmpty) continue;
-        final dayScore = CassandraScoringEngine.computeDayScore(
-          matches: md.matches,
-          picksByMatchId: pd.picksByMatchId,
-          outcomesByMatchId: md.outcomesByMatchId,
-        );
-        totalPoints += dayScore.total;
-        if (dayScore.averageOddsPlayed != null) {
-          avgOddsValues.add(dayScore.averageOddsPlayed!);
+        if (md != null && md.matches.isNotEmpty) {
+          // Always recompute to apply current scoring rules.
+          final dayScore = CassandraScoringEngine.computeDayScore(
+            matches: md.matches,
+            picksByMatchId: pd.picksByMatchId,
+            outcomesByMatchId: md.outcomesByMatchId,
+          );
+          totalPoints += dayScore.total;
+          if (dayScore.averageOddsPlayed != null) {
+            avgOddsValues.add(dayScore.averageOddsPlayed!);
+          }
+        } else {
+          // Fallback to cached score when matchday data is unavailable.
+          final score = pd.score;
+          if (score != null) {
+            totalPoints += score.total;
+            if (score.averageOddsPlayed != null) {
+              avgOddsValues.add(score.averageOddsPlayed!);
+            }
+          }
         }
       }
 
@@ -1094,14 +1096,7 @@ class _GroupPageState extends State<GroupPage> {
       appBar: AppBar(
         centerTitle: true,
         backgroundColor: CassandraColors.charcoal,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left),
-          onPressed: () {
-            Navigator.of(context, rootNavigator: true).pushReplacement(
-              MaterialPageRoute(builder: (_) => const GroupHubPage()),
-            );
-          },
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
           groupName,
           style: const TextStyle(fontWeight: FontWeight.w700),

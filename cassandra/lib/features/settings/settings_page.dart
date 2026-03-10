@@ -6,9 +6,7 @@ import 'package:cassandra/features/settings/widgets/group_settings_section.dart'
 import 'package:cassandra/features/settings/widgets/language_selector.dart';
 import 'package:cassandra/features/settings/widgets/profile_settings_section.dart';
 import 'package:flutter/material.dart';
-import 'package:cassandra/l10n/app_localizations.dart';
 
-import 'api_football_diagnostics_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -64,7 +62,6 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final app = CassandraScope.of(context);
-    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: SafeArea(
@@ -100,60 +97,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: Icon(
-                  Icons.bug_report_outlined,
-                  color: Colors.orange.shade800,
-                ),
-                label: Text(
-                  l10n.settingsBackendDiagnosticsTitle,
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.orange.shade800,
-                  side: BorderSide(color: Colors.orange.shade800),
-                ),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const ApiFootballDiagnosticsPage(),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: Colors.orange.shade800,
-                ),
-                label: Text(
-                  'Reset Picks (Giornata ${app.cassandraMatchdayCursor})',
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.orange.shade800,
-                  side: BorderSide(color: Colors.orange.shade800),
-                ),
-                onPressed: () async {
-                  final day = app.cassandraMatchdayCursor;
-                  await app.resetPicksForCurrentMatchday();
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Picks giornata $day cancellati (locale + Firestore)',
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(

@@ -4,29 +4,32 @@ import 'models/match_outcome.dart';
 import 'models/score_breakdown.dart';
 
 class CassandraScoringEngine {
-  // Tabella bonus/malus (come da regole Cassandra)
-  static const Map<int, int> _bonusByCorrect = {
-    0: -20,
-    1: -10,
-    2: -5,
-    3: -2,
-    4: -1,
-    5: 0,
-    6: 1,
-    7: 2,
-    8: 5,
-    9: 10,
-    10: 20,
-  };
+  /// Bonus/malus basato sulla somma delle quote vincenti.
+  static int bonusForWinningOddsSum(double winningOddsSum) {
+    if (winningOddsSum < 3) return -10;
+    if (winningOddsSum < 5) return -4;
+    if (winningOddsSum < 7) return -1;
+    if (winningOddsSum < 10) return 0;
+    if (winningOddsSum < 12) return 1;
+    if (winningOddsSum < 14) return 4;
+    if (winningOddsSum < 20) return 10;
+    return 20;
+  }
 
+  /// Legacy alias kept for callers that still reference correct-count bonus.
   static int bonusForCorrectCount(int correctCount) {
-    final int c = correctCount.clamp(0, 10);
-    return _bonusByCorrect[c] ?? 0;
+    // No longer used for actual scoring — kept to avoid breaking callers.
+    return 0;
   }
 
   /// Public accessor for the odds of a given pick on a match.
   static double oddsForPick(PredictionMatch match, PickOption pick) {
     return _oddsPlayedForPick(match, pick) ?? 0;
+  }
+
+  /// Public accessor for single wrong penalty.
+  static double wrongSinglePenalty(PredictionMatch match, PickOption pick) {
+    return _wrongSinglePenalty(match, pick);
   }
 
   /// Public accessor for double-chance wrong penalty.
@@ -81,36 +84,35 @@ class CassandraScoringEngine {
     }
   }
 
-  /// Penalità per singola sbagliata: si perde la quota singola giocata.
-  ///   Gioco 1 e sbaglio → perdo quota 1 (home)
-  ///   Gioco X e sbaglio → perdo quota X (draw)
-  ///   Gioco 2 e sbaglio → perdo quota 2 (away)
+  /// Penalità per singola sbagliata: si perde la quota doppia chance opposta.
+  ///   Gioco 1 e sbaglio → perdo quota X2 (drawAway)
+  ///   Gioco X e sbaglio → perdo quota 12 (homeAway)
+  ///   Gioco 2 e sbaglio → perdo quota 1X (homeDraw)
   static double _wrongSinglePenalty(PredictionMatch match, PickOption pick) {
     switch (pick) {
       case PickOption.home:
-        return match.odds.home;
+        return match.odds.drawAway;
       case PickOption.draw:
-        return match.odds.draw;
+        return match.odds.homeAway;
       case PickOption.away:
-        return match.odds.away;
+        return match.odds.homeDraw;
       default:
         return 0;
     }
   }
 
-  /// Penalità per doppia chance sbagliata: si perde la somma delle due quote
-  /// singole coperte dalla doppia chance giocata.
-  ///   Gioco 1X e sbaglio → perdo quota 1 + quota X
-  ///   Gioco X2 e sbaglio → perdo quota X + quota 2
-  ///   Gioco 12 e sbaglio → perdo quota 1 + quota 2
+  /// Penalità per doppia chance sbagliata: si perde la quota singola opposta.
+  ///   Gioco 1X e sbaglio → perdo quota 2 (away)
+  ///   Gioco X2 e sbaglio → perdo quota 1 (home)
+  ///   Gioco 12 e sbaglio → perdo quota X (draw)
   static double _wrongDoublePenalty(PredictionMatch match, PickOption pick) {
     switch (pick) {
       case PickOption.homeDraw:
-        return match.odds.home + match.odds.draw;
+        return match.odds.away;
       case PickOption.drawAway:
-        return match.odds.draw + match.odds.away;
+        return match.odds.home;
       case PickOption.homeAway:
-        return match.odds.home + match.odds.away;
+        return match.odds.draw;
       default:
         return 0;
     }
@@ -171,7 +173,7 @@ class CassandraScoringEngine {
         playedOdds: played,
         note: correct
             ? 'Singola corretta'
-            : 'Singola sbagliata: -quota giocata',
+            : 'Singola sbagliata: -quota doppia opposta',
       );
     }
 
@@ -195,7 +197,7 @@ class CassandraScoringEngine {
           basePoints: -penalty,
           correct: false,
           playedOdds: played,
-          note: 'Doppia sbagliata: -(somma due singole)',
+          note: 'Doppia sbagliata: -quota singola opposta',
         );
       }
     }
@@ -238,13 +240,18 @@ class CassandraScoringEngine {
     );
     final correctCount = breakdowns.where((b) => b.correct).length;
 
+    // Somma delle quote vincenti (solo partite corrette).
+    final winningOddsSum = breakdowns
+        .where((b) => b.correct && b.playedOdds != null)
+        .fold<double>(0, (sum, b) => sum + b.playedOdds!);
+
     // Bonus solo se tutte le partite sono graded (nessun pending).
     final allGraded = matches.every((m) {
       final o = outcomesByMatchId[m.id];
       return o != null && !o.isPending;
     });
 
-    final bonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
+    final bonus = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
     final total = baseTotal + bonus;
 
     final playedOddsValues = breakdowns

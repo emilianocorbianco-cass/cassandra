@@ -146,6 +146,11 @@ class GroupMatchdayPage extends StatelessWidget {
                               matchday: matchday,
                               member: r.member,
                               picksByMatchId: r.picks,
+                              members: members,
+                              allPicksByMemberId: {
+                                for (final row in rows)
+                                  row.member.id: row.picks,
+                              },
                             ),
                           ),
                         );

@@ -15,6 +15,7 @@ import '../group/models/group_member.dart';
 import '../predictions/models/formatters.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/ranking_rules.dart';
+import '../scoring/scoring_engine.dart';
 import 'matchday_leaderboard_page.dart';
 import 'member_season_page.dart';
 import 'mock_season_data.dart';
@@ -116,6 +117,8 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
     List<GroupMember> members,
     List<PicksDocument> picks,
   ) {
+    final app = CassandraScope.of(context);
+
     // Group flat picks list by uid for O(1) lookup per member
     final picksByUid = <String, List<PicksDocument>>{};
     for (final pd in picks) {
@@ -142,7 +145,33 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       double total = 0;
 
       for (final pd in picksDocs) {
-        // Use cached score from picks doc if available
+        // Try to recompute from matchday data (applies current scoring rules).
+        final savedMatches = app.savedMatchesForMatchday(pd.dayNumber);
+        if (savedMatches != null && savedMatches.isNotEmpty) {
+          final outcomes = app.hasSavedOutcomesForMatchday(pd.dayNumber)
+              ? app.outcomesForMatchday(pd.dayNumber)
+              : const <String, MatchOutcome>{};
+          final dayScore = CassandraScoringEngine.computeDayScore(
+            matches: savedMatches,
+            picksByMatchId: pd.picksByMatchId,
+            outcomesByMatchId: outcomes,
+          );
+          total += dayScore.total;
+          perDay.add(
+            MemberMatchdayScore(
+              matchday: MatchdayData(
+                dayNumber: pd.dayNumber,
+                matches: savedMatches,
+                outcomesByMatchId: outcomes,
+              ),
+              picksByMatchId: pd.picksByMatchId,
+              day: dayScore,
+            ),
+          );
+          continue;
+        }
+
+        // Fallback to cached score when matchday data is unavailable.
         if (pd.score != null) {
           total += pd.score!.total;
           perDay.add(

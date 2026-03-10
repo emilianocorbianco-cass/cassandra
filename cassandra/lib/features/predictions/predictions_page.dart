@@ -557,9 +557,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       }
     }
     switch (pick) {
-      case PickOption.homeDraw: return match.odds.away * 2;
-      case PickOption.drawAway: return match.odds.home * 2;
-      case PickOption.homeAway: return match.odds.draw * 2;
+      case PickOption.homeDraw: return match.odds.away;
+      case PickOption.drawAway: return match.odds.home;
+      case PickOption.homeAway: return match.odds.draw;
       default:                  return 0;
     }
   }
@@ -672,24 +672,27 @@ class _PredictionsPageState extends State<PredictionsPage>
 
         for (final pd in docs) {
           if (pd.dayNumber == currentMatchdayNumber) continue;
-          final score = pd.score;
-          if (score != null) {
-            totalPoints += score.total;
-            if (score.averageOddsPlayed != null) {
-              avgOddsValues.add(score.averageOddsPlayed!);
-            }
-            continue;
-          }
           final md = seasonMatchdayByDay[pd.dayNumber];
-          if (md == null || md.matches.isEmpty) continue;
-          final dayScore = CassandraScoringEngine.computeDayScore(
-            matches: md.matches,
-            picksByMatchId: pd.picksByMatchId,
-            outcomesByMatchId: md.outcomesByMatchId,
-          );
-          totalPoints += dayScore.total;
-          if (dayScore.averageOddsPlayed != null) {
-            avgOddsValues.add(dayScore.averageOddsPlayed!);
+          if (md != null && md.matches.isNotEmpty) {
+            // Always recompute to apply current scoring rules.
+            final dayScore = CassandraScoringEngine.computeDayScore(
+              matches: md.matches,
+              picksByMatchId: pd.picksByMatchId,
+              outcomesByMatchId: md.outcomesByMatchId,
+            );
+            totalPoints += dayScore.total;
+            if (dayScore.averageOddsPlayed != null) {
+              avgOddsValues.add(dayScore.averageOddsPlayed!);
+            }
+          } else {
+            // Fallback to cached score when matchday data is unavailable.
+            final score = pd.score;
+            if (score != null) {
+              totalPoints += score.total;
+              if (score.averageOddsPlayed != null) {
+                avgOddsValues.add(score.averageOddsPlayed!);
+              }
+            }
           }
         }
 
@@ -781,10 +784,21 @@ class _PredictionsPageState extends State<PredictionsPage>
         .where((m) => !voidedByPostponement.contains(m.id))
         .toList(growable: false);
 
+    const liveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'};
     final scoreOutcomesByMatchId = <String, MatchOutcome>{
       for (final m in scoringMatches)
         if (appState.effectivePredictionOutcomesByMatchId[m.id] != null)
           m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
+      // Live overrides: provisional outcome from current score.
+      for (final m in scoringMatches)
+        if (liveStatuses.contains(m.statusShort) &&
+            m.homeGoals != null &&
+            m.awayGoals != null)
+          m.id: m.homeGoals! > m.awayGoals!
+              ? MatchOutcome.home
+              : m.homeGoals! < m.awayGoals!
+                  ? MatchOutcome.away
+                  : MatchOutcome.draw,
     };
     final DayScoreBreakdown dayScore = CassandraScoringEngine.computeDayScore(
       matches: scoringMatches,
@@ -1019,15 +1033,33 @@ class _HeroScoreCard extends StatelessWidget {
   static const _fg = CassandraColors.brightSnow;
 
   List<Color> _segmentColors() {
+    const liveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'};
     return matches.map((m) {
       final outcome = outcomesByMatchId[m.id];
       final isPending = outcome == null || outcome.isPending;
       final isVoided = outcome?.isVoided ?? false;
       if (isVoided) return Colors.transparent;
-      if (isPending) return CassandraColors.cardBg;
+      if (isPending) {
+        // Derive provisional outcome from live goals for inner-border coloring.
+        final s = m.statusShort;
+        if (s != null &&
+            liveStatuses.contains(s) &&
+            m.homeGoals != null &&
+            m.awayGoals != null) {
+          final liveOutcome = m.homeGoals! > m.awayGoals!
+              ? MatchOutcome.home
+              : m.homeGoals! < m.awayGoals!
+                  ? MatchOutcome.away
+                  : MatchOutcome.draw;
+          final pick = pickFor(m.id);
+          final correct = _isPickCorrect(pick, liveOutcome);
+          return correct ? CassandraColors.mintLeaf : CassandraColors.primary;
+        }
+        return CassandraColors.charcoal;
+      }
       final pick = pickFor(m.id);
       final correct = _isPickCorrect(pick, outcome);
-      return correct ? CassandraColors.darkCyan : CassandraColors.primary;
+      return correct ? CassandraColors.mintLeaf : CassandraColors.primary;
     }).toList();
   }
 
@@ -1046,32 +1078,32 @@ class _HeroScoreCard extends StatelessWidget {
     }).toList();
   }
 
-  /// Max score: all picks correct + bonus(pickedCount).
+  /// Max score: all picks correct + best bonus.
   /// After submission, unpicked matches are locked as -max(1/X/2).
   /// Before submission, unpicked matches assume best possible pick.
   double _computeMaxScore() {
     double base = 0;
-    int maxCorrect = 0;
+    double maxWinningOddsSum = 0;
     for (final m in matches) {
       final pick = pickFor(m.id);
       if (pick.isNone) {
         if (submitted) {
-          // Submitted without pick → penalty is locked in.
           base -= _max1X2(m.odds);
         } else {
-          // Not yet submitted → optimistic: could still pick correctly.
           base += _max1X2(m.odds);
-          maxCorrect++;
+          maxWinningOddsSum += _max1X2(m.odds);
         }
       } else {
-        base += CassandraScoringEngine.oddsForPick(m, pick);
-        maxCorrect++;
+        final odds = CassandraScoringEngine.oddsForPick(m, pick);
+        base += odds;
+        maxWinningOddsSum += odds;
       }
     }
-    return base + CassandraScoringEngine.bonusForCorrectCount(maxCorrect);
+    return base +
+        CassandraScoringEngine.bonusForWinningOddsSum(maxWinningOddsSum);
   }
 
-  /// Min score: all picks wrong + bonus(0).
+  /// Min score: all picks wrong + worst bonus.
   /// After submission, unpicked matches are locked as -max(1/X/2).
   double _computeMinScore() {
     double base = 0;
@@ -1080,13 +1112,13 @@ class _HeroScoreCard extends StatelessWidget {
       if (pick.isNone) {
         base -= _max1X2(m.odds);
       } else if (pick.isSingle) {
-        base -= CassandraScoringEngine.oddsForPick(m, pick);
+        base -= CassandraScoringEngine.wrongSinglePenalty(m, pick);
       } else {
-        // Double chance wrong: lose sum of two component singles
         base -= CassandraScoringEngine.wrongDoublePenalty(m, pick);
       }
     }
-    return base + CassandraScoringEngine.bonusForCorrectCount(0);
+    // All wrong → winningOddsSum = 0 → bonus for 0.
+    return base + CassandraScoringEngine.bonusForWinningOddsSum(0);
   }
 
   static double _max1X2(Odds o) {
@@ -1485,29 +1517,23 @@ class _RingPainter extends CustomPainter {
 
     final baseColor = index < segmentColors.length
         ? segmentColors[index]
-        : CassandraColors.cardBg;
+        : CassandraColors.charcoal;
     final isLive = index < segmentLive.length && segmentLive[index];
-    final isColored = baseColor != CassandraColors.cardBg &&
+    final isColored = baseColor != CassandraColors.charcoal &&
         baseColor != Colors.transparent;
 
     if (isLive && isColored) {
-      // Live match with provisional result: fill neutral, stroke inner border.
+      // Live match with provisional result: fill bright snow, stroke all edges.
       final fillPaint = Paint()
         ..style = PaintingStyle.fill
-        ..color = CassandraColors.cardBg;
+        ..color = CassandraColors.brightSnow;
       canvas.drawPath(path, fillPaint);
 
-      final arcPaint = Paint()
+      final borderPaint = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0
+        ..strokeWidth = 2.5
         ..color = baseColor;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: innerR + 1.5),
-        startAngle,
-        sweepAngle,
-        false,
-        arcPaint,
-      );
+      canvas.drawPath(path, borderPaint);
       return;
     }
 
@@ -1639,14 +1665,14 @@ class _CompactMatchCard extends StatelessWidget {
           return 0;
       }
     }
-    // Double: penalty = complementary single × 2
+    // Double: penalty = complementary single
     switch (pick) {
       case PickOption.homeDraw:
-        return match.odds.away * 2;
+        return match.odds.away;
       case PickOption.drawAway:
-        return match.odds.home * 2;
+        return match.odds.home;
       case PickOption.homeAway:
-        return match.odds.draw * 2;
+        return match.odds.draw;
       default:
         return 0;
     }
@@ -2003,7 +2029,7 @@ class _CompactMatchCard extends StatelessWidget {
           const SizedBox(width: 4),
           _PostLockPickBubble(
             label: _opposingPickLabel(),
-            odds: _loseOdds,
+            odds: -_loseOdds,
             bgColor: _opposingBubbleBg,
             borderColor: _opposingBubbleBorder,
           ),
@@ -2447,7 +2473,7 @@ class _MemberPickRow extends StatelessWidget {
           const SizedBox(width: 4),
           _PostLockPickBubble(
             label: data.opposingLabel,
-            odds: data.opposingOdds,
+            odds: -data.opposingOdds,
             bgColor: opposingBg,
             borderColor: opposingBorder,
           ),

@@ -41,7 +41,7 @@ class CassandraColors {
 
   // ── Predictions live ──────────────────────────────────────────────────────
   static const Color inkBlack = Color(0xFF0F1F26);
-  static const Color darkCyan = Color(0xFF00B884);
+  static const Color mintLeaf = Color(0xFF00B884);
 
   // ── Dividers ──────────────────────────────────────────────────────────────
   // Soft 10 % black divider line.

@@ -1739,9 +1739,10 @@ class AppState extends ChangeNotifier {
     _prefs?.remove(_kProfileId);
     _prefs?.remove(_kProfileDisplayName);
     _prefs?.remove(_kProfileEmail);
-    _prefs?.remove(_kProfilePhotoUrl);
-    _prefs?.remove(_kProfileTeamName);
-    _prefs?.remove(_kProfileFavoriteTeam);
+    // Preserve photoUrl, teamName, and favoriteTeam across re-login so the
+    // profile is visually intact before Firestore hydration completes.
+    // These are overwritten by mergeFirestoreProfile when a different account
+    // logs in.
     _prefs?.remove(_kTeamNameLegacy);
     _prefs?.remove(_kFavoriteTeamLegacy);
     _prefs?.remove(_kProfileLocalUpdatedAtMs);

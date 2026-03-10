@@ -5,6 +5,7 @@ import 'dart:ui';
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
 
+import '../../features/group/group_hub_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
@@ -240,6 +241,7 @@ class _HomeShellState extends State<HomeShell>
   }
 
   int _index = 0;
+  int _slideDirection = 1; // 1 = forward (left), -1 = backward (right)
   late final AnimationController _bubbleCtrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
@@ -254,6 +256,7 @@ class _HomeShellState extends State<HomeShell>
   void _selectTab(int i) {
     if (i == _index) return;
     setState(() {
+      _slideDirection = i > _index ? 1 : -1;
       _bubbleFrom = _index.toDouble();
       _bubbleTo = i.toDouble();
       _index = i;
@@ -261,9 +264,48 @@ class _HomeShellState extends State<HomeShell>
     });
   }
 
+  // ── Swipe navigation ────────────────────────────────────────────────────
+  double _swipeDx = 0;
+  static const _swipeThreshold = 60.0;
+
+  void _onHorizontalDragStart(DragStartDetails _) {
+    _swipeDx = 0;
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    _swipeDx += details.delta.dx;
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails _) {
+    if (_swipeDx < -_swipeThreshold && _index < _pages.length - 1) {
+      _selectTab(_index + 1);
+    } else if (_swipeDx > _swipeThreshold && _index > 0) {
+      _selectTab(_index - 1);
+    } else if (_swipeDx > _swipeThreshold && _index == 0) {
+      // Swipe right from Predictions → GroupHubPage slides in from left
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          pageBuilder: (_, _, _) => const GroupHubPage(),
+          transitionsBuilder: (_, animation, _, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-1, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            );
+          },
+        ),
+      );
+    }
+  }
+
   static final _pages = <Widget>[
-    GroupPage(),
     PredictionsPage(),
+    GroupPage(),
     SerieAPage(),
     SettingsPage(),
   ];
@@ -321,7 +363,36 @@ class _HomeShellState extends State<HomeShell>
                   ),
                 ),
               Expanded(
-                child: IndexedStack(index: _index, children: _pages),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragStart: _onHorizontalDragStart,
+                  onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                  onHorizontalDragEnd: _onHorizontalDragEnd,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 700),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      // The incoming page has key == _index; outgoing has old key.
+                      final isIncoming = child.key == ValueKey(_index);
+                      final offset = Tween<Offset>(
+                        begin: Offset(
+                          isIncoming ? _slideDirection.toDouble() : -_slideDirection.toDouble(),
+                          0,
+                        ),
+                        end: Offset.zero,
+                      );
+                      return SlideTransition(
+                        position: offset.animate(animation),
+                        child: child,
+                      );
+                    },
+                    child: KeyedSubtree(
+                      key: ValueKey(_index),
+                      child: _pages[_index],
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -401,16 +472,16 @@ class _HomeShellState extends State<HomeShell>
                             child: Row(
                               children: [
                                 _NavTab(
-                                  icon: Icons.groups_outlined,
-                                  selectedIcon: Icons.groups,
-                                  label: l10n.tabGroup,
+                                  icon: Icons.sports_soccer_outlined,
+                                  selectedIcon: Icons.sports_soccer,
+                                  label: l10n.tabPredictions,
                                   selected: _index == 0,
                                   onTap: () => _selectTab(0),
                                 ),
                                 _NavTab(
-                                  icon: Icons.sports_soccer_outlined,
-                                  selectedIcon: Icons.sports_soccer,
-                                  label: l10n.tabPredictions,
+                                  icon: Icons.groups_outlined,
+                                  selectedIcon: Icons.groups,
+                                  label: l10n.tabGroup,
                                   selected: _index == 1,
                                   onTap: () => _selectTab(1),
                                 ),
