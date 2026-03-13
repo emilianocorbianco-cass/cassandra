@@ -186,6 +186,8 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
                 matchBreakdowns: const [],
                 baseTotal: pd.score!.baseTotal,
                 bonusPoints: pd.score!.bonusPoints,
+                oddsBonusPoints: pd.score!.oddsBonusPoints,
+                correctBonusPoints: pd.score!.correctBonusPoints,
                 total: pd.score!.total,
                 correctCount: pd.score!.correctCount,
                 averageOddsPlayed: pd.score!.averageOddsPlayed,

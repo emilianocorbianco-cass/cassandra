@@ -69,6 +69,8 @@ void main() {
       final cache = PicksScoreCache(
         baseTotal: 1,
         bonusPoints: 0,
+        oddsBonusPoints: 0,
+        correctBonusPoints: 0,
         total: 1,
         correctCount: 1,
       );
@@ -79,6 +81,8 @@ void main() {
       const cache = PicksScoreCache(
         baseTotal: 0,
         bonusPoints: 0,
+        oddsBonusPoints: 0,
+        correctBonusPoints: 0,
         total: 0,
         correctCount: 0,
         averageOddsPlayed: 0.0,

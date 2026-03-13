@@ -193,32 +193,50 @@ void main() {
       outcomesByMatchId: {'m1': MatchOutcome.home, 'm2': MatchOutcome.away},
     );
 
-    // m1: home pick correct → +1.98 (winning odds sum = 1.98)
-    // m2: home pick wrong  → -drawAway = -1.70
-    // base = +1.98 + (-1.70) = 0.28
-    // winning odds sum = 1.98 → bonus = -10 (< 3)
-    expect(complete.baseTotal, closeTo(0.28, 0.0001));
+    // m1: home pick correct → +1.98
+    // m2: home pick wrong  → 0 (no penalty)
+    // base = 1.98
+    // winning odds sum = 1.98 → oddsBonus = -10 (< 5)
+    // correctCount = 1 out of 2 → correctBonus = -10 (0-1 correct)
+    // total bonus = -20
+    expect(complete.baseTotal, closeTo(1.98, 0.0001));
     expect(complete.correctCount, 1);
-    expect(complete.bonusPoints, -10);
-    expect(complete.total, closeTo(-9.72, 0.0001));
+    expect(complete.oddsBonusPoints, -10);
+    expect(complete.correctBonusPoints, -10);
+    expect(complete.bonusPoints, -20);
+    expect(complete.total, closeTo(-18.02, 0.0001));
   });
 
   test('bonus table based on winning odds sum', () {
     expect(CassandraScoringEngine.bonusForWinningOddsSum(0), -10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(2.5), -10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(3.0), -4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(4.99), -4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(5.0), -1);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(6.99), -1);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(7.0), 0);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(9.99), 0);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(10.0), 1);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(4.99), -10);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(5.0), -7);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(7.99), -7);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(8.0), -4);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(9.99), -4);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(10.0), -1);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(10.99), -1);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(11.0), 1);
     expect(CassandraScoringEngine.bonusForWinningOddsSum(11.99), 1);
     expect(CassandraScoringEngine.bonusForWinningOddsSum(12.0), 4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(13.99), 4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(14.0), 10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(19.99), 10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(20.0), 20);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(25.0), 20);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(12.99), 4);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(13.0), 7);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(14.99), 7);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(15.0), 10);
+    expect(CassandraScoringEngine.bonusForWinningOddsSum(25.0), 10);
+  });
+
+  test('bonus table based on correct count', () {
+    expect(CassandraScoringEngine.bonusForCorrectCount(0), -10);
+    expect(CassandraScoringEngine.bonusForCorrectCount(1), -10);
+    expect(CassandraScoringEngine.bonusForCorrectCount(2), -7);
+    expect(CassandraScoringEngine.bonusForCorrectCount(3), -7);
+    expect(CassandraScoringEngine.bonusForCorrectCount(4), -4);
+    expect(CassandraScoringEngine.bonusForCorrectCount(5), -4);
+    expect(CassandraScoringEngine.bonusForCorrectCount(6), -1);
+    expect(CassandraScoringEngine.bonusForCorrectCount(7), 1);
+    expect(CassandraScoringEngine.bonusForCorrectCount(8), 4);
+    expect(CassandraScoringEngine.bonusForCorrectCount(9), 7);
+    expect(CassandraScoringEngine.bonusForCorrectCount(10), 10);
   });
 }

@@ -88,6 +88,8 @@ type PickOptionValue =
 interface PicksScoreDoc {
   baseTotal: number;
   bonusPoints: number;
+  oddsBonusPoints: number;
+  correctBonusPoints: number;
   total: number;
   correctCount: number;
   winningOddsSum: number;
@@ -303,18 +305,25 @@ function parsePickOptionValue(value: unknown): PickOptionValue {
 }
 
 function bonusForWinningOddsSum(winningOddsSum: number): number {
-  if (winningOddsSum < 3) return -10;
-  if (winningOddsSum < 5) return -4;
-  if (winningOddsSum < 7) return -1;
-  if (winningOddsSum < 10) return 0;
+  if (winningOddsSum < 5) return -10;
+  if (winningOddsSum < 8) return -7;
+  if (winningOddsSum < 10) return -4;
+  if (winningOddsSum < 11) return -1;
   if (winningOddsSum < 12) return 1;
-  if (winningOddsSum < 14) return 4;
-  if (winningOddsSum < 20) return 10;
-  return 20;
+  if (winningOddsSum < 13) return 4;
+  if (winningOddsSum < 15) return 7;
+  return 10;
 }
 
-function max1X2(odds: ScoringMatchDoc["odds"]): number {
-  return Math.max(odds.home, odds.draw, odds.away);
+function bonusForCorrectCount(correctCount: number): number {
+  if (correctCount <= 1) return -10;
+  if (correctCount <= 3) return -7;
+  if (correctCount <= 5) return -4;
+  if (correctCount === 6) return -1;
+  if (correctCount === 7) return 1;
+  if (correctCount === 8) return 4;
+  if (correctCount === 9) return 7;
+  return 10;
 }
 
 function oddsPlayedForPick(
@@ -354,15 +363,6 @@ function isCorrectDouble(pick: PickOptionValue, outcome: Outcome): boolean {
   return false;
 }
 
-function wrongDoublePenaltySumSingles(
-  match: ScoringMatchDoc,
-  pick: PickOptionValue
-): number {
-  if (pick === "homeDraw") return match.odds.home + match.odds.draw;
-  if (pick === "drawAway") return match.odds.draw + match.odds.away;
-  if (pick === "homeAway") return match.odds.home + match.odds.away;
-  return 0;
-}
 
 function parseScoringMatchesFromMatchdayData(
   data: Record<string, unknown>
@@ -452,6 +452,10 @@ function parseStoredScore(value: unknown): PicksScoreDoc | null {
   const raw = value as Record<string, unknown>;
   const baseTotal = Number(raw["baseTotal"]);
   const bonusPoints = Number(raw["bonusPoints"]);
+  const oddsBonusRaw = raw["oddsBonusPoints"];
+  const oddsBonusPoints = oddsBonusRaw == null ? 0 : Number(oddsBonusRaw);
+  const correctBonusRaw = raw["correctBonusPoints"];
+  const correctBonusPoints = correctBonusRaw == null ? 0 : Number(correctBonusRaw);
   const total = Number(raw["total"]);
   const correctCount = Number(raw["correctCount"]);
   const winningOddsSumRaw = raw["winningOddsSum"];
@@ -472,6 +476,8 @@ function parseStoredScore(value: unknown): PicksScoreDoc | null {
   const parsed: PicksScoreDoc = {
     baseTotal,
     bonusPoints: Math.trunc(bonusPoints),
+    oddsBonusPoints: Math.trunc(oddsBonusPoints),
+    correctBonusPoints: Math.trunc(correctBonusPoints),
     total,
     correctCount: Math.trunc(correctCount),
     winningOddsSum,
@@ -496,6 +502,8 @@ function isSameScore(a: PicksScoreDoc | null, b: PicksScoreDoc): boolean {
   return (
     almostEqual(a.baseTotal, b.baseTotal) &&
     a.bonusPoints === b.bonusPoints &&
+    a.oddsBonusPoints === b.oddsBonusPoints &&
+    a.correctBonusPoints === b.correctBonusPoints &&
     almostEqual(a.total, b.total) &&
     a.correctCount === b.correctCount &&
     almostEqual(a.winningOddsSum, b.winningOddsSum) &&
@@ -528,18 +536,19 @@ function computeScoreForPicks(
     }
 
     if (pick === "none") {
-      baseTotal -= max1X2(match.odds);
+      // Non giocata: 0 punti
       continue;
     }
 
     if (pick === "home" || pick === "draw" || pick === "away") {
       const singlePlayed = played ?? 0;
       const correct = isCorrectSingle(pick, outcome);
-      baseTotal += correct ? singlePlayed : -singlePlayed;
       if (correct) {
+        baseTotal += singlePlayed;
         correctCount += 1;
         winningOddsSum += singlePlayed;
       }
+      // Sbagliata: 0 punti (nessuna penalità)
       playedOdds.push(singlePlayed);
       continue;
     }
@@ -550,9 +559,8 @@ function computeScoreForPicks(
       baseTotal += doublePlayed;
       correctCount += 1;
       winningOddsSum += doublePlayed;
-    } else {
-      baseTotal -= wrongDoublePenaltySumSingles(match, pick);
     }
+    // Sbagliata: 0 punti (nessuna penalità)
     playedOdds.push(doublePlayed);
   }
 
@@ -560,7 +568,9 @@ function computeScoreForPicks(
     const outcome = outcomesByMatchId[m.id];
     return outcome != null && outcome !== "pending";
   });
-  const bonusPoints = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
+  const oddsBonusPoints = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
+  const correctBonusPoints = allGraded ? bonusForCorrectCount(correctCount) : 0;
+  const bonusPoints = oddsBonusPoints + correctBonusPoints;
   const total = baseTotal + bonusPoints;
   const averageOddsPlayed =
     playedOdds.length === 0
@@ -570,6 +580,8 @@ function computeScoreForPicks(
   const score: PicksScoreDoc = {
     baseTotal,
     bonusPoints,
+    oddsBonusPoints,
+    correctBonusPoints,
     total,
     correctCount,
     winningOddsSum,
@@ -1111,11 +1123,17 @@ function round2(v: number): number {
  */
 function looksLikeDeterministicOdds(matches: MatchDoc[]): boolean {
   if (matches.length < 3) return false;
-  const haVals = new Set(matches.map((m) => m.odds.homeAway));
-  if (haVals.size === 1) return true;
-  // Also check if home odds have < 3 distinct values across 10 matches
+  // Check if >80% of homeAway double-chance odds share the same value
+  const haCounts = new Map<number, number>();
+  for (const m of matches) {
+    const v = m.odds.homeAway;
+    haCounts.set(v, (haCounts.get(v) ?? 0) + 1);
+  }
+  const maxHaCount = Math.max(...haCounts.values());
+  if (maxHaCount / matches.length >= 0.8) return true;
+  // Also check if home odds have very low variance across many matches
   const homeVals = new Set(matches.map((m) => m.odds.home));
-  if (matches.length >= 8 && homeVals.size <= 2) return true;
+  if (matches.length >= 8 && homeVals.size <= 3) return true;
   return false;
 }
 
@@ -1877,7 +1895,8 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
     const hasDeterministicOdds =
       existingMatchDocs.length > 0 && looksLikeDeterministicOdds(existingMatchDocs);
 
-    if (Array.isArray(existingMatches) && existingMatches.length > 0 && !hasDeterministicOdds) {
+    const oddsFrozenFlag = existingData?.oddsFrozen === true;
+    if (Array.isArray(existingMatches) && existingMatches.length > 0 && !hasDeterministicOdds && oddsFrozenFlag) {
       const mergedMatches = mergeLiveFieldsIntoExistingMatches(
         existingMatches,
         fixtures,
@@ -1923,9 +1942,39 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       await sleep(200);
     }
 
+    const realOddsCount = oddsByFixture.size;
+    const totalFixtures = fixtures.length;
     console.log(
-      `[${options.logPrefix}] Matchday ${md}: fetched real odds for ${oddsByFixture.size}/${fixtures.length} fixtures`
+      `[${options.logPrefix}] Matchday ${md}: fetched real odds for ${realOddsCount}/${totalFixtures} fixtures`
     );
+
+    // Don't write the matchday until we have real odds for at least 80% of
+    // fixtures.  This prevents deterministic fallback odds from being frozen
+    // as if they were real bookmaker odds.  Once a matchday is written with
+    // real odds it gets frozen and won't be overwritten.
+    const minRealOddsRatio = 0.8;
+    const hasEnoughRealOdds =
+      totalFixtures > 0 && realOddsCount / totalFixtures >= minRealOddsRatio;
+
+    if (!hasEnoughRealOdds && !existing.exists) {
+      console.log(
+        `[${options.logPrefix}] Matchday ${md}: skipping write — not enough real odds ` +
+          `(${realOddsCount}/${totalFixtures}, need ${Math.ceil(totalFixtures * minRealOddsRatio)})`
+      );
+      continue;
+    }
+
+    // If the doc already exists but had deterministic odds, only overwrite
+    // when we now have enough real odds.
+    if (!hasEnoughRealOdds && hasDeterministicOdds) {
+      console.log(
+        `[${options.logPrefix}] Matchday ${md}: still not enough real odds to replace deterministic ` +
+          `(${realOddsCount}/${totalFixtures}), keeping existing`
+      );
+      continue;
+    }
+
+    const shouldFreezeOdds = hasEnoughRealOdds;
 
     const matches: MatchDoc[] = fixtures
       .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
@@ -1944,8 +1993,8 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         lockTime: Timestamp.fromDate(lockTime),
         updatedAt: FieldValue.serverTimestamp(),
         finalized,
-        oddsFrozen: true,
-        oddsFrozenAt: FieldValue.serverTimestamp(),
+        oddsFrozen: shouldFreezeOdds,
+        ...(shouldFreezeOdds ? { oddsFrozenAt: FieldValue.serverTimestamp() } : {}),
       },
       { merge: true }
     );

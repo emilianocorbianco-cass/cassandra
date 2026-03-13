@@ -146,6 +146,8 @@ class _UserHubPageState extends State<UserHubPage> {
                   matchBreakdowns: const [],
                   baseTotal: score?.baseTotal ?? 0,
                   bonusPoints: score?.bonusPoints ?? 0,
+                  oddsBonusPoints: score?.oddsBonusPoints ?? 0,
+                  correctBonusPoints: score?.correctBonusPoints ?? 0,
                   total: score?.total ?? 0,
                   correctCount: score?.correctCount ?? 0,
                   averageOddsPlayed: score?.averageOddsPlayed,

@@ -4,22 +4,44 @@ import 'models/match_outcome.dart';
 import 'models/score_breakdown.dart';
 
 class CassandraScoringEngine {
-  /// Bonus/malus basato sulla somma delle quote vincenti.
+  /// Bonus/malus basato sulla somma delle quote vincenti (sqv).
+  ///   sqv < 5        → -10
+  ///   5 ≤ sqv < 8    → -7
+  ///   8 ≤ sqv < 10   → -4
+  ///   10 ≤ sqv < 11  → -1
+  ///   11 ≤ sqv < 12  → +1
+  ///   12 ≤ sqv < 13  → +4
+  ///   13 ≤ sqv < 15  → +7
+  ///   sqv ≥ 15       → +10
   static int bonusForWinningOddsSum(double winningOddsSum) {
-    if (winningOddsSum < 3) return -10;
-    if (winningOddsSum < 5) return -4;
-    if (winningOddsSum < 7) return -1;
-    if (winningOddsSum < 10) return 0;
+    if (winningOddsSum < 5) return -10;
+    if (winningOddsSum < 8) return -7;
+    if (winningOddsSum < 10) return -4;
+    if (winningOddsSum < 11) return -1;
     if (winningOddsSum < 12) return 1;
-    if (winningOddsSum < 14) return 4;
-    if (winningOddsSum < 20) return 10;
-    return 20;
+    if (winningOddsSum < 13) return 4;
+    if (winningOddsSum < 15) return 7;
+    return 10;
   }
 
-  /// Legacy alias kept for callers that still reference correct-count bonus.
+  /// Bonus/malus basato sul numero di pronostici corretti.
+  ///   0-1 corretti  → -10
+  ///   2-3 corretti  → -7
+  ///   4-5 corretti  → -4
+  ///   6 corretti    → -1
+  ///   7 corretti    → +1
+  ///   8 corretti    → +4
+  ///   9 corretti    → +7
+  ///   10 corretti   → +10
   static int bonusForCorrectCount(int correctCount) {
-    // No longer used for actual scoring — kept to avoid breaking callers.
-    return 0;
+    if (correctCount <= 1) return -10;
+    if (correctCount <= 3) return -7;
+    if (correctCount <= 5) return -4;
+    if (correctCount == 6) return -1;
+    if (correctCount == 7) return 1;
+    if (correctCount == 8) return 4;
+    if (correctCount == 9) return 7;
+    return 10;
   }
 
   /// Public accessor for the odds of a given pick on a match.
@@ -27,21 +49,14 @@ class CassandraScoringEngine {
     return _oddsPlayedForPick(match, pick) ?? 0;
   }
 
-  /// Public accessor for single wrong penalty.
+  /// Public accessor for single wrong penalty (legacy — now always 0).
   static double wrongSinglePenalty(PredictionMatch match, PickOption pick) {
-    return _wrongSinglePenalty(match, pick);
+    return 0;
   }
 
-  /// Public accessor for double-chance wrong penalty.
+  /// Public accessor for double-chance wrong penalty (legacy — now always 0).
   static double wrongDoublePenalty(PredictionMatch match, PickOption pick) {
-    return _wrongDoublePenalty(match, pick);
-  }
-
-  static double _max1X2(Odds o) {
-    var m = o.home;
-    if (o.draw > m) m = o.draw;
-    if (o.away > m) m = o.away;
-    return m;
+    return 0;
   }
 
   static double? _oddsPlayedForPick(PredictionMatch match, PickOption pick) {
@@ -84,48 +99,19 @@ class CassandraScoringEngine {
     }
   }
 
-  /// Penalità per singola sbagliata: si perde la quota doppia chance opposta.
-  ///   Gioco 1 e sbaglio → perdo quota X2 (drawAway)
-  ///   Gioco X e sbaglio → perdo quota 12 (homeAway)
-  ///   Gioco 2 e sbaglio → perdo quota 1X (homeDraw)
-  static double _wrongSinglePenalty(PredictionMatch match, PickOption pick) {
-    switch (pick) {
-      case PickOption.home:
-        return match.odds.drawAway;
-      case PickOption.draw:
-        return match.odds.homeAway;
-      case PickOption.away:
-        return match.odds.homeDraw;
-      default:
-        return 0;
-    }
-  }
-
-  /// Penalità per doppia chance sbagliata: si perde la quota singola opposta.
-  ///   Gioco 1X e sbaglio → perdo quota 2 (away)
-  ///   Gioco X2 e sbaglio → perdo quota 1 (home)
-  ///   Gioco 12 e sbaglio → perdo quota X (draw)
-  static double _wrongDoublePenalty(PredictionMatch match, PickOption pick) {
-    switch (pick) {
-      case PickOption.homeDraw:
-        return match.odds.away;
-      case PickOption.drawAway:
-        return match.odds.home;
-      case PickOption.homeAway:
-        return match.odds.draw;
-      default:
-        return 0;
-    }
-  }
-
-  /// Calcola punteggio per singola partita (senza bonus giornata).
+  /// Calcola punteggio per singola partita.
+  ///
+  /// Nuove regole:
+  /// - Corretta → guadagni punti pari alla quota giocata
+  /// - Sbagliata → 0 punti (nessuna penalità)
+  /// - Non giocata → 0 punti
+  /// - Voided → 0 punti
   static MatchScoreBreakdown scoreMatch({
     required PredictionMatch match,
     required PickOption pick,
     required MatchOutcome outcome,
   }) {
-    // 0) OUTCOME NON ANCORA DISPONIBILE -> 0 punti per ora (nessuna penalità).
-    // Questo evita di penalizzare "non giocata" prima che la partita sia finita.
+    // 0) Outcome non ancora disponibile → 0 punti provvisori.
     if (outcome.isPending) {
       final played = pick.isNone ? null : _oddsPlayedForPick(match, pick);
       return MatchScoreBreakdown(
@@ -133,30 +119,29 @@ class CassandraScoringEngine {
         basePoints: 0,
         correct: false,
         playedOdds: played,
-        note: 'Outcome pending: 0 per ora',
+        note: 'Outcome pending',
       );
     }
 
-    // 1) Partita annullata/voided: 0 per tutti e non conta quota media
+    // 1) Partita annullata/voided: 0 per tutti
     if (outcome.isVoided) {
       return MatchScoreBreakdown(
         matchId: match.id,
         basePoints: 0,
         correct: false,
         playedOdds: null,
-        note: 'Match voided: 0 per tutti',
+        note: 'Match voided',
       );
     }
 
-    // 2) Partita non giocata dall’utente: -quota più alta (tra 1/X/2)
+    // 2) Partita non giocata dall'utente: 0 punti
     if (pick.isNone) {
-      final penalty = _max1X2(match.odds);
       return MatchScoreBreakdown(
         matchId: match.id,
-        basePoints: -penalty,
+        basePoints: 0,
         correct: false,
         playedOdds: null,
-        note: 'Non giocata: -max(1,X,2)',
+        note: 'Non giocata',
       );
     }
 
@@ -164,16 +149,12 @@ class CassandraScoringEngine {
     if (pick.isSingle) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectSingle(pick, outcome);
-      final base = correct ? played : -_wrongSinglePenalty(match, pick);
-
       return MatchScoreBreakdown(
         matchId: match.id,
-        basePoints: base,
+        basePoints: correct ? played : 0,
         correct: correct,
         playedOdds: played,
-        note: correct
-            ? 'Singola corretta'
-            : 'Singola sbagliata: -quota doppia opposta',
+        note: correct ? 'Singola corretta' : 'Singola sbagliata',
       );
     }
 
@@ -181,28 +162,16 @@ class CassandraScoringEngine {
     if (pick.isDouble) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectDouble(pick, outcome);
-
-      if (correct) {
-        return MatchScoreBreakdown(
-          matchId: match.id,
-          basePoints: played,
-          correct: true,
-          playedOdds: played,
-          note: 'Doppia corretta',
-        );
-      } else {
-        final penalty = _wrongDoublePenalty(match, pick);
-        return MatchScoreBreakdown(
-          matchId: match.id,
-          basePoints: -penalty,
-          correct: false,
-          playedOdds: played,
-          note: 'Doppia sbagliata: -quota singola opposta',
-        );
-      }
+      return MatchScoreBreakdown(
+        matchId: match.id,
+        basePoints: correct ? played : 0,
+        correct: correct,
+        playedOdds: played,
+        note: correct ? 'Doppia corretta' : 'Doppia sbagliata',
+      );
     }
 
-    // 5) Fallback (non dovrebbe mai succedere)
+    // 5) Fallback
     return MatchScoreBreakdown(
       matchId: match.id,
       basePoints: 0,
@@ -213,11 +182,9 @@ class CassandraScoringEngine {
   }
 
   /// Calcolo completo della giornata:
-  /// somma punti match + bonus in base ai corretti.
+  /// somma punti match + bonus in base alla somma quote vincenti.
   ///
-  /// Regola importante:
-  /// - il bonus si applica SOLO quando TUTTE le partite hanno un outcome "graded"
-  ///   (cioè nessuna è pending).
+  /// Il bonus si applica SOLO quando TUTTE le partite hanno outcome graded.
   static DayScoreBreakdown computeDayScore({
     required List<PredictionMatch> matches,
     required Map<String, PickOption> picksByMatchId,
@@ -227,10 +194,7 @@ class CassandraScoringEngine {
 
     for (final match in matches) {
       final pick = picksByMatchId[match.id] ?? PickOption.none;
-
-      // Se manca outcome per quel match -> pending (non voided!)
       final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.pending;
-
       breakdowns.add(scoreMatch(match: match, pick: pick, outcome: outcome));
     }
 
@@ -251,7 +215,9 @@ class CassandraScoringEngine {
       return o != null && !o.isPending;
     });
 
-    final bonus = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
+    final oddsBonus = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
+    final correctBonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
+    final bonus = oddsBonus + correctBonus;
     final total = baseTotal + bonus;
 
     final playedOddsValues = breakdowns
@@ -267,6 +233,8 @@ class CassandraScoringEngine {
       matchBreakdowns: breakdowns,
       baseTotal: baseTotal,
       bonusPoints: bonus,
+      oddsBonusPoints: oddsBonus,
+      correctBonusPoints: correctBonus,
       total: total,
       correctCount: correctCount,
       averageOddsPlayed: avgOdds,

@@ -28,7 +28,16 @@ class DayScoreBreakdown {
   final List<MatchScoreBreakdown> matchBreakdowns;
 
   final double baseTotal;
+
+  /// Somma dei due bonus (odds + correct count).
   final int bonusPoints;
+
+  /// Bonus basato sulla somma delle quote vincenti.
+  final int oddsBonusPoints;
+
+  /// Bonus basato sul numero di pronostici corretti.
+  final int correctBonusPoints;
+
   final double total;
 
   final int correctCount;
@@ -38,6 +47,8 @@ class DayScoreBreakdown {
     required this.matchBreakdowns,
     required this.baseTotal,
     required this.bonusPoints,
+    required this.oddsBonusPoints,
+    required this.correctBonusPoints,
     required this.total,
     required this.correctCount,
     required this.averageOddsPlayed,

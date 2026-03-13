@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -188,9 +190,10 @@ class _LoginPageState extends State<LoginPage>
   Future<void> _goAfterSignIn(String uid) async {
     final app = CassandraScope.of(context);
     await app.hydrateProfileFromFirestore(uid);
-    await app.hydrateCurrentUserHistoryFromFirestore();
-    await PushNotificationsService.instance.initializeForAppState(app);
     if (!mounted) return;
+    // History hydration and push notifications run in background.
+    unawaited(app.hydrateCurrentUserHistoryFromFirestore());
+    unawaited(PushNotificationsService.instance.initializeForAppState(app));
 
     Widget destination;
     if (app.needsProfileSetup) {
@@ -301,7 +304,7 @@ class _LoginPageState extends State<LoginPage>
             Align(
               alignment: const Alignment(0, -0.55),
               child: Image.asset(
-                'assets/icon/testicon2.png',
+                'assets/icon/cc_logo.png',
                 width: 280,
                 height: 280,
               ),

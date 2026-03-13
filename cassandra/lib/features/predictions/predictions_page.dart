@@ -195,8 +195,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       ).showSnackBar(SnackBar(content: Text(l10n.predictionsPickLockedSnack)));
       return;
     }
-    setState(() => _picks[matchId] = pick);
-    CassandraScope.of(context).setCurrentUserPick(matchId, pick);
+    final effectivePick = _picks[matchId] == pick ? PickOption.none : pick;
+    setState(() => _picks[matchId] = effectivePick);
+    CassandraScope.of(context).setCurrentUserPick(matchId, effectivePick);
   }
 
   void _onHeroSubmit() {
@@ -205,9 +206,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       final l10n = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(l10n.predictionsMissingConfirm(
-            matches.length - _pickedCount,
-          )),
+          content: Text(
+            l10n.predictionsMissingConfirm(matches.length - _pickedCount),
+          ),
         ),
       );
       return;
@@ -494,10 +495,10 @@ class _PredictionsPageState extends State<PredictionsPage>
             uids: uids,
           )
           .then((picksByUid) {
-        if (!mounted) return;
-        appState.setMemberPicksBulk(picksByUid);
-        setState(() {});
-      });
+            if (!mounted) return;
+            appState.setMemberPicksBulk(picksByUid);
+            setState(() {});
+          });
     });
   }
 
@@ -508,8 +509,8 @@ class _PredictionsPageState extends State<PredictionsPage>
     final allPicks = appState.memberPicksByMemberId;
     final currentUid = appState.profile.id;
     final s = match.statusShort;
-    final isLive = s != null &&
-        const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'}.contains(s);
+    final isLive =
+        s != null && const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'}.contains(s);
     final isFT = s == 'FT' || s == 'AET' || s == 'PEN';
     final isStarted = isLive || isFT;
     final rows = <_MemberPickData>[];
@@ -520,29 +521,38 @@ class _PredictionsPageState extends State<PredictionsPage>
       if (pick.isNone) continue;
       final odds = CassandraScoringEngine.oddsForPick(match, pick);
       final isCorrect = isStarted && isPickCorrectForMatch(match, pick);
-      rows.add(_MemberPickData(
-        name: member.uiName,
-        pick: pick,
-        odds: odds,
-        opposingLabel: _opposingLabelFor(pick),
-        opposingOdds: _loseOddsFor(match, pick),
-        isCorrect: isCorrect,
-        isLive: isLive,
-        isFT: isFT,
-      ));
+      rows.add(
+        _MemberPickData(
+          name: member.uiName,
+          pick: pick,
+          odds: odds,
+          opposingLabel: _opposingLabelFor(pick),
+          opposingOdds: _loseOddsFor(match, pick),
+          isCorrect: isCorrect,
+          isLive: isLive,
+          isFT: isFT,
+        ),
+      );
     }
     return rows;
   }
 
   static String _opposingLabelFor(PickOption pick) {
     switch (pick) {
-      case PickOption.home:     return 'X2';
-      case PickOption.draw:     return '12';
-      case PickOption.away:     return '1X';
-      case PickOption.homeDraw: return '2';
-      case PickOption.drawAway: return '1';
-      case PickOption.homeAway: return 'X';
-      case PickOption.none:     return '-';
+      case PickOption.home:
+        return 'X2';
+      case PickOption.draw:
+        return '12';
+      case PickOption.away:
+        return '1X';
+      case PickOption.homeDraw:
+        return '2';
+      case PickOption.drawAway:
+        return '1';
+      case PickOption.homeAway:
+        return 'X';
+      case PickOption.none:
+        return '-';
     }
   }
 
@@ -550,21 +560,27 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (pick.isNone) return 0;
     if (pick.isSingle) {
       switch (pick) {
-        case PickOption.home:  return match.odds.drawAway;
-        case PickOption.draw:  return match.odds.homeAway;
-        case PickOption.away:  return match.odds.homeDraw;
-        default:               return 0;
+        case PickOption.home:
+          return match.odds.drawAway;
+        case PickOption.draw:
+          return match.odds.homeAway;
+        case PickOption.away:
+          return match.odds.homeDraw;
+        default:
+          return 0;
       }
     }
     switch (pick) {
-      case PickOption.homeDraw: return match.odds.away;
-      case PickOption.drawAway: return match.odds.home;
-      case PickOption.homeAway: return match.odds.draw;
-      default:                  return 0;
+      case PickOption.homeDraw:
+        return match.odds.away;
+      case PickOption.drawAway:
+        return match.odds.home;
+      case PickOption.homeAway:
+        return match.odds.draw;
+      default:
+        return 0;
     }
   }
-
-
 
   void _fetchGroupLeaderboardIfNeeded() {
     if (_leaderboardFetched) return;
@@ -596,7 +612,17 @@ class _PredictionsPageState extends State<PredictionsPage>
           m.id: appState.effectivePredictionOutcomesByMatchId[m.id]!,
     };
     // Live overrides: derive outcome from live homeGoals/awayGoals
-    const liveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'FT', 'AET', 'PEN'};
+    const liveStatuses = {
+      '1H',
+      'HT',
+      '2H',
+      'ET',
+      'BT',
+      'LIVE',
+      'FT',
+      'AET',
+      'PEN',
+    };
     final liveOverrides = <String, MatchOutcome>{
       for (final m in currentMatches)
         if (liveStatuses.contains(m.statusShort) &&
@@ -605,144 +631,146 @@ class _PredictionsPageState extends State<PredictionsPage>
           m.id: m.homeGoals! > m.awayGoals!
               ? MatchOutcome.home
               : m.homeGoals! < m.awayGoals!
-                  ? MatchOutcome.away
-                  : MatchOutcome.draw,
+              ? MatchOutcome.away
+              : MatchOutcome.draw,
     };
     final effectiveOutcomesByMatchId = <String, MatchOutcome>{
       ...baseOutcomes,
       ...liveOverrides,
     };
 
-    appState.fetchFirestoreGroupMembers().then((members) async {
-      if (!mounted) return;
-      final seasonDocs = await fs.getPicksForSeason(
-        seasonKey: seasonKey,
-        groupId: groupId,
-      );
-      if (!mounted) return;
+    appState
+        .fetchFirestoreGroupMembers()
+        .then((members) async {
+          if (!mounted) return;
+          final seasonDocs = await fs.getPicksForSeason(
+            seasonKey: seasonKey,
+            groupId: groupId,
+          );
+          if (!mounted) return;
 
-      final memberIdSet = members.map((m) => m.id).toSet();
-      final filteredDocs = seasonDocs
-          .where((d) => memberIdSet.contains(d.uid))
-          .toList(growable: false);
-      final seasonPicksByMemberId = <String, List<PicksDocument>>{};
-      for (final doc in filteredDocs) {
-        seasonPicksByMemberId
-            .putIfAbsent(doc.uid, () => <PicksDocument>[])
-            .add(doc);
-      }
+          final memberIdSet = members.map((m) => m.id).toSet();
+          final filteredDocs = seasonDocs
+              .where((d) => memberIdSet.contains(d.uid))
+              .toList(growable: false);
+          final seasonPicksByMemberId = <String, List<PicksDocument>>{};
+          for (final doc in filteredDocs) {
+            seasonPicksByMemberId
+                .putIfAbsent(doc.uid, () => <PicksDocument>[])
+                .add(doc);
+          }
 
-      appState.ensureMatchdayMatchesLoaded();
-      final seasonDaySet = <int>{
-        ...appState.currentUserPicksByMatchday.keys,
-        ...appState.matchesByMatchday.keys,
-        ...appState.recentMatchesByMatchday.keys,
-        ...appState.outcomesByMatchday.keys,
-        for (final docs in seasonPicksByMemberId.values)
-          for (final pd in docs)
-            if (pd.dayNumber > 0) pd.dayNumber,
-      };
-      final seasonDays = seasonDaySet.toList()..sort();
-      final seasonMatchdayByDay = <int, MatchdayData>{};
-      for (final day in seasonDays) {
-        final savedMatches = appState.matchesByMatchday[day];
-        final recentMatches = appState.recentMatchesByMatchday[day];
-        final matchesForDay =
-            (savedMatches != null && savedMatches.isNotEmpty)
-            ? savedMatches
-            : (recentMatches ?? const <PredictionMatch>[]);
-        final savedOutcomes = appState.outcomesByMatchday[day];
-        final recentOutcomes = appState.recentOutcomesByMatchday[day];
-        final outcomesForDay = <String, MatchOutcome>{
-          if (recentOutcomes != null) ...recentOutcomes,
-          if (savedOutcomes != null) ...savedOutcomes,
-        };
-        seasonMatchdayByDay[day] = MatchdayData(
-          dayNumber: day,
-          matches: matchesForDay,
-          outcomesByMatchId: outcomesForDay,
-        );
-      }
-
-      final entries = members.map((member) {
-        final docs = seasonPicksByMemberId[member.id] ??
-            const <PicksDocument>[];
-        var totalPoints = 0.0;
-        final avgOddsValues = <double>[];
-
-        for (final pd in docs) {
-          if (pd.dayNumber == currentMatchdayNumber) continue;
-          final md = seasonMatchdayByDay[pd.dayNumber];
-          if (md != null && md.matches.isNotEmpty) {
-            // Always recompute to apply current scoring rules.
-            final dayScore = CassandraScoringEngine.computeDayScore(
-              matches: md.matches,
-              picksByMatchId: pd.picksByMatchId,
-              outcomesByMatchId: md.outcomesByMatchId,
+          appState.ensureMatchdayMatchesLoaded();
+          final seasonDaySet = <int>{
+            ...appState.currentUserPicksByMatchday.keys,
+            ...appState.matchesByMatchday.keys,
+            ...appState.recentMatchesByMatchday.keys,
+            ...appState.outcomesByMatchday.keys,
+            for (final docs in seasonPicksByMemberId.values)
+              for (final pd in docs)
+                if (pd.dayNumber > 0) pd.dayNumber,
+          };
+          final seasonDays = seasonDaySet.toList()..sort();
+          final seasonMatchdayByDay = <int, MatchdayData>{};
+          for (final day in seasonDays) {
+            final savedMatches = appState.matchesByMatchday[day];
+            final recentMatches = appState.recentMatchesByMatchday[day];
+            final matchesForDay =
+                (savedMatches != null && savedMatches.isNotEmpty)
+                ? savedMatches
+                : (recentMatches ?? const <PredictionMatch>[]);
+            final savedOutcomes = appState.outcomesByMatchday[day];
+            final recentOutcomes = appState.recentOutcomesByMatchday[day];
+            final outcomesForDay = <String, MatchOutcome>{
+              if (recentOutcomes != null) ...recentOutcomes,
+              if (savedOutcomes != null) ...savedOutcomes,
+            };
+            seasonMatchdayByDay[day] = MatchdayData(
+              dayNumber: day,
+              matches: matchesForDay,
+              outcomesByMatchId: outcomesForDay,
             );
-            totalPoints += dayScore.total;
-            if (dayScore.averageOddsPlayed != null) {
-              avgOddsValues.add(dayScore.averageOddsPlayed!);
-            }
-          } else {
-            // Fallback to cached score when matchday data is unavailable.
-            final score = pd.score;
-            if (score != null) {
-              totalPoints += score.total;
-              if (score.averageOddsPlayed != null) {
-                avgOddsValues.add(score.averageOddsPlayed!);
+          }
+
+          final entries = members.map((member) {
+            final docs =
+                seasonPicksByMemberId[member.id] ?? const <PicksDocument>[];
+            var totalPoints = 0.0;
+            final avgOddsValues = <double>[];
+
+            for (final pd in docs) {
+              if (pd.dayNumber == currentMatchdayNumber) continue;
+              final md = seasonMatchdayByDay[pd.dayNumber];
+              if (md != null && md.matches.isNotEmpty) {
+                // Always recompute to apply current scoring rules.
+                final dayScore = CassandraScoringEngine.computeDayScore(
+                  matches: md.matches,
+                  picksByMatchId: pd.picksByMatchId,
+                  outcomesByMatchId: md.outcomesByMatchId,
+                );
+                totalPoints += dayScore.total;
+                if (dayScore.averageOddsPlayed != null) {
+                  avgOddsValues.add(dayScore.averageOddsPlayed!);
+                }
+              } else {
+                // Fallback to cached score when matchday data is unavailable.
+                final score = pd.score;
+                if (score != null) {
+                  totalPoints += score.total;
+                  if (score.averageOddsPlayed != null) {
+                    avgOddsValues.add(score.averageOddsPlayed!);
+                  }
+                }
               }
             }
-          }
-        }
 
-        // Current matchday picks for this member
-        final currentDoc = docs
-            .cast<PicksDocument?>()
-            .firstWhere(
+            // Current matchday picks for this member
+            final currentDoc = docs.cast<PicksDocument?>().firstWhere(
               (d) => d?.dayNumber == currentMatchdayNumber,
               orElse: () => null,
             );
-        final currentPicks =
-            currentDoc?.picksByMatchId ?? const <String, PickOption>{};
-        final currentDayScore = CassandraScoringEngine.computeDayScore(
-          matches: currentMatches,
-          picksByMatchId: currentPicks,
-          outcomesByMatchId: effectiveOutcomesByMatchId,
-        );
-        totalPoints += currentDayScore.total;
-        if (currentDayScore.averageOddsPlayed != null) {
-          avgOddsValues.add(currentDayScore.averageOddsPlayed!);
-        }
+            final currentPicks =
+                currentDoc?.picksByMatchId ?? const <String, PickOption>{};
+            final currentDayScore = CassandraScoringEngine.computeDayScore(
+              matches: currentMatches,
+              picksByMatchId: currentPicks,
+              outcomesByMatchId: effectiveOutcomesByMatchId,
+            );
+            totalPoints += currentDayScore.total;
+            if (currentDayScore.averageOddsPlayed != null) {
+              avgOddsValues.add(currentDayScore.averageOddsPlayed!);
+            }
 
-        final avgOdds = avgOddsValues.isEmpty
-            ? null
-            : avgOddsValues.reduce((a, b) => a + b) /
-                avgOddsValues.length;
+            final avgOdds = avgOddsValues.isEmpty
+                ? null
+                : avgOddsValues.reduce((a, b) => a + b) / avgOddsValues.length;
 
-        return _LeaderboardEntry(
-          member: member,
-          totalPoints: totalPoints,
-          averageOddsPlayed: avgOdds,
-        );
-      }).toList();
+            return _LeaderboardEntry(
+              member: member,
+              totalPoints: totalPoints,
+              averageOddsPlayed: avgOdds,
+            );
+          }).toList();
 
-      entries.sort((a, b) => compareCassandraRanking(
-        aTotal: a.totalPoints,
-        bTotal: b.totalPoints,
-        aAverageOddsPlayed: a.averageOddsPlayed,
-        bAverageOddsPlayed: b.averageOddsPlayed,
-        aTeamName: a.member.teamName,
-        bTeamName: b.member.teamName,
-      ));
+          entries.sort(
+            (a, b) => compareCassandraRanking(
+              aTotal: a.totalPoints,
+              bTotal: b.totalPoints,
+              aAverageOddsPlayed: a.averageOddsPlayed,
+              bAverageOddsPlayed: b.averageOddsPlayed,
+              aTeamName: a.member.teamName,
+              bTeamName: b.member.teamName,
+            ),
+          );
 
-      if (!mounted) return;
-      setState(() => _leaderboardEntries = entries);
-    }).catchError((Object e) {
-      if (kDebugMode) {
-        debugPrint('[predictions] leaderboard fetch failed: $e');
-      }
-    });
+          if (!mounted) return;
+          setState(() => _leaderboardEntries = entries);
+        })
+        .catchError((Object e) {
+          if (kDebugMode) {
+            debugPrint('[predictions] leaderboard fetch failed: $e');
+          }
+        });
   }
 
   @override
@@ -797,8 +825,8 @@ class _PredictionsPageState extends State<PredictionsPage>
           m.id: m.homeGoals! > m.awayGoals!
               ? MatchOutcome.home
               : m.homeGoals! < m.awayGoals!
-                  ? MatchOutcome.away
-                  : MatchOutcome.draw,
+              ? MatchOutcome.away
+              : MatchOutcome.draw,
     };
     final DayScoreBreakdown dayScore = CassandraScoringEngine.computeDayScore(
       matches: scoringMatches,
@@ -817,9 +845,9 @@ class _PredictionsPageState extends State<PredictionsPage>
               ? '+${dayScore.bonusPoints}'
               : '${dayScore.bonusPoints}');
 
-    // Hero card height: padding(4+4) + container padding(18+16)
-    // + title(~24) + gap(10) + ring(140) ≈ 216
-    const heroAreaHeight = 216.0;
+    // Hero card height: includes outer padding and a bit of extra room
+    // to avoid bottom overflow on compact devices.
+    const heroAreaHeight = 240.0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -844,7 +872,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                         child: SizedBox(height: heroAreaHeight + 18),
                       ),
                       SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                        padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
                         sliver: SliverList(
                           delegate: SliverChildBuilderDelegate((ctx, i) {
                             final match = matches[i];
@@ -858,10 +886,11 @@ class _PredictionsPageState extends State<PredictionsPage>
                                 );
                             final expanded =
                                 _locked && _expandedMatchId == match.id;
-                            final memberRows =
-                                expanded ? _buildMemberRows(match) : null;
+                            final memberRows = expanded
+                                ? _buildMemberRows(match)
+                                : null;
                             return Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.only(bottom: 18),
                               child: _CompactMatchCard(
                                 match: match,
                                 pick: pick,
@@ -880,19 +909,23 @@ class _PredictionsPageState extends State<PredictionsPage>
                           }, childCount: matches.length),
                         ),
                       ),
-                      const SliverToBoxAdapter(
-                        child: Divider(height: 32, thickness: 1),
-                      ),
-                      if (!_locked && standings.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: SerieAStandingsTable(standings: standings),
-                        ),
-                      if (_locked && _leaderboardEntries.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: _GroupLeaderboardSection(
-                            entries: _leaderboardEntries,
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            children: [
+                              const Divider(height: 1, thickness: 1),
+                              const SizedBox(height: 18),
+                              if (!_locked && standings.isNotEmpty)
+                                SerieAStandingsTable(standings: standings),
+                              if (_locked && _leaderboardEntries.isNotEmpty)
+                                _GroupLeaderboardSection(
+                                  entries: _leaderboardEntries,
+                                ),
+                            ],
                           ),
                         ),
+                      ),
                       const SliverPadding(padding: EdgeInsets.only(bottom: 90)),
                     ],
                   ),
@@ -910,8 +943,8 @@ class _PredictionsPageState extends State<PredictionsPage>
                   // Layer 3: hero card pinned on top.
                   Positioned(
                     top: 0,
-                    left: 12,
-                    right: 12,
+                    left: 18,
+                    right: 18,
                     child: Padding(
                       padding: const EdgeInsets.only(top: 4, bottom: 4),
                       child: _HeroScoreCard(
@@ -999,7 +1032,7 @@ bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
   }
 }
 
-class _HeroScoreCard extends StatelessWidget {
+class _HeroScoreCard extends StatefulWidget {
   const _HeroScoreCard({
     required this.dayScore,
     required this.matches,
@@ -1030,12 +1063,44 @@ class _HeroScoreCard extends StatelessWidget {
   final int totalMatches;
   final VoidCallback? onSubmit;
 
+  @override
+  State<_HeroScoreCard> createState() => _HeroScoreCardState();
+}
+
+class _HeroScoreCardState extends State<_HeroScoreCard>
+    with SingleTickerProviderStateMixin {
   static const _fg = CassandraColors.brightSnow;
+  static const _cardHeight = 232.0;
+  static const _flipDuration = Duration(milliseconds: 810);
+
+  late final AnimationController _flipController = AnimationController(
+    vsync: this,
+    duration: _flipDuration,
+  );
+  late final CurvedAnimation _flipAnimation = CurvedAnimation(
+    parent: _flipController,
+    curve: Curves.easeInOutCubic,
+  );
+
+  @override
+  void dispose() {
+    _flipController.dispose();
+    super.dispose();
+  }
+
+  void _toggleCardFace() {
+    if (_flipController.isAnimating) return;
+    if (_flipController.value >= 0.5) {
+      _flipController.reverse();
+    } else {
+      _flipController.forward();
+    }
+  }
 
   List<Color> _segmentColors() {
     const liveStatuses = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'};
-    return matches.map((m) {
-      final outcome = outcomesByMatchId[m.id];
+    return widget.matches.map((m) {
+      final outcome = widget.outcomesByMatchId[m.id];
       final isPending = outcome == null || outcome.isPending;
       final isVoided = outcome?.isVoided ?? false;
       if (isVoided) return Colors.transparent;
@@ -1049,29 +1114,29 @@ class _HeroScoreCard extends StatelessWidget {
           final liveOutcome = m.homeGoals! > m.awayGoals!
               ? MatchOutcome.home
               : m.homeGoals! < m.awayGoals!
-                  ? MatchOutcome.away
-                  : MatchOutcome.draw;
-          final pick = pickFor(m.id);
+              ? MatchOutcome.away
+              : MatchOutcome.draw;
+          final pick = widget.pickFor(m.id);
           final correct = _isPickCorrect(pick, liveOutcome);
           return correct ? CassandraColors.mintLeaf : CassandraColors.primary;
         }
         return CassandraColors.charcoal;
       }
-      final pick = pickFor(m.id);
+      final pick = widget.pickFor(m.id);
       final correct = _isPickCorrect(pick, outcome);
       return correct ? CassandraColors.mintLeaf : CassandraColors.primary;
     }).toList();
   }
 
   List<bool> _segmentVoided() {
-    return matches.map((m) {
-      final outcome = outcomesByMatchId[m.id];
+    return widget.matches.map((m) {
+      final outcome = widget.outcomesByMatchId[m.id];
       return outcome?.isVoided ?? false;
     }).toList();
   }
 
   List<bool> _segmentLive() {
-    return matches.map((m) {
+    return widget.matches.map((m) {
       final s = m.statusShort;
       return s != null &&
           const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'}.contains(s);
@@ -1079,46 +1144,37 @@ class _HeroScoreCard extends StatelessWidget {
   }
 
   /// Max score: all picks correct + best bonus.
-  /// After submission, unpicked matches are locked as -max(1/X/2).
   /// Before submission, unpicked matches assume best possible pick.
   double _computeMaxScore() {
     double base = 0;
     double maxWinningOddsSum = 0;
-    for (final m in matches) {
-      final pick = pickFor(m.id);
+    for (final m in widget.matches) {
+      final pick = widget.pickFor(m.id);
       if (pick.isNone) {
-        if (submitted) {
-          base -= _max1X2(m.odds);
-        } else {
+        if (!widget.submitted) {
+          // Assume best possible pick
           base += _max1X2(m.odds);
           maxWinningOddsSum += _max1X2(m.odds);
         }
+        // Submitted but unpicked → 0 (no penalty)
       } else {
         final odds = CassandraScoringEngine.oddsForPick(m, pick);
         base += odds;
         maxWinningOddsSum += odds;
       }
     }
+    final matchCount = widget.matches.length;
     return base +
-        CassandraScoringEngine.bonusForWinningOddsSum(maxWinningOddsSum);
+        CassandraScoringEngine.bonusForWinningOddsSum(maxWinningOddsSum) +
+        CassandraScoringEngine.bonusForCorrectCount(matchCount);
   }
 
-  /// Min score: all picks wrong + worst bonus.
-  /// After submission, unpicked matches are locked as -max(1/X/2).
+  /// Min score: all picks wrong → 0 base + worst bonuses.
   double _computeMinScore() {
-    double base = 0;
-    for (final m in matches) {
-      final pick = pickFor(m.id);
-      if (pick.isNone) {
-        base -= _max1X2(m.odds);
-      } else if (pick.isSingle) {
-        base -= CassandraScoringEngine.wrongSinglePenalty(m, pick);
-      } else {
-        base -= CassandraScoringEngine.wrongDoublePenalty(m, pick);
-      }
-    }
-    // All wrong → winningOddsSum = 0 → bonus for 0.
-    return base + CassandraScoringEngine.bonusForWinningOddsSum(0);
+    // All wrong → 0 base points, winningOddsSum = 0, correctCount = 0.
+    return (CassandraScoringEngine.bonusForWinningOddsSum(0) +
+            CassandraScoringEngine.bonusForCorrectCount(0))
+        .toDouble();
   }
 
   static double _max1X2(Odds o) {
@@ -1128,32 +1184,100 @@ class _HeroScoreCard extends StatelessWidget {
     return m;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final correctCount = dayScore.correctCount;
-    final matchCount = matches.length;
-    final totalPoints = isMatchdayFinalized ? formatOdds(dayScore.total) : '-';
+  String _flipButtonTooltip() {
+    if (_flipController.value >= 0.5) {
+      return widget.isEnglish ? 'Back to score' : 'Torna al punteggio';
+    }
+    return widget.isEnglish ? 'Show bonus rules' : 'Mostra regole bonus';
+  }
+
+  String _bonusRulesTitle() {
+    return widget.isEnglish ? 'Bonus points' : 'Calcolo punti bonus';
+  }
+
+  String _bonusRulesBaseLabel() {
+    return widget.isEnglish ? 'Winning odds sum' : 'Somma quote vincenti';
+  }
+
+  String _bonusPointsLabel(int points) {
+    final sign = points > 0 ? '+' : '';
+    return widget.isEnglish ? '$sign$points points' : '$sign$points punti';
+  }
+
+  List<({String range, int points})> _bonusRuleRows() {
+    return const [
+      (range: '< 5', points: -10),
+      (range: '5 - 7.99', points: -7),
+      (range: '8 - 9.99', points: -4),
+      (range: '10 - 10.99', points: -1),
+      (range: '11 - 11.99', points: 1),
+      (range: '12 - 12.99', points: 4),
+      (range: '13 - 14.99', points: 7),
+      (range: '>= 15', points: 10),
+    ];
+  }
+
+  Widget _buildCardShell({required Widget child}) {
+    return Container(
+      height: _cardHeight,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+      decoration: BoxDecoration(
+        color: CassandraColors.inkBlackV2,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x44000000),
+            blurRadius: 12,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 36),
+              child: child,
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: _HeroCardFlipButton(
+              tooltip: _flipButtonTooltip(),
+              onTap: _toggleCardFace,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFrontFace(AppLocalizations l10n) {
+    final correctCount = widget.dayScore.correctCount;
+    final matchCount = widget.matches.length;
+    final totalPoints = widget.isMatchdayFinalized
+        ? formatOdds(widget.dayScore.total)
+        : '-';
 
     final segColors = _segmentColors();
     final segVoided = _segmentVoided();
     final segLive = _segmentLive();
 
-    final matchdayTitle = isEnglish
-        ? 'Matchday $matchdayNumber'
-        : 'Giornata $matchdayNumber';
+    final matchdayTitle = widget.isEnglish
+        ? 'Matchday ${widget.matchdayNumber}'
+        : 'Giornata ${widget.matchdayNumber}';
 
-    // Pre-lock submit button state
-    final bool allPicked = pickedCount >= totalMatches && totalMatches > 0;
+    final bool allPicked =
+        widget.pickedCount >= widget.totalMatches && widget.totalMatches > 0;
 
-    // Button colors
     const charcoalBg = Color(0xFF344A54);
     const mintLeaf = Color(0xFF00B884);
     const amaranth = Color(0xFFE01E48);
 
     Color submitBg;
     String submitLabel;
-    if (submitted) {
+    if (widget.submitted) {
       submitBg = amaranth;
       submitLabel = l10n.predictionsSubmittedButton;
     } else if (allPicked) {
@@ -1164,12 +1288,10 @@ class _HeroScoreCard extends StatelessWidget {
       submitLabel = l10n.predictionsSubmitButton;
     }
 
-    // ── Ring center widget ──────────────────────────────────────────
     Widget ringCenter;
     bool useSolidRing;
 
-    if (locked) {
-      // Post-lock: segmented ring + live points score
+    if (widget.locked) {
       useSolidRing = false;
       ringCenter = Center(
         child: Text(
@@ -1182,11 +1304,10 @@ class _HeroScoreCard extends StatelessWidget {
         ),
       );
     } else {
-      // Pre-lock: solid ring + tappable submit button
       useSolidRing = true;
       ringCenter = Center(
         child: GestureDetector(
-          onTap: submitted ? null : onSubmit,
+          onTap: widget.submitted ? null : widget.onSubmit,
           child: Container(
             width: 114,
             height: 114,
@@ -1206,7 +1327,7 @@ class _HeroScoreCard extends StatelessWidget {
               submitLabel,
               style: const TextStyle(
                 color: CassandraColors.brightSnow,
-                fontSize: 20,
+                fontSize: 22,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.3,
               ),
@@ -1216,71 +1337,194 @@ class _HeroScoreCard extends StatelessWidget {
       );
     }
 
-    // Both pre-lock and post-lock use same ring size and position.
     const ringSize = 126.0;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-      decoration: BoxDecoration(
-        color: CassandraColors.inkBlackV2,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x44000000),
-            blurRadius: 12,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Left: title + ring with score/submit ──────────────────
-          Expanded(
-            flex: 50,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  matchdayTitle,
-                  style: const TextStyle(
-                    color: _fg,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
-                  ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 50,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                matchdayTitle,
+                style: const TextStyle(
+                  color: _fg,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
                 ),
-                const SizedBox(height: 21),
-                SizedBox(
-                  width: ringSize,
-                  height: ringSize,
-                  child: CustomPaint(
-                    painter: _RingPainter(
-                      segmentColors: segColors,
-                      segmentVoided: segVoided,
-                      segmentLive: segLive,
-                      solid: useSolidRing,
-                    ),
-                    child: ringCenter,
+              ),
+              const SizedBox(height: 21),
+              SizedBox(
+                width: ringSize,
+                height: ringSize,
+                child: CustomPaint(
+                  painter: _RingPainter(
+                    segmentColors: segColors,
+                    segmentVoided: segVoided,
+                    segmentLive: segLive,
+                    solid: useSolidRing,
                   ),
+                  child: ringCenter,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
+        Expanded(
+          flex: 50,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: widget.locked
+                ? _buildPostLockBreakdown(
+                    l10n,
+                    correctCount,
+                    matchCount,
+                    totalPoints,
+                  )
+                : _buildPreLockBreakdown(l10n),
+          ),
+        ),
+      ],
+    );
+  }
 
-          // ── Right: breakdown (different pre-lock vs post-lock) ────
-          Expanded(
-            flex: 50,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: locked
-                  ? _buildPostLockBreakdown(
-                      l10n, correctCount, matchCount, totalPoints,
-                    )
-                  : _buildPreLockBreakdown(l10n),
-            ),
+  Widget _buildBackFace() {
+    final rules = _bonusRuleRows();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          _bonusRulesTitle(),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: _fg,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
           ),
-        ],
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final rowHeight = constraints.maxHeight / rules.length;
+              final labelTop = (rowHeight * 3) + (rowHeight * 0.18);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 156,
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          top: 2,
+                          bottom: 2,
+                          right: 0,
+                          child: SizedBox(
+                            width: 14,
+                            child: CustomPaint(
+                              painter: _HeroBonusBracketPainter(
+                                color: _fg.withValues(alpha: 0.78),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: 20,
+                          top: labelTop,
+                          child: Text(
+                            _bonusRulesBaseLabel(),
+                            maxLines: 1,
+                            softWrap: false,
+                            style: const TextStyle(
+                              color: _fg,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: rules.map((rule) {
+                        final pointsColor = rule.points > 0
+                            ? CassandraColors.mintLeaf
+                            : rule.points < 0
+                            ? CassandraColors.primary
+                            : _fg;
+                        return Row(
+                          children: [
+                            Expanded(
+                              flex: 4,
+                              child: Text(
+                                rule.range,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: _fg,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 4,
+                              child: Text(
+                                _bonusPointsLabel(rule.points),
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: pointsColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return SizedBox(
+      height: _cardHeight,
+      child: AnimatedBuilder(
+        animation: _flipAnimation,
+        builder: (context, child) {
+          final angle = _flipAnimation.value * math.pi;
+          final showFront = angle <= math.pi / 2;
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0016)
+              ..rotateX(angle),
+            child: showFront
+                ? _buildCardShell(child: _buildFrontFace(l10n))
+                : Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()..rotateX(math.pi),
+                    child: _buildCardShell(child: _buildBackFace()),
+                  ),
+          );
+        },
       ),
     );
   }
@@ -1297,9 +1541,9 @@ class _HeroScoreCard extends StatelessWidget {
     int matchCount,
     String totalPoints,
   ) {
-    final basePoints = dayScore.baseTotal;
-    final bonusVal = dayScore.bonusPoints.toDouble();
-    final totalVal = dayScore.total;
+    final basePoints = widget.dayScore.baseTotal;
+    final bonusVal = widget.dayScore.bonusPoints.toDouble();
+    final totalVal = widget.dayScore.total;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1308,7 +1552,7 @@ class _HeroScoreCard extends StatelessWidget {
         const SizedBox(height: 4),
         // 1. "Punti" — live base score
         Text(
-          isEnglish ? 'Points' : 'Punti',
+          widget.isEnglish ? 'Points' : 'Punti',
           style: const TextStyle(
             color: _fg,
             fontSize: 12,
@@ -1327,7 +1571,7 @@ class _HeroScoreCard extends StatelessWidget {
         const SizedBox(height: 16),
         // 2. "Punti bonus"
         Text(
-          isEnglish ? 'Bonus points' : 'Punti bonus',
+          widget.isEnglish ? 'Bonus points' : 'Punti bonus',
           style: const TextStyle(
             color: _fg,
             fontSize: 12,
@@ -1336,9 +1580,9 @@ class _HeroScoreCard extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          isMatchdayFinalized ? bonusSigned : '-',
+          widget.isMatchdayFinalized ? widget.bonusSigned : '-',
           style: TextStyle(
-            color: isMatchdayFinalized ? _valueColor(bonusVal) : _fg,
+            color: widget.isMatchdayFinalized ? _valueColor(bonusVal) : _fg,
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
@@ -1346,7 +1590,7 @@ class _HeroScoreCard extends StatelessWidget {
         const SizedBox(height: 16),
         // 3. "Punti totali"
         Text(
-          isEnglish ? 'Total points' : 'Punti totali',
+          widget.isEnglish ? 'Total points' : 'Punti totali',
           style: const TextStyle(
             color: _fg,
             fontSize: 12,
@@ -1357,7 +1601,7 @@ class _HeroScoreCard extends StatelessWidget {
         Text(
           totalPoints,
           style: TextStyle(
-            color: isMatchdayFinalized ? _valueColor(totalVal) : _fg,
+            color: widget.isMatchdayFinalized ? _valueColor(totalVal) : _fg,
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
@@ -1386,7 +1630,7 @@ class _HeroScoreCard extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          '$pickedCount/$totalMatches',
+          '${widget.pickedCount}/${widget.totalMatches}',
           style: const TextStyle(
             color: _fg,
             fontSize: 22,
@@ -1433,6 +1677,76 @@ class _HeroScoreCard extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _HeroCardFlipButton extends StatelessWidget {
+  const _HeroCardFlipButton({required this.tooltip, required this.onTap});
+
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: CassandraColors.brightSnow.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: CassandraColors.brightSnow.withValues(alpha: 0.16),
+              ),
+            ),
+            child: const Center(
+              child: Text(
+                '\u24D8',
+                style: TextStyle(
+                  color: CassandraColors.brightSnow,
+                  fontSize: 20,
+                  height: 1.0,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroBonusBracketPainter extends CustomPainter {
+  const _HeroBonusBracketPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.7
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path()
+      ..moveTo(size.width * 0.92, 0)
+      ..lineTo(size.width * 0.24, 0)
+      ..lineTo(size.width * 0.24, size.height)
+      ..lineTo(size.width * 0.92, size.height);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeroBonusBracketPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -1519,7 +1833,8 @@ class _RingPainter extends CustomPainter {
         ? segmentColors[index]
         : CassandraColors.charcoal;
     final isLive = index < segmentLive.length && segmentLive[index];
-    final isColored = baseColor != CassandraColors.charcoal &&
+    final isColored =
+        baseColor != CassandraColors.charcoal &&
         baseColor != Colors.transparent;
 
     if (isLive && isColored) {
@@ -1734,8 +2049,7 @@ class _CompactMatchCard extends StatelessWidget {
         const SizedBox(height: 8),
         Container(height: 1, color: CassandraColors.charcoal),
         const SizedBox(height: 8),
-        for (final row in rows)
-          _MemberPickRow(data: row),
+        for (final row in rows) _MemberPickRow(data: row),
       ],
     );
   }
@@ -1764,8 +2078,8 @@ class _CompactMatchCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                   color: CassandraColors.inkBlackV2,
                 ),
               ),
@@ -1785,8 +2099,8 @@ class _CompactMatchCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.end,
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                   color: CassandraColors.inkBlackV2,
                 ),
               ),
@@ -1957,8 +2271,8 @@ class _CompactMatchCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
                         color: CassandraColors.inkBlackV2,
                       ),
                     ),
@@ -1993,8 +2307,8 @@ class _CompactMatchCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
                         color: CassandraColors.inkBlackV2,
                       ),
                     ),
@@ -2105,7 +2419,7 @@ class _CompactOddsButton extends StatelessWidget {
                 formatOdds(odds),
                 style: TextStyle(
                   color: fg,
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -2230,20 +2544,29 @@ class _MatchStatusColumn extends StatelessWidget {
       final int minute;
       final String halfLabel;
       if (s == '1H' || s == 'LIVE') {
-        minute = apiElapsed?.clamp(1, 45) ??
-            (DateTime.now().difference(match.kickoff).inMinutes + 1)
-                .clamp(1, 45);
+        minute =
+            apiElapsed?.clamp(1, 45) ??
+            (DateTime.now().difference(match.kickoff).inMinutes + 1).clamp(
+              1,
+              45,
+            );
         halfLabel = isEn ? '1H' : '1T';
       } else if (s == '2H') {
-        minute = apiElapsed?.clamp(46, 90) ??
-            (DateTime.now().difference(match.kickoff).inMinutes - 21)
-                .clamp(46, 90);
+        minute =
+            apiElapsed?.clamp(46, 90) ??
+            (DateTime.now().difference(match.kickoff).inMinutes - 21).clamp(
+              46,
+              90,
+            );
         halfLabel = isEn ? '2H' : '2T';
       } else {
         // ET / BT
-        minute = apiElapsed?.clamp(91, 120) ??
-            (DateTime.now().difference(match.kickoff).inMinutes - 36)
-                .clamp(91, 120);
+        minute =
+            apiElapsed?.clamp(91, 120) ??
+            (DateTime.now().difference(match.kickoff).inMinutes - 36).clamp(
+              91,
+              120,
+            );
         halfLabel = isEn ? 'ET' : 'TS';
       }
       return SizedBox(

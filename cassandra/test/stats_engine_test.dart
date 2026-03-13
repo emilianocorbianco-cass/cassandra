@@ -28,6 +28,8 @@ void main() {
       matchBreakdowns: mb,
       baseTotal: total - bonus,
       bonusPoints: bonus,
+      oddsBonusPoints: 0,
+      correctBonusPoints: 0,
       total: total,
       correctCount: correctCount,
       averageOddsPlayed: 2.0,

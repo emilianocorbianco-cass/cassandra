@@ -6,6 +6,8 @@ import '../../../features/predictions/models/pick_option.dart';
 class PicksScoreCache {
   final double baseTotal;
   final int bonusPoints;
+  final int oddsBonusPoints;
+  final int correctBonusPoints;
   final double total;
   final int correctCount;
   final double? averageOddsPlayed;
@@ -13,6 +15,8 @@ class PicksScoreCache {
   const PicksScoreCache({
     required this.baseTotal,
     required this.bonusPoints,
+    required this.oddsBonusPoints,
+    required this.correctBonusPoints,
     required this.total,
     required this.correctCount,
     this.averageOddsPlayed,
@@ -24,6 +28,8 @@ class PicksScoreCache {
       // Use num? → toInt() so that Firestore double values (e.g. 2.0, -1.0)
       // are accepted without throwing a TypeError from a direct `as int?` cast.
       bonusPoints: (m['bonusPoints'] as num?)?.toInt() ?? 0,
+      oddsBonusPoints: (m['oddsBonusPoints'] as num?)?.toInt() ?? 0,
+      correctBonusPoints: (m['correctBonusPoints'] as num?)?.toInt() ?? 0,
       total: (m['total'] as num?)?.toDouble() ?? 0,
       correctCount: (m['correctCount'] as num?)?.toInt() ?? 0,
       averageOddsPlayed: (m['averageOddsPlayed'] as num?)?.toDouble(),
@@ -34,6 +40,8 @@ class PicksScoreCache {
     return {
       'baseTotal': baseTotal,
       'bonusPoints': bonusPoints,
+      'oddsBonusPoints': oddsBonusPoints,
+      'correctBonusPoints': correctBonusPoints,
       'total': total,
       'correctCount': correctCount,
       if (averageOddsPlayed != null) 'averageOddsPlayed': averageOddsPlayed,

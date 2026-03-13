@@ -96,7 +96,7 @@ class _SplashScreenState extends State<SplashScreen>
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: Image.asset(
-              'assets/icon/testicon2.png',
+              'assets/icon/cc_logo.png',
               width: 280,
               height: 280,
             ),
