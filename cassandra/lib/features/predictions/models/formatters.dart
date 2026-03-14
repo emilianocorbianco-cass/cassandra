@@ -1,5 +1,5 @@
 String formatOdds(double value) {
-  return value.toStringAsFixed(2).replaceAll('.', ',');
+  return value.toStringAsFixed(2);
 }
 
 String twoDigits(int n) => n.toString().padLeft(2, '0');

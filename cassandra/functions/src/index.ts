@@ -98,6 +98,7 @@ interface PicksScoreDoc {
 
 interface ScoringMatchDoc {
   id: string;
+  kickoff: string; // ISO-8601
   odds: {
     home: number;
     draw: number;
@@ -376,6 +377,7 @@ function parseScoringMatchesFromMatchdayData(
     const m = raw as Record<string, unknown>;
     const id = String(m["id"] ?? "").trim();
     if (!id) continue;
+    const kickoff = String(m["kickoff"] ?? "");
     const rawOdds = m["odds"];
     if (typeof rawOdds !== "object" || rawOdds == null) continue;
     const odds = rawOdds as Record<string, unknown>;
@@ -399,6 +401,7 @@ function parseScoringMatchesFromMatchdayData(
 
     matches.push({
       id,
+      kickoff,
       odds: {
         home,
         draw,
@@ -514,17 +517,28 @@ function isSameScore(a: PicksScoreDoc | null, b: PicksScoreDoc): boolean {
 function computeScoreForPicks(
   matches: ScoringMatchDoc[],
   picksByMatchId: Record<string, PickOptionValue>,
-  outcomesByMatchId: Record<string, Outcome>
+  outcomesByMatchId: Record<string, Outcome>,
+  submittedAt?: Date
 ): PicksScoreDoc {
   let baseTotal = 0;
   let correctCount = 0;
   let winningOddsSum = 0;
   const playedOdds: number[] = [];
+  const LATE_PENALTY = -2;
 
   for (const match of matches) {
     const pick = picksByMatchId[match.id] ?? "none";
     const outcome = outcomesByMatchId[match.id] ?? "pending";
     const played = oddsPlayedForPick(match, pick);
+
+    // Match già iniziato al momento della sottomissione → -2.
+    if (submittedAt && match.kickoff) {
+      const kickoffDate = new Date(match.kickoff);
+      if (kickoffDate < submittedAt) {
+        baseTotal += LATE_PENALTY;
+        continue;
+      }
+    }
 
     if (outcome === "pending") {
       if (played != null) playedOdds.push(played);
@@ -635,7 +649,11 @@ async function recomputePicksScoresForMatchday(
   for (const doc of picksSnap.docs) {
     const data = doc.data();
     const picksByMatchId = parsePicksByMatchId(data["picksByMatchId"]);
-    const score = computeScoreForPicks(matches, picksByMatchId, outcomesByMatchId);
+    const rawSubmittedAt = data["submittedAt"];
+    const submittedAt = rawSubmittedAt && typeof rawSubmittedAt === "object" && "toDate" in rawSubmittedAt
+      ? (rawSubmittedAt as FirebaseFirestore.Timestamp).toDate()
+      : undefined;
+    const score = computeScoreForPicks(matches, picksByMatchId, outcomesByMatchId, submittedAt);
     const existingScore = parseStoredScore(data["score"]);
     if (isSameScore(existingScore, score)) continue;
 

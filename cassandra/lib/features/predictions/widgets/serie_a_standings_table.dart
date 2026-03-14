@@ -21,13 +21,19 @@ class SerieAStandingsTable extends StatelessWidget {
 
     return Card(
       color: CassandraColors.platinum,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.serieAStandingsTitle, style: textTheme.titleMedium),
+            Text(
+              l10n.serieAStandingsTitle,
+              style: textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 12),
             LayoutBuilder(
               builder: (context, constraints) => FittedBox(

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../services/storage/storage_service.dart';
 import '../../shared/image_crop_screen.dart';
+import '../../shared/image_viewer_overlay.dart';
 
 class GroupImageHelper {
   GroupImageHelper._();
@@ -129,12 +130,27 @@ class _GroupImageDisplayState extends State<GroupImageDisplay> {
     _resolvedImage = null;
   }
 
+  void _openFullScreen() {
+    if (_resolvedImage == null) return;
+    ImageViewerOverlay.show(
+      context,
+      imageProvider: _resolvedImage!,
+      heroTag: 'group_image_${widget.imagePath}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_resolvedImage != null) {
-      return CircleAvatar(
-        radius: widget.radius,
-        backgroundImage: _resolvedImage,
+      return GestureDetector(
+        onTap: _openFullScreen,
+        child: Hero(
+          tag: 'group_image_${widget.imagePath}',
+          child: CircleAvatar(
+            radius: widget.radius,
+            backgroundImage: _resolvedImage,
+          ),
+        ),
       );
     }
     return CircleAvatar(

@@ -24,7 +24,6 @@ class SerieAPage extends StatefulWidget {
 }
 
 class _SerieAPageState extends State<SerieAPage> {
-  int _segment = 0; // 0 = risultati, 1 = classifica Serie A
   bool _didLoad = false;
 
   _SerieAData? _data;
@@ -194,90 +193,33 @@ class _SerieAPageState extends State<SerieAPage> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 17, 12, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    segments: [
-                      ButtonSegment(
-                        value: 0,
-                        label: Text(
-                          l10n.serieASegmentResults,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        label: Text(
-                          l10n.serieASegmentStandings,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
-                    selected: {_segment},
-                    onSelectionChanged: (s) =>
-                        setState(() => _segment = s.first),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 2),
-            const Divider(height: 1),
-            Expanded(
-              child: _segment == 1
-                  ? _buildSerieAStandings(context, app)
-                  : RefreshIndicator(
-                      onRefresh: demoActive ? () async {} : _reload,
-                      child: demoActive
-                          ? _buildDemoList(
-                              context,
-                              _segment,
-                              demoMatches,
-                              app.cachedPredictionOutcomesByMatchId,
-                              l10n,
-                            )
-                          : _buildList(context, effectiveData),
-                    ),
-            ),
-          ],
+        child: RefreshIndicator(
+          onRefresh: demoActive ? () async {} : _reload,
+          child: _buildUnifiedList(context, app, effectiveData, demoActive, l10n),
         ),
       ),
     );
   }
 
-  Widget _buildSerieAStandings(BuildContext context, AppState appState) {
-    final l10n = AppLocalizations.of(context)!;
-    final baseStandings = appState.cachedSeasonStandings;
-    if (baseStandings.isEmpty) {
-      return ListView(
-        children: [
-          const SizedBox(height: 120),
-          Center(child: Text(l10n.commonNoDataAvailable)),
-        ],
-      );
-    }
-    // Overlay live match results on top of official standings.
-    final liveMatches = appState.cachedPredictionMatches ?? const [];
-    final standings = computeLiveStandings(baseStandings, liveMatches);
-    return RefreshIndicator(
-      onRefresh: _reload,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 90),
-        children: [SerieAStandingsTable(standings: standings)],
-      ),
-    );
-  }
-
-  Widget _buildList(BuildContext context, _SerieAData data) {
-    final l10n = AppLocalizations.of(context)!;
-    final matches = List<PredictionMatch>.of(data.matches)
+  Widget _buildUnifiedList(
+    BuildContext context,
+    AppState app,
+    _SerieAData effectiveData,
+    bool demoActive,
+    AppLocalizations l10n,
+  ) {
+    // Build match cards.
+    final matches = List<PredictionMatch>.of(effectiveData.matches)
       ..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-    if (matches.isEmpty) {
+
+    // Build standings widget (if available).
+    final baseStandings = app.cachedSeasonStandings;
+    final liveMatches = app.cachedPredictionMatches ?? const [];
+    final standings = baseStandings.isNotEmpty
+        ? computeLiveStandings(baseStandings, liveMatches)
+        : null;
+
+    if (matches.isEmpty && standings == null) {
       return ListView(
         children: [
           const SizedBox(height: 120),
@@ -286,142 +228,155 @@ class _SerieAPageState extends State<SerieAPage> {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 90),
-      itemCount: matches.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
-      itemBuilder: (context, i) {
-        final m = matches[i];
-        final liveScore = _liveScoreLabel(m);
-        final liveStatus = _statusLabelForCard(m.statusShort, l10n);
-        final kickoff = formatKickoff(m.kickoff);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 90),
+      children: [
+        for (int i = 0; i < matches.length; i++) ...[
+          if (i > 0) const SizedBox(height: 18),
+          _buildMatchCard(context, matches[i], l10n),
+        ],
+        if (matches.isNotEmpty && standings != null) ...[
+          const SizedBox(height: 18),
+          const Divider(height: 1),
+          const SizedBox(height: 18),
+        ],
+        if (standings != null)
+          SerieAStandingsTable(standings: standings),
+      ],
+    );
+  }
 
-        const liveSet = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'P'};
-        final rawStatus = (m.statusShort ?? '').trim().toUpperCase();
-        final isMatchLive = liveSet.contains(rawStatus);
+  Widget _buildMatchCard(
+    BuildContext context,
+    PredictionMatch m,
+    AppLocalizations l10n,
+  ) {
+    final liveScore = _liveScoreLabel(m);
+    final liveStatus = _statusLabelForCard(m.statusShort, l10n);
+    final kickoff = formatKickoff(m.kickoff);
 
-        return Material(
-          color: CassandraColors.platinum,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () {
-              Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute(
-                  builder: (_) => LiveMatchDetailsPage(match: m),
+    const liveSet = {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE', 'P'};
+    final rawStatus = (m.statusShort ?? '').trim().toUpperCase();
+    final isMatchLive = liveSet.contains(rawStatus);
+
+    return Material(
+      color: CassandraColors.platinum,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          Navigator.of(context, rootNavigator: true).push(
+            MaterialPageRoute(
+              builder: (_) => LiveMatchDetailsPage(match: m),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 12,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TeamName(
+                    name: m.homeTeam,
+                    logoUrl: m.homeTeamLogo,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: CassandraColors.inkBlackV2,
+                    ),
+                  ),
                 ),
-              );
-            },
-            child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 118,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isMatchLive) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        margin: const EdgeInsets.only(bottom: 2),
+                        decoration: BoxDecoration(
+                          color: CassandraColors.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          m.statusShort!,
+                          style: const TextStyle(
+                            color: CassandraColors.onPrimary,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Text(
+                        kickoff,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: CassandraColors.inkBlackV2.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    Text(
+                      liveScore,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: CassandraColors.inkBlackV2,
+                        letterSpacing: -0.5,
+                        height: 1.1,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: TeamName(
-                              name: m.homeTeam,
-                              logoUrl: m.homeTeamLogo,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: CassandraColors.inkBlackV2,
-                              ),
-                            ),
+                    if (liveStatus.isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        liveStatus,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: CassandraColors.inkBlackV2.withValues(
+                            alpha: 0.55,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 118,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // LIVE badge
-                              if (isMatchLive) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 1,
-                                  ),
-                                  margin: const EdgeInsets.only(bottom: 2),
-                                  decoration: BoxDecoration(
-                                    color: CassandraColors.primary,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    m.statusShort!,
-                                    style: const TextStyle(
-                                      color: CassandraColors.onPrimary,
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                              ] else ...[
-                                // Orario pre-partita
-                                Text(
-                                  kickoff,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: CassandraColors.inkBlackV2.withValues(
-                                      alpha: 0.5,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                              ],
-                              // Score — ink black bold
-                              Text(
-                                liveScore,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  color: CassandraColors.inkBlackV2,
-                                  letterSpacing: -0.5,
-                                  height: 1.1,
-                                ),
-                              ),
-                              // Status (FT, 1T, ecc.)
-                              if (liveStatus.isNotEmpty) ...[
-                                const SizedBox(height: 1),
-                                Text(
-                                  liveStatus,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: CassandraColors.inkBlackV2.withValues(
-                                      alpha: 0.55,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: TeamName(
-                              name: m.awayTeam,
-                              logoUrl: m.awayTeamLogo,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: CassandraColors.inkBlackV2,
-                              ),
-                              reversed: true,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TeamName(
+                    name: m.awayTeam,
+                    logoUrl: m.awayTeamLogo,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: CassandraColors.inkBlackV2,
                     ),
-            ), // inner Container
-          ), // InkWell
-        ); // Material
-      },
+                    reversed: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -475,133 +430,3 @@ class _SerieAData {
   });
 }
 
-Widget _buildDemoList(
-  BuildContext context,
-  int segment,
-  List<PredictionMatch> all,
-  Map<String, MatchOutcome> outcomes,
-  AppLocalizations l10n,
-) {
-  final matches = all.where((m) {
-    final o = outcomes[m.id] ?? MatchOutcome.pending;
-    return segment == 0 ? !o.isPending : o.isPending;
-  }).toList()..sort((a, b) => a.kickoff.compareTo(b.kickoff));
-
-  if (matches.isEmpty) {
-    return Center(
-      child: Text(
-        segment == 0 ? l10n.serieANoResults : l10n.serieANoUpcomingMatches,
-      ),
-    );
-  }
-
-  return ListView.separated(
-    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-    itemCount: matches.length,
-    separatorBuilder: (context, index) => const SizedBox(height: 12),
-    itemBuilder: (context, i) {
-      final m = matches[i];
-      final o = outcomes[m.id] ?? MatchOutcome.pending;
-      final kickoff = formatKickoff(m.kickoff);
-      final score = _demoScoreLabel(m, o: o);
-      final status = _demoStatusLabel(m.statusShort, l10n, o);
-
-      return Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute(builder: (_) => LiveMatchDetailsPage(match: m)),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: TeamName(
-                      name: m.homeTeam,
-                      logoUrl: m.homeTeamLogo,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                SizedBox(
-                  width: 118,
-                  child: Column(
-                    children: [
-                      Text(
-                        kickoff,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CassandraColors.slate,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        score,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      SizedBox(
-                        height: 18,
-                        child: Text(
-                          status,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: CassandraColors.slate,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: TeamName(
-                      name: m.awayTeam,
-                      logoUrl: m.awayTeamLogo,
-                      style: Theme.of(context).textTheme.titleMedium,
-                      reversed: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
-}
-
-String _demoScoreLabel(PredictionMatch m, {required MatchOutcome o}) {
-  if (o == MatchOutcome.pending) return '–';
-  if (m.homeGoals != null && m.awayGoals != null) {
-    return '${m.homeGoals} – ${m.awayGoals}';
-  }
-  return '- – -';
-}
-
-String _demoStatusLabel(
-  String? rawStatus,
-  AppLocalizations l10n,
-  MatchOutcome o,
-) {
-  final status = (rawStatus ?? '').trim().toUpperCase();
-  if (status == '1H') return l10n.liveStatusFirstHalf;
-  if (status == 'HT') return l10n.liveStatusHalftime;
-  if (status == '2H' || status == 'ET' || status == 'BT' || status == 'P') {
-    return l10n.liveStatusSecondHalf;
-  }
-  if (status == 'FT' || o != MatchOutcome.pending) return l10n.liveStatusFinal;
-  return '';
-}

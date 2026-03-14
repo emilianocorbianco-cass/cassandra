@@ -67,7 +67,7 @@ class _SettingsPageState extends State<SettingsPage> {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 17, 16, 90),
+          padding: const EdgeInsets.fromLTRB(18, 17, 18, 90),
           children: [
             ProfileSettingsSection(
               app: app,

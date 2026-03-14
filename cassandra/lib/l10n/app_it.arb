@@ -602,8 +602,8 @@
   "predictionsClearPick": "Azzera scelta",
   "groupHubTitle": "Scegli il tuo gruppo",
   "groupHubSubtitle": "Scegli il gruppo in cui entrare",
-  "groupHubCreateGroup": "Crea gruppo",
-  "groupHubJoinGroup": "Unisciti a un gruppo",
+  "groupHubCreateGroup": "Crea un gruppo",
+  "groupHubJoinGroup": "Unisciti ad un gruppo",
   "groupHubMemberCount": "{count, plural, =1{1 membro} other{{count} membri}}",
   "@groupHubMemberCount": {
     "placeholders": {

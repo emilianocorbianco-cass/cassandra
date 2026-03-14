@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
@@ -31,10 +33,17 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
 
   Future<void> _completeSignInFlow(String uid) async {
     final app = CassandraScope.of(context);
-    await app.hydrateProfileFromFirestore(uid);
-    await app.hydrateCurrentUserHistoryFromFirestore();
-    await PushNotificationsService.instance.initializeForAppState(app);
+    await app.hydrateProfileFromFirestore(uid).timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {
+        if (kDebugMode) debugPrint('[welcome-back] hydrate profile timed out');
+      },
+    );
     if (!mounted) return;
+    // History hydration and push notifications run in background —
+    // don't block navigation.
+    unawaited(app.hydrateCurrentUserHistoryFromFirestore());
+    unawaited(PushNotificationsService.instance.initializeForAppState(app));
 
     Widget destination;
     if (app.needsProfileSetup) {
@@ -140,7 +149,16 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
         });
         return;
       }
-      await _completeSignInFlow(uid);
+      try {
+        await _completeSignInFlow(uid);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[welcome-back] sign-in flow error: $e');
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = l10n.loginSignInError;
+        });
+      }
       return;
     }
 
@@ -196,7 +214,10 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
         ? '@cassandra'
         : (rawHandle.startsWith('@') ? rawHandle : '@$rawHandle');
 
+    const snow = CassandraColors.brightSnow;
+
     return Scaffold(
+      backgroundColor: CassandraColors.bg,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -213,6 +234,7 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
                   l10n.welcomeBackTitle(handle),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
+                    color: snow,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -235,6 +257,10 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _loading ? null : _notYou,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: snow,
+                      side: const BorderSide(color: snow),
+                    ),
                     child: Text(l10n.welcomeBackNotYou),
                   ),
                 ),

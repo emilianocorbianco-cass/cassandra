@@ -1104,17 +1104,20 @@ class _GroupPageState extends State<GroupPage> {
         ),
         actions: [
           Builder(
-            builder: (buttonContext) => IconButton(
-              icon: const Icon(Icons.share),
-              onPressed: () async {
-                final code = appState.groupInviteCode ?? '';
-                await _shareInvite(
-                  groupName: groupName,
-                  inviteCode: code,
-                  sourceContext: buttonContext,
-                  l10n: l10n,
-                );
-              },
+            builder: (buttonContext) => Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: () async {
+                  final code = appState.groupInviteCode ?? '';
+                  await _shareInvite(
+                    groupName: groupName,
+                    inviteCode: code,
+                    sourceContext: buttonContext,
+                    l10n: l10n,
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -1124,22 +1127,25 @@ class _GroupPageState extends State<GroupPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    segments: [
-                      ButtonSegment(value: 0, label: Text(l10n.groupStandings)),
-                      ButtonSegment(value: 1, label: Text(l10n.groupMatchdays)),
-                      ButtonSegment(value: 2, label: Text(l10n.groupStats)),
-                    ],
-                    selected: {_segment},
-                    onSelectionChanged: (s) =>
-                        setState(() => _segment = s.first),
-                  ),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+              child: SegmentedButton<int>(
+                showSelectedIcon: false,
+                expandedInsets: EdgeInsets.zero,
+                segments: [
+                  ButtonSegment(value: 0, label: Text(l10n.groupStandings)),
+                  ButtonSegment(value: 1, label: Text(l10n.groupMatchdays)),
+                  ButtonSegment(value: 2, label: Text(l10n.groupStats)),
                 ],
+                selected: {_segment},
+                onSelectionChanged: (s) =>
+                    setState(() => _segment = s.first),
+                style: ButtonStyle(
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
               ),
             ),
             const Divider(height: 1),

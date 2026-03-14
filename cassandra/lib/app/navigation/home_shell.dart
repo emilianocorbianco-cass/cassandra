@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui';
 
 import '../../features/predictions/predictions_page.dart';
@@ -12,6 +13,7 @@ import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart';
 import '../theme/cassandra_colors.dart';
+import '../widgets/target_icon.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
 import '../../features/predictions/models/prediction_match.dart';
@@ -90,14 +92,16 @@ class _HomeShellState extends State<HomeShell>
       var dayNumber = app.cassandraMatchdayCursor;
       app.ensureOriginKickoffsLoaded();
 
-      // Serie A has 38 matchdays. A cursor beyond that is a stale artefact;
-      // reset to a safe default so the look-ahead can rediscover the current
-      // matchday from Firestore.
+      // Serie A has 38 matchdays. If the cursor is at or beyond the last
+      // matchday it may be a stale artefact (e.g. intermediate matchdays were
+      // deleted and the look-ahead jumped ahead). Reset to a safe value so the
+      // look-ahead can rediscover the earliest pending matchday from Firestore.
       const maxSerieAMatchday = 38;
-      const safeCursorReset = 20;
-      if (dayNumber > maxSerieAMatchday) {
+      const maxLookAheadDays = 12;
+      final safeCursorReset = maxSerieAMatchday - maxLookAheadDays; // 26
+      if (dayNumber >= maxSerieAMatchday) {
         debugPrint(
-          '[live-sync] cursor $dayNumber > $maxSerieAMatchday, '
+          '[live-sync] cursor $dayNumber >= $maxSerieAMatchday, '
           'resetting to $safeCursorReset',
         );
         dayNumber = safeCursorReset;
@@ -107,16 +111,26 @@ class _HomeShellState extends State<HomeShell>
       MatchdayDocument? resolvedDoc;
       MatchdayProgress? resolvedProgress;
 
-      const maxLookAheadDays = 12;
+      int consecutiveNulls = 0;
+      const maxConsecutiveNulls = 3;
       for (var i = 0; i <= maxLookAheadDays; i++) {
         final candidate = await fs.getMatchdayData(
           seasonKey: app.currentSeasonKey,
           dayNumber: dayNumber,
         );
         if (candidate == null || candidate.matches.isEmpty) {
+          consecutiveNulls += 1;
+          if (consecutiveNulls > maxConsecutiveNulls) {
+            debugPrint(
+              '[live-sync] $consecutiveNulls consecutive missing matchdays '
+              'after day ${dayNumber - consecutiveNulls}, stopping look-ahead',
+            );
+            break;
+          }
           dayNumber += 1;
           continue;
         }
+        consecutiveNulls = 0;
 
         final matches = candidate.matches;
         final outcomes = candidate.outcomesByMatchId;
@@ -399,17 +413,19 @@ class _HomeShellState extends State<HomeShell>
 
           // ── Floating liquid-glass tab bar ──────────────────────────
           Positioned(
-            left: 12,
-            right: 12,
-            bottom: 14,
+            left: 18,
+            right: 18,
+            bottom: Platform.isAndroid
+                ? MediaQuery.of(context).viewPadding.bottom + 6
+                : 14 + MediaQuery.of(context).viewPadding.bottom * 0.3,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(14),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                 child: Container(
-                  height: 68,
+                  height: 50,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(14),
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
@@ -458,7 +474,7 @@ class _HomeShellState extends State<HomeShell>
                                   width: pillW,
                                   height: pillH,
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(22),
+                                    borderRadius: BorderRadius.circular(10),
                                     color: Colors.white.withValues(
                                       alpha: 0.12,
                                     ),
@@ -472,8 +488,8 @@ class _HomeShellState extends State<HomeShell>
                             child: Row(
                               children: [
                                 _NavTab(
-                                  icon: Icons.sports_soccer_outlined,
-                                  selectedIcon: Icons.sports_soccer,
+                                  iconBuilder: (color, size) =>
+                                      TargetIcon(size: size, color: color),
                                   label: l10n.tabPredictions,
                                   selected: _index == 0,
                                   onTap: () => _selectTab(0),
@@ -486,8 +502,8 @@ class _HomeShellState extends State<HomeShell>
                                   onTap: () => _selectTab(1),
                                 ),
                                 _NavTab(
-                                  icon: Icons.live_tv_outlined,
-                                  selectedIcon: Icons.live_tv,
+                                  icon: Icons.sports_soccer_outlined,
+                                  selectedIcon: Icons.sports_soccer,
                                   label: l10n.tabLive,
                                   selected: _index == 2,
                                   onTap: () => _selectTab(2),
@@ -518,15 +534,18 @@ class _HomeShellState extends State<HomeShell>
 
 class _NavTab extends StatefulWidget {
   const _NavTab({
-    required this.icon,
-    required this.selectedIcon,
+    this.icon,
+    this.selectedIcon,
+    this.iconBuilder,
     required this.label,
     required this.selected,
     required this.onTap,
   });
 
-  final IconData icon;
-  final IconData selectedIcon;
+  final IconData? icon;
+  final IconData? selectedIcon;
+  /// Custom widget builder that receives the color and size.
+  final Widget Function(Color color, double size)? iconBuilder;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -567,29 +586,32 @@ class _NavTabState extends State<_NavTab> with SingleTickerProviderStateMixin {
         child: AnimatedBuilder(
           animation: _flash,
           builder: (context, _) {
-            // Flash: quick amaranth burst then back to bright snow.
-            final f = _flash.value;
-            final flashColor = f > 0 && f < 1.0
-                ? Color.lerp(
-                    CassandraColors.primary,
-                    CassandraColors.brightSnow,
-                    Curves.easeOut.transform(f),
-                  )!
+            const selectedColor = CassandraColors.brightSnow;
+            final color = widget.selected
+                ? selectedColor
                 : CassandraColors.brightSnow;
 
+            const double iconSize = 26.0;
+            final iconWidget = widget.iconBuilder != null
+                ? widget.iconBuilder!(color, iconSize)
+                : Icon(
+                    widget.selected ? widget.selectedIcon : widget.icon,
+                    color: color,
+                    size: iconSize,
+                  );
             return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  widget.selected ? widget.selectedIcon : widget.icon,
-                  color: flashColor,
-                  size: widget.selected ? 30 : 28,
+                SizedBox(
+                  width: iconSize,
+                  height: iconSize,
+                  child: FittedBox(child: iconWidget),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   widget.label,
                   style: TextStyle(
-                    color: flashColor,
+                    color: color,
                     fontWeight: FontWeight.w700,
                     fontSize: 10,
                   ),

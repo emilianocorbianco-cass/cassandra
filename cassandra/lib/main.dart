@@ -13,6 +13,12 @@ import 'services/storage/storage_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    systemNavigationBarColor: Color(0xFF344A54),
+    systemNavigationBarIconBrightness: Brightness.light,
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+  ));
 
   // Non facciamo crashare l'app se manca .env: lo segnaleremo nella pagina diagnostica.
   try {

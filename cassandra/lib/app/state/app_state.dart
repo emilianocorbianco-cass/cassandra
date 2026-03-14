@@ -783,6 +783,20 @@ class AppState extends ChangeNotifier {
       }
       if (data != null) {
         mergeFirestoreProfile(data);
+
+        // Auto-complete profile setup if already done on another device.
+        if (!_currentUserProfileSetupCompleted) {
+          final remoteHandle =
+              ((data['teamName'] as String?) ?? '').trim();
+          final remoteDisplayName =
+              ((data['displayName'] as String?) ?? '').trim();
+          if (remoteHandle.isNotEmpty &&
+              remoteHandle != '@cassandra' &&
+              remoteDisplayName.isNotEmpty) {
+            _currentUserProfileSetupCompleted = true;
+            await _writeProfileSetupCompletedForUid(targetUid, true);
+          }
+        }
       }
 
       // Detect stale duplicate: if a previous Firebase Auth account with the
@@ -2161,19 +2175,6 @@ class AppState extends ChangeNotifier {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) return {};
 
-    DateTime? lockTime;
-    try {
-      final md = await fs.getMatchdayData(
-        seasonKey: currentSeasonKey,
-        dayNumber: dayNumber,
-      );
-      lockTime = md?.lockTime;
-      _clearBackendError();
-    } catch (e, st) {
-      _recordBackendError(e, st);
-      lockTime = null;
-    }
-
     final docs = await fs.getPicksForMatchday(
       seasonKey: currentSeasonKey,
       dayNumber: dayNumber,
@@ -2181,9 +2182,8 @@ class AppState extends ChangeNotifier {
       groupId: activeGroupId,
     );
 
-    final revealAtOrAfterLock =
-        lockTime != null && !DateTime.now().isBefore(lockTime);
     final requesterUid = _profile.id;
+    final now = DateTime.now();
 
     return {
       for (final d in docs)
@@ -2196,12 +2196,10 @@ class AppState extends ChangeNotifier {
             return d.picksByMatchId;
           }
 
-          // "Invia senza mostrare" (e fallback legacy): visibile solo dopo lock.
-          final hiddenUntilLock =
-              visibility == 'private' ||
-              visibility == 'friends' ||
-              visibility.isEmpty;
-          if (hiddenUntilLock && revealAtOrAfterLock) {
+          // Per-user lock: visibile 1 minuto dopo la sottomissione.
+          final revealTime =
+              d.submittedAt.add(const Duration(minutes: 1));
+          if (now.isAfter(revealTime)) {
             return d.picksByMatchId;
           }
 

@@ -602,8 +602,8 @@
   "predictionsClearPick": "Clear pick",
   "groupHubTitle": "Choose your group",
   "groupHubSubtitle": "Select a group to enter",
-  "groupHubCreateGroup": "Create group",
-  "groupHubJoinGroup": "Join group",
+  "groupHubCreateGroup": "Create a group",
+  "groupHubJoinGroup": "Join a group",
   "groupHubMemberCount": "{count, plural, =1{1 member} other{{count} members}}",
   "@groupHubMemberCount": {
     "placeholders": {

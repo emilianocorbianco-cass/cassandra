@@ -90,32 +90,47 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
+    const snow = CassandraColors.brightSnow;
+    final inputDecoration = InputDecoration(
+      labelStyle: const TextStyle(color: snow),
+      hintStyle: TextStyle(color: snow.withValues(alpha: 0.5)),
+      enabledBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: snow),
+      ),
+      focusedBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: snow, width: 2),
+      ),
+    );
+
     return Scaffold(
+      backgroundColor: CassandraColors.bg,
       appBar: AppBar(
+        backgroundColor: CassandraColors.bg,
+        foregroundColor: snow,
         title: Text(
           l10n.profileSetupTitle,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+          style: const TextStyle(fontWeight: FontWeight.w700, color: snow),
         ),
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              l10n.profileSetupSubtitle,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: CassandraColors.slate),
-            ),
-            const SizedBox(height: 16),
             Card(
+              color: CassandraColors.platinum,
               child: ListTile(
                 leading: ProfileImageDisplay(
                   imagePathOrUrl: _photoPath,
                   radius: 20,
                 ),
-                title: Text(l10n.settingsProfileImageLabel),
-                trailing: const Icon(Icons.chevron_right),
+                title: Text(
+                  l10n.settingsProfileImageLabel,
+                  style: const TextStyle(color: CassandraColors.inkBlackV2),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: CassandraColors.inkBlackV2,
+                ),
                 onTap: _pickProfileImage,
               ),
             ),
@@ -124,7 +139,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               controller: _displayNameCtrl,
               textInputAction: TextInputAction.next,
               onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
+              style: const TextStyle(color: snow),
+              cursorColor: snow,
+              decoration: inputDecoration.copyWith(
                 labelText: l10n.settingsDisplayNameLabel,
                 hintText: l10n.settingsDisplayNameHint,
               ),
@@ -138,7 +155,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 setState(() {});
               },
               onSubmitted: (_) => _continue(),
-              decoration: InputDecoration(
+              style: const TextStyle(color: snow),
+              cursorColor: snow,
+              decoration: inputDecoration.copyWith(
                 labelText: l10n.settingsHandleLabel,
                 hintText: l10n.settingsHandleHint,
               ),
@@ -147,7 +166,13 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             CheckboxListTile(
               value: _rememberMe,
               onChanged: (v) => setState(() => _rememberMe = v ?? false),
-              title: Text(l10n.profileSetupRememberMe),
+              title: Text(
+                l10n.profileSetupRememberMe,
+                style: const TextStyle(color: snow),
+              ),
+              checkColor: CassandraColors.bg,
+              activeColor: snow,
+              side: const BorderSide(color: snow),
               controlAffinity: ListTileControlAffinity.leading,
               contentPadding: EdgeInsets.zero,
             ),

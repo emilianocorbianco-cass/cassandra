@@ -30,26 +30,31 @@ class LanguageSelector extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<CassandraLanguage>(
-            showSelectedIcon: false,
-            segments: <ButtonSegment<CassandraLanguage>>[
-              ButtonSegment(
-                value: CassandraLanguage.system,
-                label: Text(l10n.settingsLanguageSystem),
+        SegmentedButton<CassandraLanguage>(
+          showSelectedIcon: false,
+          expandedInsets: EdgeInsets.zero,
+          segments: <ButtonSegment<CassandraLanguage>>[
+            ButtonSegment(
+              value: CassandraLanguage.system,
+              label: Text(l10n.settingsLanguageSystem),
+            ),
+            ButtonSegment(
+              value: CassandraLanguage.it,
+              label: Text(l10n.settingsLanguageIt),
+            ),
+            ButtonSegment(
+              value: CassandraLanguage.en,
+              label: Text(l10n.settingsLanguageEn),
+            ),
+          ],
+          selected: <CassandraLanguage>{currentValue},
+          onSelectionChanged: (value) => onChanged(value.first),
+          style: ButtonStyle(
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
-              ButtonSegment(
-                value: CassandraLanguage.it,
-                label: Text(l10n.settingsLanguageIt),
-              ),
-              ButtonSegment(
-                value: CassandraLanguage.en,
-                label: Text(l10n.settingsLanguageEn),
-              ),
-            ],
-            selected: <CassandraLanguage>{currentValue},
-            onSelectionChanged: (value) => onChanged(value.first),
+            ),
           ),
         ),
       ],

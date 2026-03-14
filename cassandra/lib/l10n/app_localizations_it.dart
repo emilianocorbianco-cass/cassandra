@@ -1100,10 +1100,10 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupHubSubtitle => 'Scegli il gruppo in cui entrare';
 
   @override
-  String get groupHubCreateGroup => 'Crea gruppo';
+  String get groupHubCreateGroup => 'Crea un gruppo';
 
   @override
-  String get groupHubJoinGroup => 'Unisciti a un gruppo';
+  String get groupHubJoinGroup => 'Unisciti ad un gruppo';
 
   @override
   String groupHubMemberCount(num count) {

@@ -83,8 +83,6 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   late List<PredictionMatch> _matches;
   bool _usingRealFixtures = false;
-  Timer? _lockRefreshTimer;
-  DateTime? _lockRefreshTarget;
   final Map<String, PickOption> _picks = {};
   bool _submitted = false;
 
@@ -102,8 +100,6 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (kDebugMode) {
       debugPrint('[predictions] dispose ${identityHashCode(this)}');
     }
-    _lockRefreshTimer?.cancel();
-    _lockRefreshTimer = null;
     super.dispose();
   }
 
@@ -144,38 +140,19 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   int get _pickedCount => matches.where((m) => !_pickFor(m.id).isNone).length;
-  int get _missingCount => matches.length - _pickedCount;
-  DateTime? get _firstKickoff => matches.isEmpty
-      ? null
-      : matches.map((m) => m.kickoff).reduce((a, b) => a.isBefore(b) ? a : b);
-  DateTime? get _lockTime =>
-      _firstKickoff?.subtract(const Duration(minutes: 30));
+  /// Matches that are still playable (not started) but have no pick.
+  int get _playableMissingCount =>
+      matches.where((m) => _pickFor(m.id).isNone && !_isMatchStarted(m)).length;
+  /// Lock = already submitted (per-user, not time-based).
   bool get _locked {
     final override = CassandraScope.of(context).debugLockOverride;
     if (override != null) return override;
-    return _lockTime != null && DateTime.now().isAfter(_lockTime!);
+    return _submitted;
   }
 
-  void _scheduleLockRefreshIfNeeded() {
-    final lockTime = _lockTime;
-    if (lockTime == null) {
-      _lockRefreshTimer?.cancel();
-      _lockRefreshTimer = null;
-      _lockRefreshTarget = null;
-      return;
-    }
-    if (_lockRefreshTarget == lockTime && _lockRefreshTimer != null) return;
-    _lockRefreshTimer?.cancel();
-    _lockRefreshTarget = lockTime;
-    final delay = lockTime.difference(DateTime.now());
-    if (delay <= Duration.zero) return;
-    _lockRefreshTimer = Timer(delay + const Duration(milliseconds: 250), () {
-      if (!mounted) return;
-      setState(() {});
-      _lockRefreshTimer = null;
-      _lockRefreshTarget = null;
-    });
-  }
+  /// Whether a match has already kicked off and is not playable.
+  bool _isMatchStarted(PredictionMatch match) =>
+      DateTime.now().isAfter(match.kickoff);
 
   void _setPick(String matchId, PickOption pick) {
     final l10n = AppLocalizations.of(context)!;
@@ -195,19 +172,20 @@ class _PredictionsPageState extends State<PredictionsPage>
       ).showSnackBar(SnackBar(content: Text(l10n.predictionsPickLockedSnack)));
       return;
     }
-    final effectivePick = _picks[matchId] == pick ? PickOption.none : pick;
+    final currentPick = _pickFor(matchId);
+    final effectivePick = currentPick == pick ? PickOption.none : pick;
     setState(() => _picks[matchId] = effectivePick);
     CassandraScope.of(context).setCurrentUserPick(matchId, effectivePick);
   }
 
   void _onHeroSubmit() {
     if (_submitted) return;
-    if (_pickedCount < matches.length) {
+    if (_playableMissingCount > 0) {
       final l10n = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            l10n.predictionsMissingConfirm(matches.length - _pickedCount),
+            l10n.predictionsMissingConfirm(_playableMissingCount),
           ),
         ),
       );
@@ -254,21 +232,31 @@ class _PredictionsPageState extends State<PredictionsPage>
 
   Future<bool> _submit(VisibilityChoice visibility) async {
     final l10n = AppLocalizations.of(context)!;
-    if (_locked) return false;
-    final missing = _missingCount;
-    if (missing > 0) {
-      final ok = await _confirmSubmitIfMissing(missing);
+    if (_submitted) return false;
+    final playableMissing = _playableMissingCount;
+    if (playableMissing > 0) {
+      final ok = await _confirmSubmitIfMissing(playableMissing);
       if (!ok) return false;
       if (!mounted) return false;
     }
     if (!mounted) return false;
     final appState = CassandraScope.of(context);
+    appState.ensureCurrentUserPicksLoaded();
     appState.ensureCurrentUserPicksHistoryLoaded();
     appState.ensureMatchdayMatchesLoaded();
     appState.ensureOutcomesHistoryLoaded();
+
+    // Build the complete picks map from appState (which accumulates picks
+    // across widget lifecycles) instead of the local _picks map, which
+    // resets to {} every time the widget is recreated (e.g. tab switch).
+    final allPicks = <String, PickOption>{
+      for (final m in matches)
+        if (!_pickFor(m.id).isNone) m.id: _pickFor(m.id),
+    };
+
     appState.saveCurrentUserPicksHistory(
       dayNumber: _effectiveMatchdayNumber,
-      picksByMatchId: _picks,
+      picksByMatchId: allPicks,
     );
     await appState.saveMatchdayMatchesSnapshot(
       matchdayNumber: _effectiveMatchdayNumber,
@@ -294,7 +282,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     if (outcomesNow.isNotEmpty) {
       scoreCache = CassandraScoringEngine.computeDayScore(
         matches: matches,
-        picksByMatchId: _picks,
+        picksByMatchId: allPicks,
         outcomesByMatchId: outcomesNow,
       );
     }
@@ -303,7 +291,7 @@ class _PredictionsPageState extends State<PredictionsPage>
         : 'private';
     final submitted = await appState.submitPicksToFirestore(
       dayNumber: _effectiveMatchdayNumber,
-      picksByMatchId: _picks,
+      picksByMatchId: allPicks,
       visibility: visLabel,
       score: scoreCache,
     );
@@ -776,7 +764,6 @@ class _PredictionsPageState extends State<PredictionsPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    _scheduleLockRefreshIfNeeded();
     _fetchGroupLeaderboardIfNeeded();
 
     final appState = CassandraScope.of(context);
@@ -1965,34 +1952,6 @@ class _CompactMatchCard extends StatelessWidget {
   }
 
   /// Lose odds: what the user loses if wrong.
-  double get _loseOdds {
-    if (pick.isNone) return 0;
-    // Single: penalty = complementary double chance
-    if (pick.isSingle) {
-      switch (pick) {
-        case PickOption.home:
-          return match.odds.drawAway;
-        case PickOption.draw:
-          return match.odds.homeAway;
-        case PickOption.away:
-          return match.odds.homeDraw;
-        default:
-          return 0;
-      }
-    }
-    // Double: penalty = complementary single
-    switch (pick) {
-      case PickOption.homeDraw:
-        return match.odds.away;
-      case PickOption.drawAway:
-        return match.odds.home;
-      case PickOption.homeAway:
-        return match.odds.draw;
-      default:
-        return 0;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final centerText = _centerText();
@@ -2173,25 +2132,6 @@ class _CompactMatchCard extends StatelessWidget {
   }
 
   /// Opposing pick label: single ↔ double chance complement.
-  String _opposingPickLabel() {
-    switch (pick) {
-      case PickOption.home:
-        return 'X2';
-      case PickOption.draw:
-        return '12';
-      case PickOption.away:
-        return '1X';
-      case PickOption.homeDraw:
-        return '2';
-      case PickOption.drawAway:
-        return '1';
-      case PickOption.homeAway:
-        return 'X';
-      case PickOption.none:
-        return '-';
-    }
-  }
-
   /// Whether the current live score matches the user's pick.
   bool get _isCurrentlyCorrect {
     final h = match.homeGoals ?? 0;
@@ -2217,28 +2157,16 @@ class _CompactMatchCard extends StatelessWidget {
   static const _mintLeaf = Color(0xFF00B884);
   static const _amaranth = Color(0xFFE01E48);
 
-  /// Background for the played-odds bubble (solid fill only when FT).
-  Color? get _playedBubbleBg {
+  /// Single bubble background — solid fill only at FT.
+  Color? get _pickBubbleBg {
     if (pick.isNone || !_isFT) return null;
-    return _isCurrentlyCorrect ? _mintLeaf : null;
+    return _isCurrentlyCorrect ? _mintLeaf : _amaranth;
   }
 
-  /// Background for the opposing-odds bubble (solid fill only when FT).
-  Color? get _opposingBubbleBg {
-    if (pick.isNone || !_isFT) return null;
-    return _isCurrentlyCorrect ? null : _amaranth;
-  }
-
-  /// Border color for the played-odds bubble (outline only while live).
-  Color? get _playedBubbleBorder {
+  /// Single bubble border — colored outline while live.
+  Color? get _pickBubbleBorder {
     if (pick.isNone || !_isLive) return null;
-    return _isCurrentlyCorrect ? _mintLeaf : null;
-  }
-
-  /// Border color for the opposing-odds bubble (outline only while live).
-  Color? get _opposingBubbleBorder {
-    if (pick.isNone || !_isLive) return null;
-    return _isCurrentlyCorrect ? null : _amaranth;
+    return _isCurrentlyCorrect ? _mintLeaf : _amaranth;
   }
 
   /// Post-lock: status | teams + score | 2 pick bubbles.
@@ -2331,24 +2259,18 @@ class _CompactMatchCard extends StatelessWidget {
           ),
         ),
 
-        // ── Right: 2 pick bubbles (always reserve space) ─────────
+        // ── Right: single pick bubble ──────────────────────────────
         const SizedBox(width: 8),
-        if (hasPick) ...[
+        if (hasPick)
           _PostLockPickBubble(
             label: pick.label,
             odds: _winOdds,
-            bgColor: _playedBubbleBg,
-            borderColor: _playedBubbleBorder,
-          ),
-          const SizedBox(width: 4),
-          _PostLockPickBubble(
-            label: _opposingPickLabel(),
-            odds: -_loseOdds,
-            bgColor: _opposingBubbleBg,
-            borderColor: _opposingBubbleBorder,
-          ),
-        ] else
-          const SizedBox(width: 114),
+            bgColor: _pickBubbleBg,
+            borderColor: _pickBubbleBorder,
+            large: true,
+          )
+        else
+          const SizedBox(width: 68),
       ],
     );
   }
@@ -2441,12 +2363,14 @@ class _PostLockPickBubble extends StatelessWidget {
     required this.odds,
     this.bgColor,
     this.borderColor,
+    this.large = false,
   });
 
   final String label;
   final double odds;
   final Color? bgColor;
   final Color? borderColor;
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
@@ -2456,15 +2380,20 @@ class _PostLockPickBubble extends StatelessWidget {
     final fg = hasFill
         ? CassandraColors.brightSnow
         : CassandraColors.inkBlackV2;
+    final w = large ? 68.0 : 55.0;
+    final fontSize = large ? 15.0 : 12.0;
+    final hPad = large ? 10.0 : 7.0;
+    final vPad = large ? 8.0 : 6.0;
+    final radius = large ? 12.0 : 9.0;
     return Container(
-      width: 55,
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+      width: w,
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(
           color: border,
-          width: borderColor != null ? 2.0 : 1.0,
+          width: borderColor != null ? 2.5 : 1.0,
         ),
       ),
       child: Column(
@@ -2474,7 +2403,7 @@ class _PostLockPickBubble extends StatelessWidget {
             label,
             style: TextStyle(
               color: fg,
-              fontSize: 12,
+              fontSize: fontSize,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -2482,7 +2411,7 @@ class _PostLockPickBubble extends StatelessWidget {
             formatOdds(odds),
             style: TextStyle(
               color: fg,
-              fontSize: 12,
+              fontSize: fontSize,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -2752,22 +2681,13 @@ class _MemberPickRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Played bubble: fill on FT, border on live
-    Color? playedBg;
-    Color? playedBorder;
-    if (data.isFT && data.isCorrect) {
-      playedBg = _mintLeaf;
-    } else if (data.isLive && data.isCorrect) {
-      playedBorder = _mintLeaf;
-    }
-
-    // Opposing bubble: fill on FT, border on live
-    Color? opposingBg;
-    Color? opposingBorder;
-    if (data.isFT && !data.isCorrect) {
-      opposingBg = _amaranth;
-    } else if (data.isLive && !data.isCorrect) {
-      opposingBorder = _amaranth;
+    // Single bubble: fill on FT, border on live
+    Color? bg;
+    Color? border;
+    if (data.isFT) {
+      bg = data.isCorrect ? _mintLeaf : _amaranth;
+    } else if (data.isLive) {
+      border = data.isCorrect ? _mintLeaf : _amaranth;
     }
 
     return Padding(
@@ -2790,15 +2710,8 @@ class _MemberPickRow extends StatelessWidget {
           _PostLockPickBubble(
             label: data.pick.label,
             odds: data.odds,
-            bgColor: playedBg,
-            borderColor: playedBorder,
-          ),
-          const SizedBox(width: 4),
-          _PostLockPickBubble(
-            label: data.opposingLabel,
-            odds: -data.opposingOdds,
-            bgColor: opposingBg,
-            borderColor: opposingBorder,
+            bgColor: bg,
+            borderColor: border,
           ),
         ],
       ),

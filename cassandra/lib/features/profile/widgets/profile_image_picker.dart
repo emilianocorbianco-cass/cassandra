@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../services/storage/storage_service.dart';
 import '../../shared/image_crop_screen.dart';
+import '../../shared/image_viewer_overlay.dart';
 
 class ProfileImageHelper {
   ProfileImageHelper._();
@@ -137,62 +138,19 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final source = (widget.imagePathOrUrl ?? '').trim();
-    if (source.isNotEmpty) {
-      final dataBytes = _decodeDataImage(source);
-      if (dataBytes != null) {
-        return CircleAvatar(
-          radius: widget.radius,
-          backgroundImage: MemoryImage(dataBytes),
-        );
-      }
-      if (StorageService.isStorageReference(source)) {
-        return FutureBuilder<Uint8List?>(
-          future: _storageBytesFuture,
-          builder: (context, snapshot) {
-            final bytes = snapshot.data;
-            if (bytes != null && bytes.isNotEmpty) {
-              return CircleAvatar(
-                radius: widget.radius,
-                backgroundImage: MemoryImage(bytes),
-              );
-            }
-            return CircleAvatar(
-              radius: widget.radius,
-              backgroundColor: CassandraColors.primary,
-              child: Icon(
-                Icons.person,
-                color: CassandraColors.onPrimary,
-                size: widget.radius,
-              ),
-            );
-          },
-        );
-      }
-      if (source.startsWith('http://') || source.startsWith('https://')) {
-        return CircleAvatar(
-          radius: widget.radius,
-          foregroundImage: NetworkImage(source),
-          backgroundColor: CassandraColors.primary,
-          child: Icon(
-            Icons.person,
-            color: CassandraColors.onPrimary,
-            size: widget.radius,
-          ),
-        );
-      }
+  Widget _tappable(ImageProvider image, Widget avatar) {
+    final tag = 'profile_image_${widget.imagePathOrUrl}';
+    return GestureDetector(
+      onTap: () => ImageViewerOverlay.show(
+        context,
+        imageProvider: image,
+        heroTag: tag,
+      ),
+      child: Hero(tag: tag, child: avatar),
+    );
+  }
 
-      final file = File(source);
-      if (file.existsSync()) {
-        return CircleAvatar(
-          radius: widget.radius,
-          backgroundImage: FileImage(file),
-        );
-      }
-    }
-
+  Widget _placeholder() {
     return CircleAvatar(
       radius: widget.radius,
       backgroundColor: CassandraColors.primary,
@@ -202,5 +160,72 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
         size: widget.radius,
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final source = (widget.imagePathOrUrl ?? '').trim();
+    if (source.isNotEmpty) {
+      final dataBytes = _decodeDataImage(source);
+      if (dataBytes != null) {
+        final img = MemoryImage(dataBytes);
+        return _tappable(
+          img,
+          CircleAvatar(
+            radius: widget.radius,
+            backgroundImage: img,
+          ),
+        );
+      }
+      if (StorageService.isStorageReference(source)) {
+        return FutureBuilder<Uint8List?>(
+          future: _storageBytesFuture,
+          builder: (context, snapshot) {
+            final bytes = snapshot.data;
+            if (bytes != null && bytes.isNotEmpty) {
+              final img = MemoryImage(bytes);
+              return _tappable(
+                img,
+                CircleAvatar(
+                  radius: widget.radius,
+                  backgroundImage: img,
+                ),
+              );
+            }
+            return _placeholder();
+          },
+        );
+      }
+      if (source.startsWith('http://') || source.startsWith('https://')) {
+        final img = NetworkImage(source);
+        return _tappable(
+          img,
+          CircleAvatar(
+            radius: widget.radius,
+            foregroundImage: img,
+            backgroundColor: CassandraColors.primary,
+            child: Icon(
+              Icons.person,
+              color: CassandraColors.onPrimary,
+              size: widget.radius,
+            ),
+          ),
+        );
+      }
+
+      final file = File(source);
+      if (file.existsSync()) {
+        final img = FileImage(file);
+        return _tappable(
+          img,
+          CircleAvatar(
+            radius: widget.radius,
+            backgroundImage: img,
+          ),
+        );
+      }
+    }
+
+    return _placeholder();
   }
 }

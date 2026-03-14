@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/cassandra_colors.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/storage/storage_service.dart';
+import '../../shared/image_viewer_overlay.dart';
 import '../models/badge_type.dart';
 
 class AvatarWithBadges extends StatefulWidget {
@@ -134,12 +135,19 @@ class _AvatarWithBadgesState extends State<AvatarWithBadges> {
 
     final bubbleSize = (widget.radius * 0.75).clamp(12.0, 16.0);
 
-    return SizedBox(
-      width: widget.radius * 2,
-      height: widget.radius * 2,
-      child: Stack(
-        children: [
-          _buildAvatar(_resolvedProvider),
+    return GestureDetector(
+      onTap: _resolvedProvider != null
+          ? () => ImageViewerOverlay.show(
+                context,
+                imageProvider: _resolvedProvider!,
+              )
+          : null,
+      child: SizedBox(
+        width: widget.radius * 2,
+        height: widget.radius * 2,
+        child: Stack(
+          children: [
+            _buildAvatar(_resolvedProvider),
           if (visible.isNotEmpty)
             Positioned(
               top: 2,
@@ -159,7 +167,8 @@ class _AvatarWithBadgesState extends State<AvatarWithBadges> {
                 ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

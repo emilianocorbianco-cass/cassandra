@@ -99,9 +99,13 @@ class CassandraScoringEngine {
     }
   }
 
+  /// Penalità per match il cui kickoff è precedente alla sottomissione.
+  static const double lateMatchPenalty = -2;
+
   /// Calcola punteggio per singola partita.
   ///
-  /// Nuove regole:
+  /// Regole:
+  /// - Match iniziato prima della sottomissione → -2 punti
   /// - Corretta → guadagni punti pari alla quota giocata
   /// - Sbagliata → 0 punti (nessuna penalità)
   /// - Non giocata → 0 punti
@@ -110,8 +114,20 @@ class CassandraScoringEngine {
     required PredictionMatch match,
     required PickOption pick,
     required MatchOutcome outcome,
+    DateTime? submittedAt,
   }) {
-    // 0) Outcome non ancora disponibile → 0 punti provvisori.
+    // 0) Match già iniziato al momento della sottomissione → -2.
+    if (submittedAt != null && match.kickoff.isBefore(submittedAt)) {
+      return MatchScoreBreakdown(
+        matchId: match.id,
+        basePoints: lateMatchPenalty,
+        correct: false,
+        playedOdds: null,
+        note: 'Late submission',
+      );
+    }
+
+    // 1) Outcome non ancora disponibile → 0 punti provvisori.
     if (outcome.isPending) {
       final played = pick.isNone ? null : _oddsPlayedForPick(match, pick);
       return MatchScoreBreakdown(
@@ -123,7 +139,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // 1) Partita annullata/voided: 0 per tutti
+    // 2) Partita annullata/voided: 0 per tutti
     if (outcome.isVoided) {
       return MatchScoreBreakdown(
         matchId: match.id,
@@ -134,7 +150,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // 2) Partita non giocata dall'utente: 0 punti
+    // 3) Partita non giocata dall'utente: 0 punti
     if (pick.isNone) {
       return MatchScoreBreakdown(
         matchId: match.id,
@@ -145,7 +161,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // 3) Singole
+    // 4) Singole
     if (pick.isSingle) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectSingle(pick, outcome);
@@ -158,7 +174,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // 4) Doppie chance
+    // 5) Doppie chance
     if (pick.isDouble) {
       final played = _oddsPlayedForPick(match, pick)!;
       final correct = _isCorrectDouble(pick, outcome);
@@ -171,7 +187,7 @@ class CassandraScoringEngine {
       );
     }
 
-    // 5) Fallback
+    // 6) Fallback
     return MatchScoreBreakdown(
       matchId: match.id,
       basePoints: 0,
@@ -189,13 +205,19 @@ class CassandraScoringEngine {
     required List<PredictionMatch> matches,
     required Map<String, PickOption> picksByMatchId,
     required Map<String, MatchOutcome> outcomesByMatchId,
+    DateTime? submittedAt,
   }) {
     final breakdowns = <MatchScoreBreakdown>[];
 
     for (final match in matches) {
       final pick = picksByMatchId[match.id] ?? PickOption.none;
       final outcome = outcomesByMatchId[match.id] ?? MatchOutcome.pending;
-      breakdowns.add(scoreMatch(match: match, pick: pick, outcome: outcome));
+      breakdowns.add(scoreMatch(
+        match: match,
+        pick: pick,
+        outcome: outcome,
+        submittedAt: submittedAt,
+      ));
     }
 
     final baseTotal = breakdowns.fold<double>(
