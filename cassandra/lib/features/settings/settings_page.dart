@@ -3,6 +3,7 @@ import 'package:cassandra/app/state/app_state.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
 import 'package:cassandra/features/settings/widgets/account_section.dart';
 import 'package:cassandra/features/settings/widgets/group_settings_section.dart';
+import 'package:cassandra/features/debug/cold_test_page.dart';
 import 'package:cassandra/features/settings/widgets/language_selector.dart';
 import 'package:cassandra/features/settings/widgets/profile_settings_section.dart';
 import 'package:flutter/material.dart';
@@ -86,7 +87,21 @@ class _SettingsPageState extends State<SettingsPage> {
                 setState(() => _language = value);
               },
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+            ListTile(
+              leading: Icon(Icons.science, color: Colors.orange.shade700),
+              title: const Text('Cold Test'),
+              subtitle: const Text('Test a freddo con giornate accelerate'),
+              trailing: const Icon(Icons.chevron_right),
+              contentPadding: EdgeInsets.zero,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ColdTestPage(),
+                ),
+              ),
+            ),
+            const Divider(),
+            const SizedBox(height: 16),
             // ── Debug ───────────────
             Text(
               'Debug',

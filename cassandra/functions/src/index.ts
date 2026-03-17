@@ -9,6 +9,7 @@ import {
   Timestamp,
 } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+import { getStorage } from "firebase-admin/storage";
 import * as https from "https";
 
 initializeApp();
@@ -2418,5 +2419,465 @@ export const migratePicksScores = onCall(
       `[${logPrefix}] Migration complete. Processed ${totalUpdated} matchdays.`
     );
     return { success: true, matchdaysProcessed: totalUpdated };
+  }
+);
+
+// ─── Cold Test System ────────────────────────────────────────────────────────
+// Callable functions for end-to-end cold testing with real users.
+// These allow wiping user data, seeding matchdays with accelerated timelines,
+// and progressively revealing real match results.
+
+async function deleteCollection(
+  db: FirebaseFirestore.Firestore,
+  collectionPath: string,
+  batchSize = 400
+): Promise<number> {
+  let totalDeleted = 0;
+  while (true) {
+    const snap = await db.collection(collectionPath).limit(batchSize).get();
+    if (snap.empty) break;
+
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    totalDeleted += snap.docs.length;
+
+    if (snap.docs.length < batchSize) break;
+  }
+  return totalDeleted;
+}
+
+async function deleteSubcollections(
+  db: FirebaseFirestore.Firestore,
+  parentCollection: string,
+  subcollectionNames: string[],
+  batchSize = 400
+): Promise<number> {
+  let totalDeleted = 0;
+  const parentSnap = await db.collection(parentCollection).get();
+  for (const parentDoc of parentSnap.docs) {
+    for (const sub of subcollectionNames) {
+      totalDeleted += await deleteCollection(
+        db,
+        `${parentCollection}/${parentDoc.id}/${sub}`,
+        batchSize
+      );
+    }
+  }
+  return totalDeleted;
+}
+
+export const coldTestWipeData = onCall(
+  {
+    region: "europe-west1",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    }
+
+    const db = getFirestore();
+    const logPrefix = "cold-test-wipe";
+    const deleted: Record<string, number> = {};
+
+    // Delete subcollections first (members, chatMessages under groups)
+    deleted.groupSubs = await deleteSubcollections(
+      db,
+      "groups",
+      ["members", "chatMessages"]
+    );
+    console.log(`[${logPrefix}] Deleted ${deleted.groupSubs} group subcollection docs`);
+
+    // Delete top-level collections (not seasons)
+    for (const col of ["users", "groups", "group_invites", "picks"]) {
+      deleted[col] = await deleteCollection(db, col);
+      console.log(`[${logPrefix}] Deleted ${deleted[col]} docs from ${col}`);
+    }
+
+    // Clear Firebase Storage
+    try {
+      const bucket = getStorage().bucket();
+      const [files] = await bucket.getFiles();
+      let storageDeleted = 0;
+      for (const file of files) {
+        await file.delete();
+        storageDeleted++;
+      }
+      deleted.storageFiles = storageDeleted;
+      console.log(`[${logPrefix}] Deleted ${storageDeleted} storage files`);
+    } catch (e) {
+      console.warn(`[${logPrefix}] Storage cleanup error:`, e);
+      deleted.storageFiles = 0;
+    }
+
+    console.log(`[${logPrefix}] Wipe complete`);
+    return { success: true, deleted };
+  }
+);
+
+interface ColdTestRealResult {
+  outcome: Outcome;
+  homeGoals: number | null;
+  awayGoals: number | null;
+}
+
+export const coldTestSeedMatchday = onCall(
+  {
+    region: "europe-west1",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    }
+
+    const data = request.data as Record<string, unknown>;
+    const dayNumber = Number(data.dayNumber);
+    if (!Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 38) {
+      throw new HttpsError(
+        "invalid-argument",
+        "dayNumber must be between 1 and 38."
+      );
+    }
+
+    const kickoffIntervalMin = Math.max(
+      3,
+      Number(data.kickoffIntervalMin) || 10
+    );
+    const matchDurationMin = Math.max(5, Number(data.matchDurationMin) || 12);
+
+    const db = getFirestore();
+    const season = seasonStartYear();
+    const seasonKey = season.toString();
+    const logPrefix = "cold-test-seed";
+
+    const docRef = db
+      .collection("seasons")
+      .doc(seasonKey)
+      .collection("matchdays")
+      .doc(dayNumber.toString());
+
+    // Try to read existing matchday data first
+    const existingSnap = await docRef.get();
+    let matches: MatchDoc[];
+    let realOutcomes: Record<string, ColdTestRealResult> = {};
+
+    if (existingSnap.exists) {
+      const existingData = existingSnap.data()!;
+      const rawMatches = existingData.matches;
+      if (!Array.isArray(rawMatches) || rawMatches.length === 0) {
+        throw new HttpsError(
+          "failed-precondition",
+          `Matchday ${dayNumber} exists but has no matches.`
+        );
+      }
+
+      // Extract matches and compute real outcomes from existing data
+      matches = rawMatches
+        .filter(
+          (m: unknown): m is Record<string, unknown> =>
+            typeof m === "object" && m != null
+        )
+        .map((m: Record<string, unknown>) => m as unknown as MatchDoc);
+
+      // Compute real outcomes from existing outcome data or match scores
+      const existingOutcomes = parseOutcomesByMatchIdFromMatchdayData(
+        existingData as Record<string, unknown>
+      );
+      for (const match of matches) {
+        const existingOutcome = existingOutcomes[match.id];
+        const hg =
+          match.homeGoals != null ? Number(match.homeGoals) : null;
+        const ag =
+          match.awayGoals != null ? Number(match.awayGoals) : null;
+
+        let outcome: Outcome;
+        if (existingOutcome && existingOutcome !== "pending") {
+          outcome = existingOutcome;
+        } else if (hg != null && ag != null) {
+          outcome = hg > ag ? "home" : hg < ag ? "away" : "draw";
+        } else {
+          outcome = "draw"; // fallback
+        }
+
+        realOutcomes[match.id] = {
+          outcome,
+          homeGoals: hg,
+          awayGoals: ag,
+        };
+      }
+
+      console.log(
+        `[${logPrefix}] Using existing matchday ${dayNumber} data (${matches.length} matches)`
+      );
+    } else {
+      // Fetch from API-Football
+      console.log(
+        `[${logPrefix}] No existing data, fetching from API-Football`
+      );
+
+      const leagueId = await resolveLeagueId(season, db);
+      const json = await apiGet("fixtures", {
+        league: leagueId.toString(),
+        season: season.toString(),
+        round: `Regular Season - ${dayNumber}`,
+        timezone: "Europe/Rome",
+      });
+
+      const fixtures = parseFixtures(json);
+      if (fixtures.length === 0) {
+        throw new HttpsError(
+          "not-found",
+          `No fixtures found for matchday ${dayNumber}.`
+        );
+      }
+
+      // Fetch odds for each fixture
+      const oddsByFixture = new Map<number, FixtureOdds>();
+      for (const f of fixtures) {
+        const odds = await fetchOddsForFixture(f.fixtureId);
+        if (odds) oddsByFixture.set(f.fixtureId, odds);
+        await sleep(200);
+      }
+
+      // Build match docs and extract real outcomes
+      matches = fixtures
+        .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
+        .map((f) =>
+          buildMatchDoc(
+            f,
+            oddsByFixture.get(f.fixtureId) ?? null,
+            null
+          )
+        );
+
+      for (const f of fixtures) {
+        realOutcomes[f.fixtureId.toString()] = {
+          outcome: computeOutcome(f),
+          homeGoals: f.homeGoals,
+          awayGoals: f.awayGoals,
+        };
+      }
+
+      console.log(
+        `[${logPrefix}] Fetched ${matches.length} fixtures with ${oddsByFixture.size} odds`
+      );
+    }
+
+    // Rewrite kickoff times: staggered every kickoffIntervalMin from now + 20min
+    const now = new Date();
+    const firstKickoff = new Date(now.getTime() + 20 * 60 * 1000);
+
+    for (let i = 0; i < matches.length; i++) {
+      const newKickoff = new Date(
+        firstKickoff.getTime() + i * kickoffIntervalMin * 60 * 1000
+      );
+      matches[i] = {
+        ...matches[i],
+        kickoff: newKickoff.toISOString(),
+        // Reset live fields
+        statusShort: "NS",
+        homeGoals: undefined,
+        awayGoals: undefined,
+        elapsed: undefined,
+        events: undefined,
+      };
+    }
+
+    const lockTime = firstKickoff;
+    const lastKickoff = new Date(
+      firstKickoff.getTime() +
+        (matches.length - 1) * kickoffIntervalMin * 60 * 1000
+    );
+
+    // Write to Firestore
+    await docRef.set({
+      matches,
+      outcomesByMatchId: Object.fromEntries(
+        matches.map((m) => [m.id, "pending"])
+      ),
+      lockTime: Timestamp.fromDate(lockTime),
+      updatedAt: FieldValue.serverTimestamp(),
+      finalized: false,
+      _coldTestRealOutcomes: realOutcomes,
+      _coldTestMatchDurationMin: matchDurationMin,
+    });
+
+    console.log(
+      `[${logPrefix}] Seeded matchday ${dayNumber}: ${matches.length} matches, ` +
+        `lockTime=${lockTime.toISOString()}, interval=${kickoffIntervalMin}min, ` +
+        `duration=${matchDurationMin}min`
+    );
+
+    return {
+      success: true,
+      matchCount: matches.length,
+      lockTime: lockTime.toISOString(),
+      firstKickoff: firstKickoff.toISOString(),
+      lastKickoff: lastKickoff.toISOString(),
+    };
+  }
+);
+
+export const coldTestResolveMatches = onCall(
+  {
+    region: "europe-west1",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    }
+
+    const data = request.data as Record<string, unknown>;
+    const dayNumber = Number(data.dayNumber);
+    if (!Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 38) {
+      throw new HttpsError(
+        "invalid-argument",
+        "dayNumber must be between 1 and 38."
+      );
+    }
+
+    const db = getFirestore();
+    const season = seasonStartYear();
+    const seasonKey = season.toString();
+    const logPrefix = "cold-test-resolve";
+
+    const docRef = db
+      .collection("seasons")
+      .doc(seasonKey)
+      .collection("matchdays")
+      .doc(dayNumber.toString());
+
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      throw new HttpsError(
+        "not-found",
+        `Matchday ${dayNumber} not found.`
+      );
+    }
+
+    const matchdayData = snap.data()!;
+    const rawRealOutcomes = matchdayData._coldTestRealOutcomes;
+    if (!rawRealOutcomes || typeof rawRealOutcomes !== "object") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This matchday was not seeded by cold test."
+      );
+    }
+
+    const realOutcomes = rawRealOutcomes as Record<
+      string,
+      ColdTestRealResult
+    >;
+    const matchDurationMin = Number(matchdayData._coldTestMatchDurationMin) || 12;
+
+    const rawMatches = matchdayData.matches;
+    if (!Array.isArray(rawMatches)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No matches in matchday document."
+      );
+    }
+
+    const existingOutcomes = parseOutcomesByMatchIdFromMatchdayData(
+      matchdayData as Record<string, unknown>
+    );
+
+    const now = new Date();
+    let revealed = 0;
+    let pending = 0;
+    const updatedOutcomes = { ...existingOutcomes };
+    const updatedMatches = [...rawMatches];
+
+    for (let i = 0; i < updatedMatches.length; i++) {
+      const match = updatedMatches[i] as Record<string, unknown>;
+      const matchId = String(match.id ?? "");
+      if (!matchId) continue;
+
+      // Already resolved
+      if (updatedOutcomes[matchId] && updatedOutcomes[matchId] !== "pending") {
+        revealed++;
+        continue;
+      }
+
+      const kickoffStr = String(match.kickoff ?? "");
+      const kickoff = new Date(kickoffStr);
+      if (Number.isNaN(kickoff.getTime())) {
+        pending++;
+        continue;
+      }
+
+      const endTime = new Date(
+        kickoff.getTime() + matchDurationMin * 60 * 1000
+      );
+
+      if (now >= endTime) {
+        // Reveal this match
+        const real = realOutcomes[matchId];
+        if (real) {
+          updatedOutcomes[matchId] = real.outcome;
+          updatedMatches[i] = {
+            ...match,
+            statusShort: "FT",
+            homeGoals: real.homeGoals ?? 0,
+            awayGoals: real.awayGoals ?? 0,
+            elapsed: 90,
+          };
+          revealed++;
+        } else {
+          pending++;
+        }
+      } else if (now >= kickoff) {
+        // Match is "in progress" — update status
+        const elapsedMs = now.getTime() - kickoff.getTime();
+        const simulatedMinute = Math.min(
+          90,
+          Math.round((elapsedMs / (matchDurationMin * 60 * 1000)) * 90)
+        );
+        updatedMatches[i] = {
+          ...match,
+          statusShort: simulatedMinute >= 45 ? "2H" : "1H",
+          elapsed: simulatedMinute,
+          homeGoals: 0,
+          awayGoals: 0,
+        };
+        pending++;
+      } else {
+        pending++;
+      }
+    }
+
+    const finalized =
+      pending === 0 &&
+      revealed > 0 &&
+      Object.values(updatedOutcomes).every((o) => o !== "pending");
+
+    await docRef.update({
+      matches: updatedMatches,
+      outcomesByMatchId: updatedOutcomes,
+      finalized,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Recompute scores for all picks
+    await recomputePicksScoresForMatchday(
+      db,
+      seasonKey,
+      dayNumber,
+      logPrefix
+    );
+
+    console.log(
+      `[${logPrefix}] Matchday ${dayNumber}: revealed=${revealed} pending=${pending} finalized=${finalized}`
+    );
+
+    return { revealed, pending, finalized };
   }
 );
