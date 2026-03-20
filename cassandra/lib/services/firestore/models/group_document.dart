@@ -11,6 +11,7 @@ class GroupDocument {
   final int memberCount;
   final int maxMembers;
   final bool deleting;
+  final bool adminApproval;
   final List<String> competitions;
 
   const GroupDocument({
@@ -24,6 +25,7 @@ class GroupDocument {
     required this.memberCount,
     required this.maxMembers,
     this.deleting = false,
+    this.adminApproval = true,
     this.competitions = const ['serie-a'],
   });
 
@@ -48,6 +50,7 @@ class GroupDocument {
       memberCount: (d['memberCount'] as num?)?.toInt() ?? 0,
       maxMembers: (d['maxMembers'] as num?)?.toInt() ?? 50,
       deleting: d['deleting'] as bool? ?? false,
+      adminApproval: d['adminApproval'] as bool? ?? true,
       competitions: competitions,
     );
   }
@@ -62,6 +65,7 @@ class GroupMemberDocument {
   final String? favoriteTeam;
   final DateTime joinedAt;
   final String role;
+  final String status;
 
   const GroupMemberDocument({
     required this.uid,
@@ -72,6 +76,7 @@ class GroupMemberDocument {
     this.favoriteTeam,
     required this.joinedAt,
     required this.role,
+    this.status = 'active',
   });
 
   factory GroupMemberDocument.fromFirestore(
@@ -87,6 +92,10 @@ class GroupMemberDocument {
       favoriteTeam: d['favoriteTeam'] as String?,
       joinedAt: (d['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       role: d['role'] as String? ?? 'member',
+      status: d['status'] as String? ?? 'active',
     );
   }
+
+  bool get isPending => status == 'pending';
+  bool get isActive => status == 'active';
 }

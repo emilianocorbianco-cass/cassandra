@@ -150,9 +150,9 @@ class _PredictionsPageState extends State<PredictionsPage>
     return _submitted;
   }
 
-  /// Whether a match has already kicked off and is not playable.
+  /// Whether a match is locked (30 minutes before kickoff).
   bool _isMatchStarted(PredictionMatch match) =>
-      DateTime.now().isAfter(match.kickoff);
+      CassandraScope.of(context).now().isAfter(match.kickoff.subtract(const Duration(minutes: 30)));
 
   void _setPick(String matchId, PickOption pick) {
     final l10n = AppLocalizations.of(context)!;
@@ -166,7 +166,7 @@ class _PredictionsPageState extends State<PredictionsPage>
       (m) => m?.id == matchId,
       orElse: () => null,
     );
-    if (match != null && DateTime.now().isAfter(match.kickoff)) {
+    if (match != null && _isMatchStarted(match)) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.predictionsPickLockedSnack)));
@@ -326,7 +326,7 @@ class _PredictionsPageState extends State<PredictionsPage>
             _usingRealFixtures = false;
           });
         }
-        final demoNow = DateTime.now();
+        final demoNow = scope.now();
         final demoAppState = scope;
         demoAppState.ensureOriginKickoffsLoaded();
         final demoOutcomes = demoAppState.effectivePredictionOutcomesByMatchId;
@@ -368,7 +368,7 @@ class _PredictionsPageState extends State<PredictionsPage>
         return;
       }
 
-      final now = DateTime.now();
+      final now = appState.now();
       var dayNumber = appState.cassandraMatchdayCursor;
       appState.ensureOriginKickoffsLoaded();
 
@@ -378,9 +378,9 @@ class _PredictionsPageState extends State<PredictionsPage>
       const maxLookAheadDays = 12;
       for (var i = 0; i <= maxLookAheadDays; i++) {
         final candidate = await fs.getMatchdayData(
-          seasonKey: appState.currentSeasonKey,
-          dayNumber: dayNumber,
-        );
+                seasonKey: appState.currentSeasonKey,
+                dayNumber: dayNumber,
+              );
         if (candidate == null || candidate.matches.isEmpty) {
           if (kDebugMode) {
             debugPrint('[fixtures] no firestore data for day=$dayNumber');
@@ -424,7 +424,20 @@ class _PredictionsPageState extends State<PredictionsPage>
 
       await appState.persistOriginKickoffs();
 
-      if (resolvedDoc == null) return;
+      if (resolvedDoc == null) {
+        if (kDebugMode) {
+          debugPrint(
+            '[fixtures] no matchday data found after lookahead '
+            'from cursor=${appState.cassandraMatchdayCursor}',
+          );
+        }
+        if (mounted) {
+          setState(() {
+            _shownMatchdayNumber = appState.uiMatchdayNumber;
+          });
+        }
+        return;
+      }
 
       if (resolvedDoc.dayNumber != appState.cassandraMatchdayCursor) {
         await appState.setCassandraMatchdayCursor(resolvedDoc.dayNumber);
@@ -459,6 +472,12 @@ class _PredictionsPageState extends State<PredictionsPage>
       if (kDebugMode) {
         debugPrint('[fixtures] load failed: $e');
         debugPrint('$st');
+      }
+      if (mounted) {
+        final fallbackAppState = CassandraScope.of(context);
+        setState(() {
+          _shownMatchdayNumber = fallbackAppState.uiMatchdayNumber;
+        });
       }
     }
   }
@@ -526,48 +545,11 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   static String _opposingLabelFor(PickOption pick) {
-    switch (pick) {
-      case PickOption.home:
-        return 'X2';
-      case PickOption.draw:
-        return '12';
-      case PickOption.away:
-        return '1X';
-      case PickOption.homeDraw:
-        return '2';
-      case PickOption.drawAway:
-        return '1';
-      case PickOption.homeAway:
-        return 'X';
-      case PickOption.none:
-        return '-';
-    }
+    return pick.label;
   }
 
   static double _loseOddsFor(PredictionMatch match, PickOption pick) {
-    if (pick.isNone) return 0;
-    if (pick.isSingle) {
-      switch (pick) {
-        case PickOption.home:
-          return match.odds.drawAway;
-        case PickOption.draw:
-          return match.odds.homeAway;
-        case PickOption.away:
-          return match.odds.homeDraw;
-        default:
-          return 0;
-      }
-    }
-    switch (pick) {
-      case PickOption.homeDraw:
-        return match.odds.away;
-      case PickOption.drawAway:
-        return match.odds.home;
-      case PickOption.homeAway:
-        return match.odds.draw;
-      default:
-        return 0;
-    }
+    return 0;
   }
 
   void _fetchGroupLeaderboardIfNeeded() {
@@ -717,8 +699,24 @@ class _PredictionsPageState extends State<PredictionsPage>
               (d) => d?.dayNumber == currentMatchdayNumber,
               orElse: () => null,
             );
-            final currentPicks =
+            final firestorePicks =
                 currentDoc?.picksByMatchId ?? const <String, PickOption>{};
+            // For the current user, fall back to local picks if Firestore
+            // doesn't have them yet (pre-submit state).
+            final Map<String, PickOption> currentPicks;
+            if (firestorePicks.isNotEmpty) {
+              currentPicks = firestorePicks;
+            } else if (member.id == appState.profile.id) {
+              final localPicks =
+                  appState.hasSavedPicksForMatchday(currentMatchdayNumber)
+                  ? appState.currentUserPicksForMatchday(currentMatchdayNumber)
+                  : appState.currentUserPicksByMatchId;
+              currentPicks = localPicks.isNotEmpty
+                  ? localPicks
+                  : firestorePicks;
+            } else {
+              currentPicks = firestorePicks;
+            }
             final currentDayScore = CassandraScoringEngine.computeDayScore(
               matches: currentMatches,
               picksByMatchId: currentPicks,
@@ -988,12 +986,6 @@ bool isPickCorrectForMatch(PredictionMatch match, PickOption pick) {
       return h == a;
     case PickOption.away:
       return a > h;
-    case PickOption.homeDraw:
-      return h >= a;
-    case PickOption.drawAway:
-      return a >= h;
-    case PickOption.homeAway:
-      return h != a;
     case PickOption.none:
       return false;
   }
@@ -1008,12 +1000,6 @@ bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
       return outcome == MatchOutcome.draw;
     case PickOption.away:
       return outcome == MatchOutcome.away;
-    case PickOption.homeDraw:
-      return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;
-    case PickOption.drawAway:
-      return outcome == MatchOutcome.draw || outcome == MatchOutcome.away;
-    case PickOption.homeAway:
-      return outcome == MatchOutcome.home || outcome == MatchOutcome.away;
     case PickOption.none:
       return false;
   }
@@ -1135,33 +1121,31 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
   double _computeMaxScore() {
     double base = 0;
     double maxWinningOddsSum = 0;
+    int maxCorrectCount = 0;
     for (final m in widget.matches) {
       final pick = widget.pickFor(m.id);
       if (pick.isNone) {
         if (!widget.submitted) {
-          // Assume best possible pick
           base += _max1X2(m.odds);
           maxWinningOddsSum += _max1X2(m.odds);
+          maxCorrectCount++;
         }
-        // Submitted but unpicked → 0 (no penalty)
       } else {
         final odds = CassandraScoringEngine.oddsForPick(m, pick);
         base += odds;
         maxWinningOddsSum += odds;
+        maxCorrectCount++;
       }
     }
-    final matchCount = widget.matches.length;
     return base +
-        CassandraScoringEngine.bonusForWinningOddsSum(maxWinningOddsSum) +
-        CassandraScoringEngine.bonusForCorrectCount(matchCount);
+        CassandraScoringEngine.bonusForCombinedScore(
+          maxWinningOddsSum + maxCorrectCount,
+        );
   }
 
-  /// Min score: all picks wrong → 0 base + worst bonuses.
+  /// Min score: all picks wrong → 0 base + worst bonus.
   double _computeMinScore() {
-    // All wrong → 0 base points, winningOddsSum = 0, correctCount = 0.
-    return (CassandraScoringEngine.bonusForWinningOddsSum(0) +
-            CassandraScoringEngine.bonusForCorrectCount(0))
-        .toDouble();
+    return CassandraScoringEngine.bonusForCombinedScore(0).toDouble();
   }
 
   static double _max1X2(Odds o) {
@@ -1182,10 +1166,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
     return widget.isEnglish ? 'Bonus points' : 'Calcolo punti bonus';
   }
 
-  String _bonusRulesBaseLabel() {
-    return widget.isEnglish ? 'Winning odds sum' : 'Somma quote vincenti';
-  }
-
   String _bonusPointsLabel(int points) {
     final sign = points > 0 ? '+' : '';
     return widget.isEnglish ? '$sign$points points' : '$sign$points punti';
@@ -1193,49 +1173,58 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
 
   List<({String range, int points})> _bonusRuleRows() {
     return const [
-      (range: '< 5', points: -10),
-      (range: '5 - 7.99', points: -7),
-      (range: '8 - 9.99', points: -4),
-      (range: '10 - 10.99', points: -1),
-      (range: '11 - 11.99', points: 1),
-      (range: '12 - 12.99', points: 4),
-      (range: '13 - 14.99', points: 7),
-      (range: '>= 15', points: 10),
+      (range: '< 9', points: -7),
+      (range: '9 - 12', points: -4),
+      (range: '12 - 15', points: -1),
+      (range: '15 - 18', points: 0),
+      (range: '18 - 22', points: 1),
+      (range: '22 - 26', points: 4),
+      (range: '26 - 30', points: 7),
+      (range: '> 30', points: 10),
     ];
   }
 
   Widget _buildCardShell({required Widget child}) {
-    return Container(
-      height: _cardHeight,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-      decoration: BoxDecoration(
-        color: CassandraColors.inkBlackV2,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x44000000),
-            blurRadius: 12,
-            offset: Offset(0, 6),
-          ),
-        ],
+    // Cap text scaling so the hero card never overflows on Android devices
+    // with large system font size.
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: MediaQuery.textScalerOf(context).clamp(
+          maxScaleFactor: 1.0,
+        ),
       ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 36),
-              child: child,
+      child: Container(
+        height: _cardHeight,
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        decoration: BoxDecoration(
+          color: CassandraColors.inkBlackV2,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x44000000),
+              blurRadius: 12,
+              offset: Offset(0, 6),
             ),
-          ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: _HeroCardFlipButton(
-              tooltip: _flipButtonTooltip(),
-              onTap: _toggleCardFace,
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 36),
+                child: child,
+              ),
             ),
-          ),
-        ],
+            Positioned(
+              top: 0,
+              right: 0,
+              child: _HeroCardFlipButton(
+                tooltip: _flipButtonTooltip(),
+                onTap: _toggleCardFace,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1243,9 +1232,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
   Widget _buildFrontFace(AppLocalizations l10n) {
     final correctCount = widget.dayScore.correctCount;
     final matchCount = widget.matches.length;
-    final totalPoints = widget.isMatchdayFinalized
-        ? formatOdds(widget.dayScore.total)
-        : '-';
+    final totalPoints = formatOdds(widget.dayScore.total);
 
     final segColors = _segmentColors();
     final segVoided = _segmentVoided();
@@ -1388,17 +1375,26 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: _fg,
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.3,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
               final rowHeight = constraints.maxHeight / rules.length;
-              final labelTop = (rowHeight * 3) + (rowHeight * 0.18);
+              // Labels aligned to rows 2, 3, 4 (12-15, 15-18, 18-22).
+              const labelStyle = TextStyle(
+                color: _fg,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                height: 1.0,
+              );
+              const textH = 12.0; // approx text height at fontSize 12
+              double rowCenter(int i) =>
+                  rowHeight * i + rowHeight / 2 - textH / 2;
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1422,17 +1418,39 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
                         Positioned(
                           left: 0,
                           right: 20,
-                          top: labelTop,
+                          top: rowCenter(2),
                           child: Text(
-                            _bonusRulesBaseLabel(),
+                            widget.isEnglish
+                                ? 'Winning odds'
+                                : 'Quote vincenti',
+                            textAlign: TextAlign.center,
                             maxLines: 1,
                             softWrap: false,
-                            style: const TextStyle(
-                              color: _fg,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
-                            ),
+                            style: labelStyle,
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: 20,
+                          top: rowCenter(3),
+                          child: const Text(
+                            '+',
+                            textAlign: TextAlign.center,
+                            style: labelStyle,
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: 20,
+                          top: rowCenter(4),
+                          child: Text(
+                            widget.isEnglish
+                                ? 'Correct picks'
+                                : 'Pronostici corretti',
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: labelStyle,
                           ),
                         ),
                       ],
@@ -1463,10 +1481,12 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
                               ),
                             ),
                             Expanded(
-                              flex: 4,
+                              flex: 5,
                               child: Text(
                                 _bonusPointsLabel(rule.points),
                                 textAlign: TextAlign.right,
+                                maxLines: 1,
+                                softWrap: false,
                                 style: TextStyle(
                                   color: pointsColor,
                                   fontSize: 12,
@@ -1567,9 +1587,9 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
         ),
         const SizedBox(height: 2),
         Text(
-          widget.isMatchdayFinalized ? widget.bonusSigned : '-',
+          widget.bonusSigned,
           style: TextStyle(
-            color: widget.isMatchdayFinalized ? _valueColor(bonusVal) : _fg,
+            color: _valueColor(bonusVal),
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
@@ -1588,7 +1608,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
         Text(
           totalPoints,
           style: TextStyle(
-            color: widget.isMatchdayFinalized ? _valueColor(totalVal) : _fg,
+            color: _valueColor(totalVal),
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
@@ -1940,12 +1960,6 @@ class _CompactMatchCard extends StatelessWidget {
         return match.odds.draw;
       case PickOption.away:
         return match.odds.away;
-      case PickOption.homeDraw:
-        return match.odds.homeDraw;
-      case PickOption.drawAway:
-        return match.odds.drawAway;
-      case PickOption.homeAway:
-        return match.odds.homeAway;
       case PickOption.none:
         return 0;
     }
@@ -2013,7 +2027,7 @@ class _CompactMatchCard extends StatelessWidget {
     );
   }
 
-  /// Pre-match: teams row + 6 odds buttons (2 rows of 3).
+  /// Pre-match: teams row + 3 odds buttons (1/X/2).
   Widget _buildPreMatchLayout(
     String centerText,
     String homeInitial,
@@ -2080,7 +2094,7 @@ class _CompactMatchCard extends StatelessWidget {
 
         const SizedBox(height: 8),
 
-        // ── All 6 odds on one row ──────────────────────────────────
+        // ── 1 / X / 2 odds buttons ──────────────────────────────────
         Row(
           children: [
             _CompactOddsButton(
@@ -2104,27 +2118,6 @@ class _CompactMatchCard extends StatelessWidget {
               locked: locked || submitted,
               onPressed: () => onPick(PickOption.away),
             ),
-            _CompactOddsButton(
-              label: '1X',
-              odds: match.odds.homeDraw,
-              selected: pick == PickOption.homeDraw,
-              locked: locked || submitted,
-              onPressed: () => onPick(PickOption.homeDraw),
-            ),
-            _CompactOddsButton(
-              label: 'X2',
-              odds: match.odds.drawAway,
-              selected: pick == PickOption.drawAway,
-              locked: locked || submitted,
-              onPressed: () => onPick(PickOption.drawAway),
-            ),
-            _CompactOddsButton(
-              label: '12',
-              odds: match.odds.homeAway,
-              selected: pick == PickOption.homeAway,
-              locked: locked || submitted,
-              onPressed: () => onPick(PickOption.homeAway),
-            ),
           ],
         ),
       ],
@@ -2143,12 +2136,6 @@ class _CompactMatchCard extends StatelessWidget {
         return h == a;
       case PickOption.away:
         return a > h;
-      case PickOption.homeDraw:
-        return h >= a;
-      case PickOption.drawAway:
-        return a >= h;
-      case PickOption.homeAway:
-        return h != a;
       case PickOption.none:
         return false;
     }
@@ -2475,7 +2462,7 @@ class _MatchStatusColumn extends StatelessWidget {
       if (s == '1H' || s == 'LIVE') {
         minute =
             apiElapsed?.clamp(1, 45) ??
-            (DateTime.now().difference(match.kickoff).inMinutes + 1).clamp(
+            (CassandraScope.of(context).now().difference(match.kickoff).inMinutes + 1).clamp(
               1,
               45,
             );
@@ -2483,7 +2470,7 @@ class _MatchStatusColumn extends StatelessWidget {
       } else if (s == '2H') {
         minute =
             apiElapsed?.clamp(46, 90) ??
-            (DateTime.now().difference(match.kickoff).inMinutes - 21).clamp(
+            (CassandraScope.of(context).now().difference(match.kickoff).inMinutes - 21).clamp(
               46,
               90,
             );
@@ -2492,7 +2479,7 @@ class _MatchStatusColumn extends StatelessWidget {
         // ET / BT
         minute =
             apiElapsed?.clamp(91, 120) ??
-            (DateTime.now().difference(match.kickoff).inMinutes - 36).clamp(
+            (CassandraScope.of(context).now().difference(match.kickoff).inMinutes - 36).clamp(
               91,
               120,
             );

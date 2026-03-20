@@ -146,6 +146,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get joinGroupJoined => 'Joined group!';
 
   @override
+  String get joinGroupPendingApproval => 'Request sent! The group admin must approve your access.';
+
+  @override
+  String get groupPendingMembers => 'Pending requests';
+
+  @override
+  String get groupApprove => 'Approve';
+
+  @override
+  String get groupReject => 'Reject';
+
+  @override
   String get joinGroupInvalidCode => 'Invalid invite code';
 
   @override

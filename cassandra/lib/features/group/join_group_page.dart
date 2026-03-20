@@ -49,7 +49,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
 
     if (!mounted) return;
 
-    if (err != null) {
+    if (err != null && err != 'Pending approval') {
       setState(() {
         _loading = false;
         _error = err == 'Invalid code'
@@ -68,6 +68,14 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
             ? l10n.backendPermissionDenied
             : err;
       });
+    } else if (err == 'Pending approval') {
+      setState(() => _loading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.joinGroupPendingApproval)),
+        );
+        Navigator.of(context).pop();
+      }
     } else {
       setState(() => _loading = false);
       if (mounted) {

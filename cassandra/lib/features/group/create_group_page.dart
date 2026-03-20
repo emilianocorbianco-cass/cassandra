@@ -214,14 +214,17 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                           labelText: l10n.createGroupNameLabel,
                           labelStyle: const TextStyle(color: CassandraColors.brightSnow),
                           counterStyle: const TextStyle(color: CassandraColors.brightSnow),
-                          border: const OutlineInputBorder(
-                            borderSide: BorderSide(color: CassandraColors.brightSnow),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(color: CassandraColors.brightSnow),
                           ),
-                          enabledBorder: const OutlineInputBorder(
-                            borderSide: BorderSide(color: CassandraColors.brightSnow),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(color: CassandraColors.brightSnow),
                           ),
-                          focusedBorder: const OutlineInputBorder(
-                            borderSide: BorderSide(color: CassandraColors.brightSnow, width: 2),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(color: CassandraColors.brightSnow, width: 2),
                           ),
                         ),
                         onChanged: (_) => setState(() {}),
@@ -259,8 +262,11 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                               : _onCreate,
                           style: OutlinedButton.styleFrom(
                             foregroundColor: CassandraColors.brightSnow,
-                            disabledForegroundColor: CassandraColors.brightSnow.withValues(alpha: 0.5),
+                            disabledForegroundColor: CassandraColors.brightSnow,
                             side: const BorderSide(color: CassandraColors.brightSnow),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
                           child: _creating
                               ? const SizedBox(
@@ -293,6 +299,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: CassandraColors.brightSnow,
                             side: const BorderSide(color: CassandraColors.brightSnow),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
                           child: Text(l10n.createGroupHaveInviteCode),
                         ),
@@ -341,54 +350,64 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Text(
-                          groupName,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          l10n.createGroupInviteCode,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: CassandraColors.slate),
-                        ),
-                        const SizedBox(height: 4),
-                        GestureDetector(
-                          onTap: () {
-                            Clipboard.setData(ClipboardData(text: inviteCode));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(l10n.createGroupCodeCopied),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            inviteCode,
-                            style: Theme.of(context).textTheme.headlineMedium
-                                ?.copyWith(
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 2,
-                                  color: CassandraColors.primary,
-                                ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          l10n.createGroupTapToCopy,
-                          style: Theme.of(context).textTheme.bodySmall
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: CassandraColors.brightSnow),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        groupName,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 18,
+                              color: CassandraColors.brightSnow,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        l10n.createGroupInviteCode,
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(
+                              color: CassandraColors.brightSnow,
+                              fontSize: 14,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: inviteCode));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(l10n.createGroupCodeCopied),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          inviteCode,
+                          style: Theme.of(context).textTheme.headlineMedium
                               ?.copyWith(
-                                color: CassandraColors.slate,
-                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 2,
+                                color: CassandraColors.brightSnow,
                               ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        l10n.createGroupTapToCopy,
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(
+                              color: CassandraColors.brightSnow,
+                              fontSize: 14,
+                            ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -401,6 +420,10 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                       label: Text(l10n.createGroupShareInviteCode),
                       style: FilledButton.styleFrom(
                         backgroundColor: CassandraColors.primary,
+                        foregroundColor: CassandraColors.brightSnow,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
                   ),
@@ -410,6 +433,13 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _onContinue,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CassandraColors.brightSnow,
+                      side: const BorderSide(color: CassandraColors.brightSnow),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                     child: Text(l10n.createGroupContinue),
                   ),
                 ),

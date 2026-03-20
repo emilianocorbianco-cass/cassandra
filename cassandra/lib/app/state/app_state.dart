@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
+import 'cassandra_clock.dart';
 import 'group_state.dart';
 import 'matchday_state.dart';
 import 'prediction_state.dart';
@@ -32,6 +33,24 @@ import '../../domain/matchday/matchday_recovery_rules.dart';
 import '../config/storage_keys.dart';
 
 class AppState extends ChangeNotifier {
+  /// Virtual clock for cold-test time travel. Production: always real time.
+  final CassandraClock clock = CassandraClock();
+
+  /// App-wide "now" — respects cold-test time travel when active.
+  DateTime now() => clock.now();
+
+  bool get isColdTestActive => clock.isActive;
+
+  /// Activate or deactivate the cold-test clock and rebuild the widget tree.
+  void setColdTestClock({Duration? offset}) {
+    if (offset != null) {
+      clock.activate(offset);
+    } else {
+      clock.deactivate();
+    }
+    notifyListeners();
+  }
+
   static const Duration _kProfileSyncDebounce = Duration(milliseconds: 450);
   static const Duration _kProfileSyncRetryDelay = Duration(seconds: 2);
   static const Duration _kProfileSyncRetryMaxDelay = Duration(seconds: 12);
@@ -786,13 +805,16 @@ class AppState extends ChangeNotifier {
 
         // Auto-complete profile setup if already done on another device.
         if (!_currentUserProfileSetupCompleted) {
+          final remoteSetupDone =
+              data['profileSetupCompleted'] == true;
           final remoteHandle =
               ((data['teamName'] as String?) ?? '').trim();
           final remoteDisplayName =
               ((data['displayName'] as String?) ?? '').trim();
-          if (remoteHandle.isNotEmpty &&
-              remoteHandle != '@cassandra' &&
-              remoteDisplayName.isNotEmpty) {
+          if (remoteSetupDone ||
+              (remoteHandle.isNotEmpty &&
+                  remoteHandle != '@cassandra' &&
+                  remoteDisplayName.isNotEmpty)) {
             _currentUserProfileSetupCompleted = true;
             await _writeProfileSetupCompletedForUid(targetUid, true);
           }
@@ -950,8 +972,8 @@ class AppState extends ChangeNotifier {
 
   /// Serie A season key: agosto-maggio → anno di inizio.
   String get currentSeasonKey {
-    final now = DateTime.now();
-    return (now.month >= 8 ? now.year : now.year - 1).toString();
+    final n = clock.now();
+    return (n.month >= 8 ? n.year : n.year - 1).toString();
   }
 
   /// Finalizza una matchday quando `finalDone` (e valida >= 6):
@@ -1113,9 +1135,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateGroupAdminApproval(bool value) =>
-      groupState.updateGroupAdminApproval(value);
+      groupState.updateGroupAdminApproval(
+        value,
+        firestoreService: _firestoreService,
+      );
 
-  Future<String?> createGroup(String name) => groupState.createGroup(
+  Future<String?> createGroup(String name) =>
+      groupState.createGroup(
     name: name,
     uid: _profile.id,
     isAuthenticated: isAuthenticated,

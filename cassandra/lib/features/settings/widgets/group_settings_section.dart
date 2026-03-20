@@ -75,12 +75,12 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
 
     if (confirmed != true || !mounted) return;
 
-    // Navigate to group hub immediately, delete in background.
+    await app.deleteActiveGroupIfAdmin();
+    if (!mounted) return;
+
     Navigator.of(context, rootNavigator: true).pushReplacement(
       MaterialPageRoute(builder: (_) => const GroupHubPage()),
     );
-
-    app.deleteActiveGroupIfAdmin();
   }
 
   Widget _buildCard(AppState app, AppLocalizations l10n, bool isAdmin) {

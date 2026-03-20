@@ -150,6 +150,7 @@ class FirestoreService {
       'language': cassandraLanguageToStorage(language),
       'defaultVisibility': predictionVisibilityToStorage(defaultVisibility),
       'avatarSeed': avatarSeed,
+      'profileSetupCompleted': true,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -437,6 +438,7 @@ class FirestoreService {
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
           'memberCount': hasCreatorMembership ? 1 : 0,
+          'adminApproval': true,
           'competitions': ['serie-a'],
         });
         txn.set(inviteRef, {
@@ -606,7 +608,9 @@ class FirestoreService {
     );
   }
 
-  Future<void> joinGroup({
+  /// Joins a group. Returns `true` if the member was placed in pending status
+  /// (admin approval required), `false` if joined immediately.
+  Future<bool> joinGroup({
     required String groupId,
     required String uid,
     required String displayName,
@@ -618,6 +622,8 @@ class FirestoreService {
     final groupRef = _db.collection('groups').doc(groupId);
     final memberRef = groupRef.collection('members').doc(uid);
     final userRef = _db.collection('users').doc(uid);
+
+    bool pending = false;
 
     await _withTimeout(
       _db.runTransaction((txn) async {
@@ -636,6 +642,9 @@ class FirestoreService {
         final maxMembers =
             (groupSnap.data()?['maxMembers'] as num?)?.toInt() ?? 0;
         final deleting = groupSnap.data()?['deleting'] == true;
+        final adminApproval =
+            groupSnap.data()?['adminApproval'] as bool? ?? true;
+
         if (deleting) {
           throw FirebaseException(
             plugin: 'cloud_firestore',
@@ -662,25 +671,99 @@ class FirestoreService {
         };
 
         if (!memberSnap.exists) {
+          pending = adminApproval;
           txn.set(memberRef, {
             ...baseMemberData,
             'joinedAt': FieldValue.serverTimestamp(),
             'role': 'member',
+            'status': adminApproval ? 'pending' : 'active',
           }, SetOptions(merge: true));
-          txn.update(groupRef, {
-            'memberCount': currentCount + 1,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+          if (!adminApproval) {
+            txn.update(groupRef, {
+              'memberCount': currentCount + 1,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
         } else {
+          // Already exists (e.g. re-joining) — check current status.
+          final existingStatus =
+              memberSnap.data()?['status'] as String? ?? 'active';
+          pending = existingStatus == 'pending';
           txn.set(memberRef, baseMemberData, SetOptions(merge: true));
         }
 
+        if (!pending) {
+          txn.set(userRef, {
+            'groupIds': FieldValue.arrayUnion([groupId]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      }),
+      operation: 'joinGroup.transaction',
+    );
+
+    return pending;
+  }
+
+  Future<void> updateGroupAdminApproval({
+    required String groupId,
+    required bool adminApproval,
+  }) async {
+    await _withTimeout(
+      _db.collection('groups').doc(groupId).update({
+        'adminApproval': adminApproval,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }),
+      operation: 'updateGroupAdminApproval',
+    );
+  }
+
+  Future<void> approvePendingMember({
+    required String groupId,
+    required String memberUid,
+  }) async {
+    final groupRef = _db.collection('groups').doc(groupId);
+    final memberRef = groupRef.collection('members').doc(memberUid);
+    final userRef = _db.collection('users').doc(memberUid);
+
+    await _withTimeout(
+      _db.runTransaction((txn) async {
+        final groupSnap = await txn.get(groupRef);
+        final memberSnap = await txn.get(memberRef);
+        if (!memberSnap.exists) return;
+
+        final currentCount =
+            (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+
+        txn.update(memberRef, {
+          'status': 'active',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        txn.update(groupRef, {
+          'memberCount': currentCount + 1,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
         txn.set(userRef, {
           'groupIds': FieldValue.arrayUnion([groupId]),
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }),
-      operation: 'joinGroup.transaction',
+      operation: 'approvePendingMember',
+    );
+  }
+
+  Future<void> rejectPendingMember({
+    required String groupId,
+    required String memberUid,
+  }) async {
+    await _withTimeout(
+      _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .doc(memberUid)
+          .delete(),
+      operation: 'rejectPendingMember',
     );
   }
 
@@ -811,20 +894,57 @@ class FirestoreService {
     final memberRef = groupRef.collection('members').doc(uid);
     final userRef = _db.collection('users').doc(uid);
 
+    // Check if leaving user is admin — if so, find successor before transaction.
+    final groupSnap = await _withTimeout(
+      groupRef.get(),
+      operation: 'leaveGroup.groupGet',
+    );
+    final isAdmin = groupSnap.exists &&
+        groupSnap.data()?['adminUid'] == uid;
+
+    DocumentReference? successorRef;
+    if (isAdmin && groupSnap.exists) {
+      final membersSnap = await _withTimeout(
+        groupRef
+            .collection('members')
+            .where('status', isEqualTo: 'active')
+            .orderBy('joinedAt')
+            .limit(2)
+            .get(),
+        operation: 'leaveGroup.findSuccessor',
+      );
+      // Find the first active member that isn't the leaving admin.
+      for (final doc in membersSnap.docs) {
+        if (doc.id != uid) {
+          successorRef = doc.reference;
+          break;
+        }
+      }
+    }
+
     await _withTimeout(
       _db.runTransaction((txn) async {
-        final groupSnap = await txn.get(groupRef);
+        final freshGroupSnap = await txn.get(groupRef);
         final memberSnap = await txn.get(memberRef);
 
         if (memberSnap.exists) {
+          final memberStatus =
+              memberSnap.data()?['status'] as String? ?? 'active';
           txn.delete(memberRef);
-          if (groupSnap.exists) {
+          if (freshGroupSnap.exists && memberStatus == 'active') {
             final currentCount =
-                (groupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
-            txn.update(groupRef, {
+                (freshGroupSnap.data()?['memberCount'] as num?)?.toInt() ?? 0;
+            final groupUpdate = <String, dynamic>{
               'memberCount': currentCount > 0 ? currentCount - 1 : 0,
               'updatedAt': FieldValue.serverTimestamp(),
-            });
+            };
+            if (isAdmin && successorRef != null) {
+              groupUpdate['adminUid'] = successorRef.id;
+            }
+            txn.update(groupRef, groupUpdate);
+            if (successorRef != null) {
+              txn.update(successorRef, {'role': 'admin'});
+            }
           }
         }
 
@@ -1615,8 +1735,8 @@ class FirestoreService {
 
     // Sequenze di pick variabili per simulare scelte diverse
     const pickSequences = [
-      ['home', 'draw', 'away', 'homeDraw', 'drawAway', 'homeAway'],
-      ['away', 'homeDraw', 'home', 'drawAway', 'draw', 'homeAway'],
+      ['home', 'draw', 'away', 'home', 'draw', 'away'],
+      ['away', 'home', 'draw', 'away', 'home', 'draw'],
     ];
 
     for (var i = 0; i < mockUsers.length; i++) {

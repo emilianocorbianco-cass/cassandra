@@ -163,9 +163,25 @@ class GroupState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateGroupAdminApproval(bool value) async {
+  Future<void> updateGroupAdminApproval(
+    bool value, {
+    FirestoreService? firestoreService,
+  }) async {
     _groupAdminApproval = value;
     await _prefs?.setBool(_kGroupAdminApprovalV1, value);
+
+    final groupId = activeGroupId;
+    if (firestoreService != null && groupId != null) {
+      try {
+        await firestoreService.updateGroupAdminApproval(
+          groupId: groupId,
+          adminApproval: value,
+        );
+      } catch (e) {
+        if (kDebugMode) debugPrint('[group-state] updateAdminApproval: $e');
+      }
+    }
+
     notifyListeners();
   }
 
@@ -279,7 +295,7 @@ class GroupState extends ChangeNotifier {
 
       if (_firestoreGroupIds.contains(group.id)) return 'Already a member';
 
-      await fs.joinGroup(
+      final pending = await fs.joinGroup(
         groupId: group.id,
         uid: uid,
         displayName: profile.displayName,
@@ -288,6 +304,8 @@ class GroupState extends ChangeNotifier {
         favoriteTeam: profile.favoriteTeam,
         photoUrl: profile.photoUrl,
       );
+
+      if (pending) return 'Pending approval';
 
       _firestoreGroupIds = [..._firestoreGroupIds, group.id];
       _activeGroupId = group.id;
@@ -483,6 +501,12 @@ class GroupState extends ChangeNotifier {
       changed = true;
     }
 
+    if (_groupAdminApproval != group.adminApproval) {
+      _groupAdminApproval = group.adminApproval;
+      await _prefs?.setBool(_kGroupAdminApprovalV1, group.adminApproval);
+      changed = true;
+    }
+
     if (changed) notifyListeners();
     return group;
   }
@@ -497,7 +521,9 @@ class GroupState extends ChangeNotifier {
     if (fs == null || !isAuthenticated || groupId == null) return [];
 
     final docs = await fs.getGroupMembers(groupId);
-    return docs.map((d) {
+    return docs
+        .where((d) => d.isActive)
+        .map((d) {
       final photo = (d.photoUrl ?? '').trim();
       return GroupMember(
         id: d.uid,

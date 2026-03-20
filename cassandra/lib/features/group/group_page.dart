@@ -67,6 +67,7 @@ class _GroupPageState extends State<GroupPage> {
 
   // Firestore state
   List<GroupMember>? _firestoreMembers;
+  List<GroupMemberDocument> _pendingMembers = const [];
   Map<String, Map<String, PickOption>>? _firestorePicksByMemberId;
   Map<String, List<PicksDocument>>? _firestoreSeasonPicksByMemberId;
   String? _firestoreGroupId;
@@ -85,6 +86,8 @@ class _GroupPageState extends State<GroupPage> {
   bool _seasonHistoryHydrationQueued = false;
   String? _seasonHistoryHydrationGroupId;
   String? _seasonHistoryHydrationSeasonKey;
+
+
 
   @override
   void initState() {
@@ -291,6 +294,7 @@ class _GroupPageState extends State<GroupPage> {
         docs: currentDayDocs,
         requesterUid: appState.profile.id,
         lockTime: matchdayData?.lockTime,
+        now: appState.now(),
       );
 
       if (!mounted) return;
@@ -373,6 +377,7 @@ class _GroupPageState extends State<GroupPage> {
           (docs) {
             if (!mounted) return;
             final members = docs
+                .where((d) => d.isActive)
                 .map(
                   (d) => GroupMember(
                     id: d.uid,
@@ -386,8 +391,12 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                 )
                 .toList(growable: false);
+            final pending = docs
+                .where((d) => d.isPending)
+                .toList(growable: false);
             setState(() {
               _firestoreMembers = _applyPhotoCache(members);
+              _pendingMembers = pending;
             });
             _recomputeFirestoreDerived(appState);
           },
@@ -411,8 +420,7 @@ class _GroupPageState extends State<GroupPage> {
           },
         );
 
-    _firestoreMatchdaySub = fs
-        .streamMatchdayData(seasonKey: seasonKey, dayNumber: dayNumber)
+    _firestoreMatchdaySub = fs.streamMatchdayData(seasonKey: seasonKey, dayNumber: dayNumber)
         .listen(
           (doc) {
             if (!mounted) return;
@@ -521,9 +529,10 @@ class _GroupPageState extends State<GroupPage> {
     required List<PicksDocument> docs,
     required String requesterUid,
     required DateTime? lockTime,
+    required DateTime now,
   }) {
     final revealAtOrAfterLock =
-        lockTime != null && !DateTime.now().isBefore(lockTime);
+        lockTime != null && !now.isBefore(lockTime);
     final out = <String, Map<String, PickOption>>{};
 
     for (final d in docs) {
@@ -576,6 +585,7 @@ class _GroupPageState extends State<GroupPage> {
       docs: currentDayDocs,
       requesterUid: appState.profile.id,
       lockTime: _firestoreCurrentMatchday?.lockTime,
+      now: appState.now(),
     );
 
     setState(() {
@@ -589,7 +599,7 @@ class _GroupPageState extends State<GroupPage> {
     _firestoreRevealTimer?.cancel();
     _firestoreRevealTimer = null;
     if (lockTime == null) return;
-    final now = DateTime.now();
+    final now = CassandraScope.of(context).now();
     if (!now.isBefore(lockTime)) return;
     final wait = lockTime.difference(now) + const Duration(seconds: 1);
     _firestoreRevealTimer = Timer(wait, () {
@@ -737,6 +747,92 @@ class _GroupPageState extends State<GroupPage> {
     }
   }
 
+  Widget _buildPendingMembersSection(AppState appState, AppLocalizations l10n) {
+    final fs = appState.firestoreService;
+    final groupId = appState.activeGroupId;
+
+    return Container(
+      color: CassandraColors.inkBlackV2,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            l10n.groupPendingMembers,
+            style: const TextStyle(
+              color: Colors.amber,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final member in _pendingMembers)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      member.displayName,
+                      style: const TextStyle(
+                        color: CassandraColors.brightSnow,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 28,
+                    child: TextButton(
+                      onPressed: fs == null || groupId == null
+                          ? null
+                          : () async {
+                              await fs.approvePendingMember(
+                                groupId: groupId,
+                                memberUid: member.uid,
+                              );
+                            },
+                      style: TextButton.styleFrom(
+                        foregroundColor: CassandraColors.mintLeaf,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: Text(l10n.groupApprove),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 28,
+                    child: TextButton(
+                      onPressed: fs == null || groupId == null
+                          ? null
+                          : () async {
+                              await fs.rejectPendingMember(
+                                groupId: groupId,
+                                memberUid: member.uid,
+                              );
+                            },
+                      style: TextButton.styleFrom(
+                        foregroundColor: CassandraColors.primary,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: Text(l10n.groupReject),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Rect? _shareOriginFromContext(BuildContext sourceContext) {
     final renderObject = sourceContext.findRenderObject();
     if (renderObject is! RenderBox) return null;
@@ -861,10 +957,19 @@ class _GroupPageState extends State<GroupPage> {
     ).languageCode.toLowerCase().startsWith('en');
     final groupName = appState.groupName ?? l10n.groupDefaultName;
     final currentMatchdayNumber = appState.uiMatchdayNumber;
-    final currentMatches =
+    final rawCurrentMatches =
         (_firestoreCurrentMatchday?.matches.isNotEmpty ?? false)
         ? _firestoreCurrentMatchday!.matches
         : _matches;
+    final currentMatches = rawCurrentMatches
+        .where((m) {
+          final origin = appState.originKickoffFor(
+            matchId: m.id,
+            fallbackKickoff: m.kickoff,
+          );
+          return m.kickoff.difference(origin) <= const Duration(hours: 48);
+        })
+        .toList(growable: false);
 
     // Storico reale: picks/outcomes salvati per giornata
     appState.ensureCurrentUserPicksHistoryLoaded();
@@ -1148,6 +1253,8 @@ class _GroupPageState extends State<GroupPage> {
                 ),
               ),
             ),
+            if (_pendingMembers.isNotEmpty)
+              _buildPendingMembersSection(appState, l10n),
             const Divider(height: 1),
             Expanded(
               child:
@@ -1181,7 +1288,7 @@ class _GroupPageState extends State<GroupPage> {
                   ? RefreshIndicator(
                       onRefresh: _refreshFromFirestore,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
                         itemCount: seasonMatchdaysDesc.length,
                         itemBuilder: (context, i) {
                           final md = seasonMatchdaysDesc[i];
@@ -1193,28 +1300,35 @@ class _GroupPageState extends State<GroupPage> {
 
                           final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
 
-                          return Card(
-                            child: ListTile(
-                              title: Text(mdTitle),
-                              subtitle: Text(daysLabel),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () {
-                                Navigator.of(context, rootNavigator: true).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => GroupMatchdayPage(
-                                      matchday: md,
-                                      members: members,
-                                      groupName: groupName,
-                                      picksByMemberId:
-                                          picksByMemberByDay[md.dayNumber] ??
-                                          const <
-                                            String,
-                                            Map<String, PickOption>
-                                          >{},
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 18),
+                            child: Card(
+                              margin: EdgeInsets.zero,
+                              child: ListTile(
+                                title: Text(mdTitle),
+                                subtitle: Text(daysLabel),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () {
+                                  Navigator.of(
+                                    context,
+                                    rootNavigator: true,
+                                  ).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => GroupMatchdayPage(
+                                        matchday: md,
+                                        members: members,
+                                        groupName: groupName,
+                                        picksByMemberId:
+                                            picksByMemberByDay[md.dayNumber] ??
+                                            const <
+                                              String,
+                                              Map<String, PickOption>
+                                            >{},
+                                      ),
                                     ),
-                                  ),
-                                );
-                              },
+                                  );
+                                },
+                              ),
                             ),
                           );
                         },
@@ -1223,15 +1337,18 @@ class _GroupPageState extends State<GroupPage> {
                   : RefreshIndicator(
                       onRefresh: _refreshFromFirestore,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
                         itemCount: generalEntries.length,
                         itemBuilder: (context, i) {
                           final e = generalEntries[i];
 
                           final pts = formatOdds(e.totalPoints);
 
-                          return Card(
-                            child: ListTile(
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 18),
+                            child: Card(
+                              margin: EdgeInsets.zero,
+                              child: ListTile(
                               leading: SizedBox(
                                 width: 64,
                                 child: Row(
@@ -1270,6 +1387,7 @@ class _GroupPageState extends State<GroupPage> {
                                       : CassandraColors.primary,
                                 ),
                               ),
+                            ),
                             ),
                           );
                         },

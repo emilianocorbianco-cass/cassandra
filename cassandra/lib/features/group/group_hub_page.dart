@@ -138,40 +138,49 @@ class _GroupHubPageState extends State<GroupHubPage> {
               ),
               const SizedBox(height: 24),
               // ── Create / Join buttons ──
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _openCreateGroup,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: CassandraColors.charcoal,
-                        foregroundColor: CassandraColors.brightSnow,
-                        side: const BorderSide(color: CassandraColors.brightSnow),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _openCreateGroup,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: CassandraColors.charcoal,
+                          foregroundColor: CassandraColors.brightSnow,
+                          side: const BorderSide(color: CassandraColors.brightSnow),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          l10n.groupHubCreateGroup,
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                      child: Text(l10n.groupHubCreateGroup),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _openJoinGroup,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: CassandraColors.charcoal,
-                        foregroundColor: CassandraColors.brightSnow,
-                        side: const BorderSide(color: CassandraColors.brightSnow),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _openJoinGroup,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: CassandraColors.charcoal,
+                          foregroundColor: CassandraColors.brightSnow,
+                          side: const BorderSide(color: CassandraColors.brightSnow),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          l10n.groupHubJoinGroup,
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                      child: Text(l10n.groupHubJoinGroup),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               // ── Separator ──
@@ -188,14 +197,7 @@ class _GroupHubPageState extends State<GroupHubPage> {
 
                       final groups = snapshot.data ?? const [];
                       if (groups.isEmpty) {
-                        return Center(
-                          child: Text(
-                            l10n.groupHubSubtitle,
-                            style: const TextStyle(
-                              color: CassandraColors.slate,
-                            ),
-                          ),
-                        );
+                        return const SizedBox.shrink();
                       }
 
                       return ListView.separated(
@@ -252,15 +254,21 @@ class _GroupCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      group.name,
-                      style: const TextStyle(
-                        color: CassandraColors.inkBlack,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            group.name,
+                            style: const TextStyle(
+                              color: CassandraColors.inkBlack,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(

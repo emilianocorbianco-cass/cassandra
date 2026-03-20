@@ -146,6 +146,18 @@ class AppLocalizationsIt extends AppLocalizations {
   String get joinGroupJoined => 'Entrato nel gruppo!';
 
   @override
+  String get joinGroupPendingApproval => 'Richiesta inviata! L\'admin del gruppo deve approvare il tuo accesso.';
+
+  @override
+  String get groupPendingMembers => 'Richieste in attesa';
+
+  @override
+  String get groupApprove => 'Approva';
+
+  @override
+  String get groupReject => 'Rifiuta';
+
+  @override
   String get joinGroupInvalidCode => 'Codice invito non valido';
 
   @override

@@ -88,7 +88,7 @@ class _HomeShellState extends State<HomeShell>
 
     try {
       _bindStandingsStream();
-      final now = DateTime.now();
+      final now = app.now();
       var dayNumber = app.cassandraMatchdayCursor;
       app.ensureOriginKickoffsLoaded();
 
@@ -113,11 +113,12 @@ class _HomeShellState extends State<HomeShell>
 
       int consecutiveNulls = 0;
       const maxConsecutiveNulls = 3;
+
       for (var i = 0; i <= maxLookAheadDays; i++) {
         final candidate = await fs.getMatchdayData(
-          seasonKey: app.currentSeasonKey,
-          dayNumber: dayNumber,
-        );
+                seasonKey: app.currentSeasonKey,
+                dayNumber: dayNumber,
+              );
         if (candidate == null || candidate.matches.isEmpty) {
           consecutiveNulls += 1;
           if (consecutiveNulls > maxConsecutiveNulls) {

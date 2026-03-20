@@ -353,6 +353,30 @@ abstract class AppLocalizations {
   /// **'Joined group!'**
   String get joinGroupJoined;
 
+  /// No description provided for @joinGroupPendingApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent! The group admin must approve your access.'**
+  String get joinGroupPendingApproval;
+
+  /// No description provided for @groupPendingMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending requests'**
+  String get groupPendingMembers;
+
+  /// No description provided for @groupApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get groupApprove;
+
+  /// No description provided for @groupReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get groupReject;
+
   /// No description provided for @joinGroupInvalidCode.
   ///
   /// In en, this message translates to:
@@ -2084,13 +2108,13 @@ abstract class AppLocalizations {
   /// No description provided for @groupHubCreateGroup.
   ///
   /// In en, this message translates to:
-  /// **'Create group'**
+  /// **'Create a group'**
   String get groupHubCreateGroup;
 
   /// No description provided for @groupHubJoinGroup.
   ///
   /// In en, this message translates to:
-  /// **'Join group'**
+  /// **'Join a group'**
   String get groupHubJoinGroup;
 
   /// No description provided for @groupHubMemberCount.
