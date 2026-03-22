@@ -1626,18 +1626,22 @@ class AppState extends ChangeNotifier {
 
   Future<void> setDevicePushToken(String token) async {
     final cleaned = token.trim();
-    if (cleaned.isEmpty || cleaned == _devicePushToken) return;
+    if (cleaned.isEmpty) return;
 
     final previous = _devicePushToken;
-    _devicePushToken = cleaned;
-    await _prefs?.setString(_kDevicePushToken, cleaned);
+    final changed = cleaned != _devicePushToken;
+
+    if (changed) {
+      _devicePushToken = cleaned;
+      await _prefs?.setString(_kDevicePushToken, cleaned);
+    }
 
     final fs = _firestoreService;
     final uid = _profile.id.trim();
     if (fs == null || !isAuthenticated || uid.isEmpty) return;
 
     // Remove stale token best-effort so it does not block new registration.
-    if (previous != null && previous.isNotEmpty && previous != cleaned) {
+    if (changed && previous != null && previous.isNotEmpty) {
       unawaited(
         _runFirestoreWriteWithRetry(
           operation: 'removeUserFcmToken',
@@ -1645,7 +1649,9 @@ class AppState extends ChangeNotifier {
         ),
       );
     }
-    // Register new token with retry; fire-and-forget matching sign-in path.
+    // Always sync to Firestore — arrayUnion is idempotent, so re-registering
+    // the same token is safe and covers the case where a previous Firestore
+    // write was skipped (e.g. auth/service not ready on first attempt).
     unawaited(
       _runFirestoreWriteWithRetry(
         operation: 'addUserFcmToken',

@@ -39,9 +39,6 @@ interface FixtureOdds {
   home: number | null;
   draw: number | null;
   away: number | null;
-  homeDraw: number | null;
-  drawAway: number | null;
-  homeAway: number | null;
 }
 
 interface MatchDoc {
@@ -60,9 +57,6 @@ interface MatchDoc {
     home: number;
     draw: number;
     away: number;
-    homeDraw: number;
-    drawAway: number;
-    homeAway: number;
   };
 }
 
@@ -81,19 +75,13 @@ type PickOptionValue =
   | "none"
   | "home"
   | "draw"
-  | "away"
-  | "homeDraw"
-  | "drawAway"
-  | "homeAway";
+  | "away";
 
 interface PicksScoreDoc {
   baseTotal: number;
   bonusPoints: number;
-  oddsBonusPoints: number;
-  correctBonusPoints: number;
   total: number;
   correctCount: number;
-  winningOddsSum: number;
   averageOddsPlayed?: number;
 }
 
@@ -104,9 +92,6 @@ interface ScoringMatchDoc {
     home: number;
     draw: number;
     away: number;
-    homeDraw: number;
-    drawAway: number;
-    homeAway: number;
   };
 }
 
@@ -300,31 +285,21 @@ function parsePickOptionValue(value: unknown): PickOptionValue {
   if (normalized === "home") return "home";
   if (normalized === "draw") return "draw";
   if (normalized === "away") return "away";
-  if (normalized === "homeDraw") return "homeDraw";
-  if (normalized === "drawAway") return "drawAway";
-  if (normalized === "homeAway") return "homeAway";
+  // Legacy double-chance → primary single pick
+  if (normalized === "homeDraw") return "home";
+  if (normalized === "drawAway") return "away";
+  if (normalized === "homeAway") return "home";
   return "none";
 }
 
-function bonusForWinningOddsSum(winningOddsSum: number): number {
-  if (winningOddsSum < 5) return -10;
-  if (winningOddsSum < 8) return -7;
-  if (winningOddsSum < 10) return -4;
-  if (winningOddsSum < 11) return -1;
-  if (winningOddsSum < 12) return 1;
-  if (winningOddsSum < 13) return 4;
-  if (winningOddsSum < 15) return 7;
-  return 10;
-}
-
-function bonusForCorrectCount(correctCount: number): number {
-  if (correctCount <= 1) return -10;
-  if (correctCount <= 3) return -7;
-  if (correctCount <= 5) return -4;
-  if (correctCount === 6) return -1;
-  if (correctCount === 7) return 1;
-  if (correctCount === 8) return 4;
-  if (correctCount === 9) return 7;
+function bonusForCombinedScore(combinedScore: number): number {
+  if (combinedScore <= 9) return -7;
+  if (combinedScore <= 12) return -4;
+  if (combinedScore <= 15) return -1;
+  if (combinedScore <= 18) return 0;
+  if (combinedScore <= 22) return 1;
+  if (combinedScore <= 26) return 4;
+  if (combinedScore <= 30) return 7;
   return 10;
 }
 
@@ -339,15 +314,17 @@ function oddsPlayedForPick(
     return match.odds.draw;
   case "away":
     return match.odds.away;
-  case "homeDraw":
-    return match.odds.homeDraw;
-  case "drawAway":
-    return match.odds.drawAway;
-  case "homeAway":
-    return match.odds.homeAway;
   case "none":
     return null;
   }
+}
+
+function lowestOddsPick(match: ScoringMatchDoc): "home" | "draw" | "away" {
+  let min = match.odds.home;
+  let pick: "home" | "draw" | "away" = "home";
+  if (match.odds.draw < min) { min = match.odds.draw; pick = "draw"; }
+  if (match.odds.away < min) { pick = "away"; }
+  return pick;
 }
 
 function isCorrectSingle(pick: PickOptionValue, outcome: Outcome): boolean {
@@ -357,14 +334,6 @@ function isCorrectSingle(pick: PickOptionValue, outcome: Outcome): boolean {
     (pick === "away" && outcome === "away")
   );
 }
-
-function isCorrectDouble(pick: PickOptionValue, outcome: Outcome): boolean {
-  if (pick === "homeDraw") return outcome === "home" || outcome === "draw";
-  if (pick === "drawAway") return outcome === "draw" || outcome === "away";
-  if (pick === "homeAway") return outcome === "home" || outcome === "away";
-  return false;
-}
-
 
 function parseScoringMatchesFromMatchdayData(
   data: Record<string, unknown>
@@ -385,17 +354,11 @@ function parseScoringMatchesFromMatchdayData(
     const home = Number(odds["home"]);
     const draw = Number(odds["draw"]);
     const away = Number(odds["away"]);
-    const homeDraw = Number(odds["homeDraw"]);
-    const drawAway = Number(odds["drawAway"]);
-    const homeAway = Number(odds["homeAway"]);
 
     if (
       !Number.isFinite(home) ||
       !Number.isFinite(draw) ||
-      !Number.isFinite(away) ||
-      !Number.isFinite(homeDraw) ||
-      !Number.isFinite(drawAway) ||
-      !Number.isFinite(homeAway)
+      !Number.isFinite(away)
     ) {
       continue;
     }
@@ -407,9 +370,6 @@ function parseScoringMatchesFromMatchdayData(
         home,
         draw,
         away,
-        homeDraw,
-        drawAway,
-        homeAway,
       },
     });
   }
@@ -456,14 +416,8 @@ function parseStoredScore(value: unknown): PicksScoreDoc | null {
   const raw = value as Record<string, unknown>;
   const baseTotal = Number(raw["baseTotal"]);
   const bonusPoints = Number(raw["bonusPoints"]);
-  const oddsBonusRaw = raw["oddsBonusPoints"];
-  const oddsBonusPoints = oddsBonusRaw == null ? 0 : Number(oddsBonusRaw);
-  const correctBonusRaw = raw["correctBonusPoints"];
-  const correctBonusPoints = correctBonusRaw == null ? 0 : Number(correctBonusRaw);
   const total = Number(raw["total"]);
   const correctCount = Number(raw["correctCount"]);
-  const winningOddsSumRaw = raw["winningOddsSum"];
-  const winningOddsSum = winningOddsSumRaw == null ? 0 : Number(winningOddsSumRaw);
   const averageRaw = raw["averageOddsPlayed"];
   const averageOddsPlayed =
     averageRaw == null ? undefined : Number(averageRaw);
@@ -480,11 +434,8 @@ function parseStoredScore(value: unknown): PicksScoreDoc | null {
   const parsed: PicksScoreDoc = {
     baseTotal,
     bonusPoints: Math.trunc(bonusPoints),
-    oddsBonusPoints: Math.trunc(oddsBonusPoints),
-    correctBonusPoints: Math.trunc(correctBonusPoints),
     total,
     correctCount: Math.trunc(correctCount),
-    winningOddsSum,
   };
   if (averageOddsPlayed != null && Number.isFinite(averageOddsPlayed)) {
     parsed.averageOddsPlayed = averageOddsPlayed;
@@ -506,11 +457,8 @@ function isSameScore(a: PicksScoreDoc | null, b: PicksScoreDoc): boolean {
   return (
     almostEqual(a.baseTotal, b.baseTotal) &&
     a.bonusPoints === b.bonusPoints &&
-    a.oddsBonusPoints === b.oddsBonusPoints &&
-    a.correctBonusPoints === b.correctBonusPoints &&
     almostEqual(a.total, b.total) &&
     a.correctCount === b.correctCount &&
-    almostEqual(a.winningOddsSum, b.winningOddsSum) &&
     sameAvg
   );
 }
@@ -551,7 +499,16 @@ function computeScoreForPicks(
     }
 
     if (pick === "none") {
-      // Non giocata: 0 punti
+      // Non giocata: auto-assegnata la quota più bassa
+      const autoPick = lowestOddsPick(match);
+      const autoPlayed = oddsPlayedForPick(match, autoPick) ?? 0;
+      const correct = isCorrectSingle(autoPick, outcome);
+      if (correct) {
+        baseTotal += autoPlayed;
+        correctCount += 1;
+        winningOddsSum += autoPlayed;
+      }
+      playedOdds.push(autoPlayed);
       continue;
     }
 
@@ -567,25 +524,11 @@ function computeScoreForPicks(
       playedOdds.push(singlePlayed);
       continue;
     }
-
-    const doublePlayed = played ?? 0;
-    const correct = isCorrectDouble(pick, outcome);
-    if (correct) {
-      baseTotal += doublePlayed;
-      correctCount += 1;
-      winningOddsSum += doublePlayed;
-    }
-    // Sbagliata: 0 punti (nessuna penalità)
-    playedOdds.push(doublePlayed);
   }
 
-  const allGraded = matches.every((m) => {
-    const outcome = outcomesByMatchId[m.id];
-    return outcome != null && outcome !== "pending";
-  });
-  const oddsBonusPoints = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
-  const correctBonusPoints = allGraded ? bonusForCorrectCount(correctCount) : 0;
-  const bonusPoints = oddsBonusPoints + correctBonusPoints;
+  // Bonus provvisorio calcolato sempre (parte negativo, sale con i risultati).
+  const combinedScore = winningOddsSum + correctCount;
+  const bonusPoints = bonusForCombinedScore(combinedScore);
   const total = baseTotal + bonusPoints;
   const averageOddsPlayed =
     playedOdds.length === 0
@@ -595,11 +538,8 @@ function computeScoreForPicks(
   const score: PicksScoreDoc = {
     baseTotal,
     bonusPoints,
-    oddsBonusPoints,
-    correctBonusPoints,
     total,
     correctCount,
-    winningOddsSum,
   };
   if (averageOddsPlayed != null) {
     score.averageOddsPlayed = averageOddsPlayed;
@@ -611,13 +551,13 @@ async function recomputePicksScoresForMatchday(
   db: FirebaseFirestore.Firestore,
   seasonKey: string,
   dayNumber: number,
-  logPrefix: string
+  logPrefix: string,
+  groupId?: string | null
 ): Promise<void> {
-  const matchdayRef = db
-    .collection("seasons")
-    .doc(seasonKey)
-    .collection("matchdays")
-    .doc(dayNumber.toString());
+  // Read matchday data from flash path or global path
+  const matchdayRef = groupId
+    ? db.collection("groups").doc(groupId).collection("flash_matchdays").doc(dayNumber.toString())
+    : db.collection("seasons").doc(seasonKey).collection("matchdays").doc(dayNumber.toString());
   const matchdaySnap = await matchdayRef.get();
   if (!matchdaySnap.exists) return;
   const matchdayData = matchdaySnap.data();
@@ -630,17 +570,15 @@ async function recomputePicksScoresForMatchday(
   const outcomesByMatchId = parseOutcomesByMatchIdFromMatchdayData(
     matchdayData as Record<string, unknown>
   );
-  const allGraded = matches.every((m) => {
-    const outcome = outcomesByMatchId[m.id];
-    return outcome != null && outcome !== "pending";
-  });
-  if (!allGraded) return;
-
-  const picksSnap = await db
+  // Query picks — filter by groupId when in flash mode
+  let picksQuery: FirebaseFirestore.Query = db
     .collection("picks")
     .where("seasonKey", "==", seasonKey)
-    .where("dayNumber", "==", dayNumber)
-    .get();
+    .where("dayNumber", "==", dayNumber);
+  if (groupId) {
+    picksQuery = picksQuery.where("groupId", "==", groupId);
+  }
+  const picksSnap = await picksQuery.get();
   if (picksSnap.empty) return;
 
   let batch = db.batch();
@@ -1136,29 +1074,24 @@ function round2(v: number): number {
  *
  * Heuristic: the deterministic generator seeds from fixture ID, producing
  * nearly identical odds across fixtures whose IDs are numerically close.
- * We check if ALL "homeAway" (12) double-chance odds are identical — this
- * is virtually impossible with real bookmaker data but very likely with
- * the seed-based formula.
+ * We check if home odds have very low variance — this is virtually
+ * impossible with real bookmaker data but very likely with the seed-based
+ * formula.
  */
 function looksLikeDeterministicOdds(matches: MatchDoc[]): boolean {
   if (matches.length < 3) return false;
-  // Check if >80% of homeAway double-chance odds share the same value
-  const haCounts = new Map<number, number>();
-  for (const m of matches) {
-    const v = m.odds.homeAway;
-    haCounts.set(v, (haCounts.get(v) ?? 0) + 1);
-  }
-  const maxHaCount = Math.max(...haCounts.values());
-  if (maxHaCount / matches.length >= 0.8) return true;
-  // Also check if home odds have very low variance across many matches
+  // Check if home odds have very low variance across many matches
   const homeVals = new Set(matches.map((m) => m.odds.home));
   if (matches.length >= 8 && homeVals.size <= 3) return true;
+  // Check if >80% of home odds share the same value
+  const homeCounts = new Map<number, number>();
+  for (const m of matches) {
+    const v = m.odds.home;
+    homeCounts.set(v, (homeCounts.get(v) ?? 0) + 1);
+  }
+  const maxHomeCount = Math.max(...homeCounts.values());
+  if (maxHomeCount / matches.length >= 0.8) return true;
   return false;
-}
-
-function clamp(v: number, min: number, max: number): number {
-  if (max < min) return min;
-  return Math.max(min, Math.min(max, v));
 }
 
 function buildMatchDoc(
@@ -1180,35 +1113,13 @@ function buildMatchDoc(
     away = deterministicOdds(seed * 11 + 29, 1.35, 3.40);
   }
 
-  // Double chance
-  let homeDraw: number, drawAway: number, homeAway: number;
-  if (
-    odds?.homeDraw != null &&
-    odds?.drawAway != null &&
-    odds?.homeAway != null
-  ) {
-    homeDraw = odds!.homeDraw!;
-    drawAway = odds!.drawAway!;
-    homeAway = odds!.homeAway!;
-  } else {
-    // Derive from singles (same formula as Flutter)
-    const p1 = 1.0 / home;
-    const pX = 1.0 / draw;
-    const p2 = 1.0 / away;
-    const s = p1 + pX + p2;
-    const dc = (a: number, b: number) => round2(s / (a + b));
-    homeDraw = clamp(dc(p1, pX), 1.05, round2(Math.min(home, draw) - 0.01));
-    drawAway = clamp(dc(pX, p2), 1.05, round2(Math.min(draw, away) - 0.01));
-    homeAway = clamp(dc(p1, p2), 1.05, round2(Math.min(home, away) - 0.01));
-  }
-
   const doc: MatchDoc = {
     id: f.fixtureId.toString(),
     kickoff: f.kickoffUtc,
     home: f.homeName,
     away: f.awayName,
     statusShort: f.statusShort,
-    odds: { home, draw, away, homeDraw, drawAway, homeAway },
+    odds: { home, draw, away },
   };
   if (f.homeLogo) doc.homeLogo = f.homeLogo;
   if (f.awayLogo) doc.awayLogo = f.awayLogo;
@@ -1335,9 +1246,6 @@ async function fetchOddsForFixture(fixtureId: number): Promise<FixtureOdds | nul
       home: null,
       draw: null,
       away: null,
-      homeDraw: null,
-      drawAway: null,
-      homeAway: null,
     };
 
     for (const bet of bets) {
@@ -1356,17 +1264,6 @@ async function fetchOddsForFixture(fixtureId: number): Promise<FixtureOdds | nul
           if (label === "Home") odds.home = odd;
           else if (label === "Draw") odds.draw = odd;
           else if (label === "Away") odds.away = odd;
-        }
-      } else if (betId === 12) {
-        // Double Chance
-        for (const v of values) {
-          const val = v as Record<string, unknown>;
-          const label = String(val["value"] ?? "");
-          const odd = parseFloat(String(val["odd"] ?? ""));
-          if (isNaN(odd)) continue;
-          if (label === "Home/Draw") odds.homeDraw = odd;
-          else if (label === "Home/Away") odds.homeAway = odd;
-          else if (label === "Draw/Away") odds.drawAway = odd;
         }
       }
     }
@@ -2551,19 +2448,31 @@ export const coldTestSeedMatchday = onCall(
     );
     const matchDurationMin = Math.max(5, Number(data.matchDurationMin) || 12);
 
+    const groupId = typeof data.groupId === "string" ? data.groupId : null;
+
     const db = getFirestore();
     const season = seasonStartYear();
     const seasonKey = season.toString();
-    const logPrefix = "cold-test-seed";
+    const logPrefix = groupId ? "flash-seed" : "cold-test-seed";
 
-    const docRef = db
+    // Flash groups write to groups/{groupId}/flash_matchdays/{day},
+    // but read source data from the global seasons path.
+    const docRef = groupId
+      ? db.collection("groups").doc(groupId).collection("flash_matchdays").doc(dayNumber.toString())
+      : db.collection("seasons").doc(seasonKey).collection("matchdays").doc(dayNumber.toString());
+
+    // Always check global path for source data first
+    const globalDocRef = db
       .collection("seasons")
       .doc(seasonKey)
       .collection("matchdays")
       .doc(dayNumber.toString());
 
-    // Try to read existing matchday data first
-    const existingSnap = await docRef.get();
+    // Try to read existing matchday data first (from target, then global)
+    let existingSnap = await docRef.get();
+    if (!existingSnap.exists && groupId) {
+      existingSnap = await globalDocRef.get();
+    }
     let matches: MatchDoc[];
     let realOutcomes: Record<string, ColdTestRealResult> = {};
 
@@ -2680,13 +2589,18 @@ export const coldTestSeedMatchday = onCall(
       matches[i] = {
         ...matches[i],
         kickoff: newKickoff.toISOString(),
-        // Reset live fields
+        // Reset live fields (use null, not undefined — Firestore rejects undefined)
         statusShort: "NS",
-        homeGoals: undefined,
-        awayGoals: undefined,
-        elapsed: undefined,
+        homeGoals: null as unknown as undefined,
+        awayGoals: null as unknown as undefined,
+        elapsed: null as unknown as undefined,
         events: undefined,
       };
+      // Strip undefined keys so Firestore doesn't reject them
+      const raw = matches[i] as unknown as Record<string, unknown>;
+      for (const key of Object.keys(raw)) {
+        if (raw[key] === undefined) delete raw[key];
+      }
     }
 
     const lockTime = firstKickoff;
@@ -2706,6 +2620,7 @@ export const coldTestSeedMatchday = onCall(
       finalized: false,
       _coldTestRealOutcomes: realOutcomes,
       _coldTestMatchDurationMin: matchDurationMin,
+      _coldTestKickoffIntervalMin: kickoffIntervalMin,
     });
 
     console.log(
@@ -2744,16 +2659,16 @@ export const coldTestResolveMatches = onCall(
       );
     }
 
+    const groupId = typeof data.groupId === "string" ? data.groupId : null;
+
     const db = getFirestore();
     const season = seasonStartYear();
     const seasonKey = season.toString();
-    const logPrefix = "cold-test-resolve";
+    const logPrefix = groupId ? "flash-resolve" : "cold-test-resolve";
 
-    const docRef = db
-      .collection("seasons")
-      .doc(seasonKey)
-      .collection("matchdays")
-      .doc(dayNumber.toString());
+    const docRef = groupId
+      ? db.collection("groups").doc(groupId).collection("flash_matchdays").doc(dayNumber.toString())
+      : db.collection("seasons").doc(seasonKey).collection("matchdays").doc(dayNumber.toString());
 
     const snap = await docRef.get();
     if (!snap.exists) {
@@ -2871,7 +2786,8 @@ export const coldTestResolveMatches = onCall(
       db,
       seasonKey,
       dayNumber,
-      logPrefix
+      logPrefix,
+      groupId
     );
 
     console.log(
@@ -2879,5 +2795,370 @@ export const coldTestResolveMatches = onCall(
     );
 
     return { revealed, pending, finalized };
+  }
+);
+
+// ─── Cold Test: Time Travel ─────────────────────────────────────────────────
+
+type TimeTravelPhase =
+  | "preLock"
+  | "locked"
+  | "firstHalf"
+  | "halfTime"
+  | "secondHalf"
+  | "finished";
+
+export const coldTestTimeTravel = onCall(
+  {
+    region: "europe-west1",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Authentication required.");
+    }
+
+    const data = request.data as Record<string, unknown>;
+    const dayNumber = Number(data.dayNumber);
+    if (!Number.isFinite(dayNumber) || dayNumber < 1 || dayNumber > 38) {
+      throw new HttpsError(
+        "invalid-argument",
+        "dayNumber must be between 1 and 38."
+      );
+    }
+
+    const phase = String(data.phase ?? "") as TimeTravelPhase;
+    const validPhases: TimeTravelPhase[] = [
+      "preLock",
+      "locked",
+      "firstHalf",
+      "halfTime",
+      "secondHalf",
+      "finished",
+    ];
+    if (!validPhases.includes(phase)) {
+      throw new HttpsError(
+        "invalid-argument",
+        `phase must be one of: ${validPhases.join(", ")}`
+      );
+    }
+
+    const groupId = typeof data.groupId === "string" ? data.groupId : null;
+
+    const db = getFirestore();
+    const season = seasonStartYear();
+    const seasonKey = season.toString();
+    const logPrefix = groupId ? "flash-travel" : "cold-test-travel";
+
+    const docRef = groupId
+      ? db.collection("groups").doc(groupId).collection("flash_matchdays").doc(dayNumber.toString())
+      : db.collection("seasons").doc(seasonKey).collection("matchdays").doc(dayNumber.toString());
+
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", `Matchday ${dayNumber} not found.`);
+    }
+
+    const matchdayData = snap.data()!;
+    const rawRealOutcomes = matchdayData._coldTestRealOutcomes;
+    if (!rawRealOutcomes || typeof rawRealOutcomes !== "object") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This matchday was not seeded by cold test."
+      );
+    }
+
+    const realOutcomes = rawRealOutcomes as Record<
+      string,
+      ColdTestRealResult
+    >;
+    const matchDurationMin =
+      Number(matchdayData._coldTestMatchDurationMin) || 12;
+    const kickoffIntervalMin =
+      Number(matchdayData._coldTestKickoffIntervalMin) || 10;
+
+    const rawMatches = matchdayData.matches;
+    if (!Array.isArray(rawMatches) || rawMatches.length === 0) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No matches in matchday document."
+      );
+    }
+
+    const matchCount = rawMatches.length;
+    const now = new Date();
+
+    // Compute a "virtual now" and rewrite kickoff times so the matchday
+    // data is consistent with the requested phase.
+    //
+    // Kickoffs are staggered: match[0] at firstKickoff, match[i] at
+    // firstKickoff + i * kickoffIntervalMin.
+    // Lock time = firstKickoff - 30 minutes.
+
+    let firstKickoffOffset: number; // ms from "now" to first kickoff
+    switch (phase) {
+      case "preLock":
+        // Lock in 10 min → first kickoff in 40 min
+        firstKickoffOffset = 40 * 60 * 1000;
+        break;
+      case "locked":
+        // Locked, first kickoff in 5 min
+        firstKickoffOffset = 5 * 60 * 1000;
+        break;
+      case "firstHalf":
+        // First match started 5 min ago
+        firstKickoffOffset = -5 * 60 * 1000;
+        break;
+      case "halfTime":
+        // First match at halftime (duration/2 ago)
+        firstKickoffOffset = -(matchDurationMin / 2) * 60 * 1000;
+        break;
+      case "secondHalf":
+        // First match 75% through
+        firstKickoffOffset = -(matchDurationMin * 0.75) * 60 * 1000;
+        break;
+      case "finished":
+        // All matches finished: last match ended 2 min ago
+        const totalSpan =
+          (matchCount - 1) * kickoffIntervalMin + matchDurationMin;
+        firstKickoffOffset = -(totalSpan + 2) * 60 * 1000;
+        break;
+    }
+
+    const firstKickoff = new Date(now.getTime() + firstKickoffOffset);
+    const lockTime = new Date(firstKickoff.getTime() - 30 * 60 * 1000);
+
+    // Build updated matches
+    const updatedMatches = [...rawMatches];
+    const updatedOutcomes: Record<string, string> = {};
+
+    for (let i = 0; i < updatedMatches.length; i++) {
+      const match = updatedMatches[i] as Record<string, unknown>;
+      const matchId = String(match.id ?? "");
+      if (!matchId) continue;
+
+      const matchKickoff = new Date(
+        firstKickoff.getTime() + i * kickoffIntervalMin * 60 * 1000
+      );
+      const matchEnd = new Date(
+        matchKickoff.getTime() + matchDurationMin * 60 * 1000
+      );
+      const real = realOutcomes[matchId];
+
+      if (phase === "finished" || now >= matchEnd) {
+        // Match finished
+        updatedMatches[i] = {
+          ...match,
+          kickoff: matchKickoff.toISOString(),
+          statusShort: "FT",
+          homeGoals: real?.homeGoals ?? 0,
+          awayGoals: real?.awayGoals ?? 0,
+          elapsed: 90,
+        };
+        updatedOutcomes[matchId] = real?.outcome ?? "draw";
+      } else if (now >= matchKickoff) {
+        // Match in progress
+        const elapsedMs = now.getTime() - matchKickoff.getTime();
+        const progress = elapsedMs / (matchDurationMin * 60 * 1000);
+        const simulatedMinute = Math.min(
+          90,
+          Math.round(progress * 90)
+        );
+
+        // Progressive score: reveal goals proportionally
+        const finalHome = real?.homeGoals ?? 0;
+        const finalAway = real?.awayGoals ?? 0;
+        const liveHome = Math.round(finalHome * Math.min(1, progress * 1.3));
+        const liveAway = Math.round(finalAway * Math.min(1, progress * 1.3));
+
+        let statusShort: string;
+        if (simulatedMinute <= 45) {
+          statusShort = "1H";
+        } else if (simulatedMinute <= 50) {
+          statusShort = "HT";
+        } else {
+          statusShort = "2H";
+        }
+
+        updatedMatches[i] = {
+          ...match,
+          kickoff: matchKickoff.toISOString(),
+          statusShort,
+          homeGoals: liveHome,
+          awayGoals: liveAway,
+          elapsed: simulatedMinute,
+        };
+        updatedOutcomes[matchId] = "pending";
+      } else {
+        // Match not started yet
+        updatedMatches[i] = {
+          ...match,
+          kickoff: matchKickoff.toISOString(),
+          statusShort: "NS",
+        };
+        // Strip live fields
+        const raw = updatedMatches[i] as unknown as Record<string, unknown>;
+        delete raw.homeGoals;
+        delete raw.awayGoals;
+        delete raw.elapsed;
+        updatedOutcomes[matchId] = "pending";
+      }
+    }
+
+    // Strip undefined values from all matches
+    for (let i = 0; i < updatedMatches.length; i++) {
+      const raw = updatedMatches[i] as unknown as Record<string, unknown>;
+      for (const key of Object.keys(raw)) {
+        if (raw[key] === undefined) delete raw[key];
+      }
+    }
+
+    const finalized =
+      phase === "finished" &&
+      Object.values(updatedOutcomes).every((o) => o !== "pending");
+
+    await docRef.update({
+      matches: updatedMatches,
+      outcomesByMatchId: updatedOutcomes,
+      lockTime: Timestamp.fromDate(lockTime),
+      finalized,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Recompute scores when finished
+    if (finalized) {
+      await recomputePicksScoresForMatchday(
+        db,
+        seasonKey,
+        dayNumber,
+        logPrefix,
+        groupId
+      );
+    }
+
+    // Compute the "virtual now" timestamp for the client clock
+    const virtualNow = now.toISOString();
+
+    console.log(
+      `[${logPrefix}] Matchday ${dayNumber} → phase=${phase} ` +
+        `firstKickoff=${firstKickoff.toISOString()} lock=${lockTime.toISOString()} ` +
+        `finalized=${finalized}`
+    );
+
+    return {
+      phase,
+      finalized,
+      virtualNow,
+      lockTime: lockTime.toISOString(),
+      firstKickoff: firstKickoff.toISOString(),
+    };
+  }
+);
+
+// ─── Matchday Reminder Notification ──────────────────────────────────────────
+//
+// Fires daily at 13:00 Europe/Rome. Checks if any matchday has its first
+// kickoff today (Rome timezone). If so, sends a reminder push to all users
+// with the lock time and first match info.
+
+export const sendMatchdayReminder = onSchedule(
+  {
+    region: "europe-west1",
+    schedule: "0 13 * * *",
+    timeZone: "Europe/Rome",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async () => {
+    const db = getFirestore();
+    const seasonKey = seasonStartYear().toString();
+
+    // Build today's date boundaries in Europe/Rome (UTC+1 or UTC+2 DST).
+    const nowRome = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Europe/Rome" })
+    );
+    const todayStart = new Date(
+      nowRome.getFullYear(),
+      nowRome.getMonth(),
+      nowRome.getDate(),
+      0, 0, 0
+    );
+    const todayEnd = new Date(
+      nowRome.getFullYear(),
+      nowRome.getMonth(),
+      nowRome.getDate(),
+      23, 59, 59
+    );
+
+    // Scan matchdays for one whose lockTime falls today.
+    const matchdaysSnap = await db
+      .collection("seasons")
+      .doc(seasonKey)
+      .collection("matchdays")
+      .where("lockTime", ">=", Timestamp.fromDate(todayStart))
+      .where("lockTime", "<=", Timestamp.fromDate(todayEnd))
+      .limit(1)
+      .get();
+
+    if (matchdaysSnap.empty) {
+      console.log("[reminder] no matchday with lockTime today, skipping");
+      return;
+    }
+
+    const matchdayDoc = matchdaysSnap.docs[0];
+    const data = matchdayDoc.data();
+    const matches: Array<{
+      home: string;
+      away: string;
+      kickoff: string;
+      odds?: { home: number; draw: number; away: number };
+    }> = data.matches ?? [];
+
+    if (matches.length === 0) {
+      console.log("[reminder] matchday found but no matches, skipping");
+      return;
+    }
+
+    // Find the first match by kickoff time.
+    const sorted = [...matches].sort(
+      (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
+    );
+    const firstMatch = sorted[0];
+    const firstKickoff = new Date(firstMatch.kickoff);
+
+    // Format time in Europe/Rome as HH:MM.
+    const lockTimeFormatted = firstKickoff.toLocaleTimeString("it-IT", {
+      timeZone: "Europe/Rome",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+    const title = "Pronostici aperti!";
+    const body =
+      `Ricordati che puoi inviare i pronostici fino alle ore ${lockTimeFormatted}.\n` +
+      `La prima partita del turno sarà ${firstMatch.home}-${firstMatch.away} alle ore ${lockTimeFormatted}.`;
+
+    const tokens = await collectAllFcmTokens(db);
+    if (tokens.length === 0) {
+      console.log("[reminder] no FCM tokens found, skipping push");
+      return;
+    }
+
+    await sendPushToTokens(tokens, {
+      title,
+      body,
+      data: {
+        type: "matchday_reminder",
+        seasonKey,
+        dayNumber: matchdayDoc.id,
+      },
+    });
+
+    console.log(
+      `[reminder] sent matchday ${matchdayDoc.id} reminder to ${tokens.length} token(s): ` +
+      `${firstMatch.home}-${firstMatch.away} @ ${lockTimeFormatted}`
+    );
   }
 );
