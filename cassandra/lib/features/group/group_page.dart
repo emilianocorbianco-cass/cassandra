@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -747,8 +748,21 @@ class _GroupPageState extends State<GroupPage> {
     }
   }
 
+  Future<void> _callApproveReject(String groupId, String memberUid, String action) async {
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('approveGroupMember');
+      await callable.call<dynamic>({
+        'groupId': groupId,
+        'memberUid': memberUid,
+        'action': action,
+      });
+    } catch (e) {
+      if (kDebugMode) debugPrint('[approve] $action error: $e');
+    }
+  }
+
   Widget _buildPendingMembersSection(AppState appState, AppLocalizations l10n) {
-    final fs = appState.firestoreService;
     final groupId = appState.activeGroupId;
 
     return Container(
@@ -784,14 +798,9 @@ class _GroupPageState extends State<GroupPage> {
                   SizedBox(
                     height: 28,
                     child: TextButton(
-                      onPressed: fs == null || groupId == null
+                      onPressed: groupId == null
                           ? null
-                          : () async {
-                              await fs.approvePendingMember(
-                                groupId: groupId,
-                                memberUid: member.uid,
-                              );
-                            },
+                          : () => _callApproveReject(groupId, member.uid, 'approve'),
                       style: TextButton.styleFrom(
                         foregroundColor: CassandraColors.mintLeaf,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -806,14 +815,9 @@ class _GroupPageState extends State<GroupPage> {
                   SizedBox(
                     height: 28,
                     child: TextButton(
-                      onPressed: fs == null || groupId == null
+                      onPressed: groupId == null
                           ? null
-                          : () async {
-                              await fs.rejectPendingMember(
-                                groupId: groupId,
-                                memberUid: member.uid,
-                              );
-                            },
+                          : () => _callApproveReject(groupId, member.uid, 'reject'),
                       style: TextButton.styleFrom(
                         foregroundColor: CassandraColors.primary,
                         padding: const EdgeInsets.symmetric(horizontal: 10),

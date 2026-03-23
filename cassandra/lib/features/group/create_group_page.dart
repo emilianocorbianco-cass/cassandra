@@ -163,14 +163,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      l10n.createGroupSubtitle,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CassandraColors.slate,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
                   ],
                 ),
               ),

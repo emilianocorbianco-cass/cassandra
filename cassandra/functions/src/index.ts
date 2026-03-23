@@ -2068,6 +2068,123 @@ export const notifyGroupChatMessage = onDocumentCreated(
   }
 );
 
+export const notifyAdminPendingMember = onDocumentCreated(
+  {
+    region: "europe-west1",
+    document: "groups/{groupId}/members/{memberUid}",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const data = snap.data() as Record<string, unknown>;
+    const status = String(data["status"] ?? "active").trim();
+    if (status !== "pending") return;
+
+    const db = getFirestore();
+    const groupId = event.params.groupId as string;
+    const memberUid = event.params.memberUid as string;
+
+    const groupSnap = await db.collection("groups").doc(groupId).get();
+    if (!groupSnap.exists) return;
+    const groupData = groupSnap.data()!;
+    const adminUid = String(groupData["adminUid"] ?? "").trim();
+    const groupName = String(groupData["name"] ?? "").trim();
+    if (!adminUid) return;
+
+    const displayName = String(data["displayName"] ?? "").trim();
+    const teamName = String(data["teamName"] ?? "").trim();
+    const label = teamName || displayName || memberUid;
+
+    const tokens = await collectFcmTokensForUids(db, [adminUid]);
+    if (tokens.length === 0) {
+      console.log(`[notify-pending] no tokens for admin ${adminUid}`);
+      return;
+    }
+
+    await sendPushToTokens(tokens, {
+      title: groupName || "Nuovo membro in attesa",
+      body: `${label} vuole entrare nel gruppo. Apri il gruppo per approvare.`,
+      data: {
+        type: "pending_member",
+        groupId,
+        memberUid,
+      },
+    });
+
+    console.log(
+      `[notify-pending] group=${groupId} member=${label} admin=${adminUid}`
+    );
+  }
+);
+
+// ─── Approve / Reject pending group member (callable) ────────────────────────
+
+export const approveGroupMember = onCall(
+  { region: "europe-west1", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Not signed in");
+
+    const { groupId, memberUid, action } = request.data as {
+      groupId?: string;
+      memberUid?: string;
+      action?: string;
+    };
+    if (!groupId || !memberUid || !action) {
+      throw new HttpsError("invalid-argument", "Missing groupId, memberUid, or action");
+    }
+    if (action !== "approve" && action !== "reject") {
+      throw new HttpsError("invalid-argument", "action must be approve or reject");
+    }
+
+    const db = getFirestore();
+    const groupRef = db.collection("groups").doc(groupId);
+    const memberRef = groupRef.collection("members").doc(memberUid);
+    const userRef = db.collection("users").doc(memberUid);
+
+    const groupSnap = await groupRef.get();
+    if (!groupSnap.exists) throw new HttpsError("not-found", "Group not found");
+    if (groupSnap.data()?.adminUid !== uid) {
+      throw new HttpsError("permission-denied", "Only admin can approve/reject");
+    }
+
+    const memberSnap = await memberRef.get();
+    if (!memberSnap.exists) throw new HttpsError("not-found", "Member not found");
+    if (memberSnap.data()?.status !== "pending") {
+      throw new HttpsError("failed-precondition", "Member is not pending");
+    }
+
+    if (action === "reject") {
+      await memberRef.delete();
+      console.log(`[approve] rejected ${memberUid} from group ${groupId}`);
+      return { status: "rejected" };
+    }
+
+    // Approve: update member status, increment memberCount, add groupId to user
+    const currentCount = (groupSnap.data()?.memberCount as number) ?? 0;
+    await db.runTransaction(async (txn) => {
+      txn.update(memberRef, {
+        status: "active",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      txn.update(groupRef, {
+        memberCount: currentCount + 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      txn.set(userRef, {
+        groupIds: FieldValue.arrayUnion([groupId]),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    console.log(`[approve] approved ${memberUid} in group ${groupId}`);
+    return { status: "approved" };
+  }
+);
+
 export const cleanupGroupChatMessages = onSchedule(
   {
     region: "europe-west1",

@@ -127,7 +127,7 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                     Text(
                       l10n.joinGroupEnterInviteCode,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CassandraColors.slate,
+                        color: CassandraColors.brightSnow,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -166,14 +166,26 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                             ),
                             counterStyle: const TextStyle(color: CassandraColors.brightSnow),
                             errorText: _error,
-                            border: const OutlineInputBorder(
-                              borderSide: BorderSide(color: CassandraColors.brightSnow),
+                            errorStyle: const TextStyle(color: CassandraColors.brightSnow),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: CassandraColors.brightSnow),
                             ),
-                            enabledBorder: const OutlineInputBorder(
-                              borderSide: BorderSide(color: CassandraColors.brightSnow),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: CassandraColors.brightSnow),
                             ),
-                            focusedBorder: const OutlineInputBorder(
-                              borderSide: BorderSide(color: CassandraColors.brightSnow, width: 2),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: CassandraColors.brightSnow, width: 2),
+                            ),
+                            errorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: CassandraColors.brightSnow),
+                            ),
+                            focusedErrorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: CassandraColors.brightSnow, width: 2),
                             ),
                           ),
                           onChanged: (_) => setState(() => _error = null),
@@ -198,8 +210,11 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                           : _onJoin,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: CassandraColors.brightSnow,
-                        disabledForegroundColor: CassandraColors.brightSnow.withValues(alpha: 0.5),
+                        disabledForegroundColor: CassandraColors.brightSnow,
                         side: const BorderSide(color: CassandraColors.brightSnow),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                       child: _loading
                           ? const SizedBox(

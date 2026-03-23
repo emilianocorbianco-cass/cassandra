@@ -14,6 +14,10 @@ class GroupImageHelper {
   GroupImageHelper._();
 
   static Future<String?> pickAndSaveGroupImage(BuildContext context) async {
+    // Capture navigator before async gap — context may become unmounted
+    // after the native image picker returns (iOS lifecycle rebuild).
+    final navigator = Navigator.of(context, rootNavigator: true);
+
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
       source: ImageSource.gallery,
@@ -25,8 +29,7 @@ class GroupImageHelper {
     final dest = File('${dir.path}/group_image.png');
     final pickedFile = File(xFile.path);
 
-    if (!context.mounted) return null;
-    final croppedPath = await Navigator.of(context).push<String?>(
+    final croppedPath = await navigator.push<String?>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => ImageCropScreen(

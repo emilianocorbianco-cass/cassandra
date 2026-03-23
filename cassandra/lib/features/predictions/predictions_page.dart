@@ -524,8 +524,11 @@ class _PredictionsPageState extends State<PredictionsPage>
     for (final member in members) {
       if (member.id == currentUid) continue;
       final memberPicks = allPicks[member.id];
-      final pick = memberPicks?[match.id] ?? PickOption.none;
-      if (pick.isNone) continue;
+      var pick = memberPicks?[match.id] ?? PickOption.none;
+      final isAuto = pick.isNone;
+      if (isAuto) {
+        pick = CassandraScoringEngine.lowestOddsPick(match);
+      }
       final odds = CassandraScoringEngine.oddsForPick(match, pick);
       final isCorrect = isStarted && isPickCorrectForMatch(match, pick);
       rows.add(
@@ -538,6 +541,7 @@ class _PredictionsPageState extends State<PredictionsPage>
           isCorrect: isCorrect,
           isLive: isLive,
           isFT: isFT,
+          isAuto: isAuto,
         ),
       );
     }
@@ -2645,6 +2649,7 @@ class _MemberPickData {
   final bool isCorrect;
   final bool isLive;
   final bool isFT;
+  final bool isAuto;
 
   const _MemberPickData({
     required this.name,
@@ -2655,6 +2660,7 @@ class _MemberPickData {
     required this.isCorrect,
     required this.isLive,
     required this.isFT,
+    this.isAuto = false,
   });
 }
 
@@ -2682,15 +2688,32 @@ class _MemberPickRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              data.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: CassandraColors.inkBlackV2,
-              ),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    data.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: CassandraColors.inkBlackV2,
+                    ),
+                  ),
+                ),
+                if (data.isAuto) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    'auto',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                      color: CassandraColors.inkBlackV2.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(width: 8),
@@ -2729,22 +2752,22 @@ class _GroupLeaderboardSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < entries.length; i++)
-            _leaderboardTile(entries[i], i),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < entries.length; i++)
+          _leaderboardTile(entries[i], i),
+      ],
     );
   }
 
   Widget _leaderboardTile(_LeaderboardEntry e, int index) {
     final pts = formatOdds(e.totalPoints);
-    return Card(
-      child: ListTile(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: ListTile(
         leading: SizedBox(
           width: 64,
           child: Row(
@@ -2783,6 +2806,7 @@ class _GroupLeaderboardSection extends StatelessWidget {
                 : CassandraColors.primary,
           ),
         ),
+      ),
       ),
     );
   }
