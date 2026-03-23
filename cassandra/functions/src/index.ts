@@ -2128,11 +2128,10 @@ export const approveGroupMember = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Not signed in");
 
-    const { groupId, memberUid, action } = request.data as {
-      groupId?: string;
-      memberUid?: string;
-      action?: string;
-    };
+    const raw = request.data as Record<string, unknown>;
+    const groupId = String(raw.groupId ?? "").trim();
+    const memberUid = String(raw.memberUid ?? "").trim();
+    const action = String(raw.action ?? "").trim();
     if (!groupId || !memberUid || !action) {
       throw new HttpsError("invalid-argument", "Missing groupId, memberUid, or action");
     }
@@ -2165,6 +2164,18 @@ export const approveGroupMember = onCall(
 
     // Approve: update member status, increment memberCount, add groupId to user
     const currentCount = (groupSnap.data()?.memberCount as number) ?? 0;
+    const safeGroupId = `${groupId}`;
+
+    // Read user doc BEFORE the transaction to get current groupIds
+    // (transactions require all reads before writes).
+    const userSnap = await userRef.get();
+    const existing: string[] = Array.isArray(userSnap.data()?.groupIds)
+      ? (userSnap.data()!.groupIds as string[])
+      : [];
+    const updatedGroupIds = existing.includes(safeGroupId)
+      ? existing
+      : [...existing, safeGroupId];
+
     await db.runTransaction(async (txn) => {
       txn.update(memberRef, {
         status: "active",
@@ -2175,7 +2186,7 @@ export const approveGroupMember = onCall(
         updatedAt: FieldValue.serverTimestamp(),
       });
       txn.set(userRef, {
-        groupIds: FieldValue.arrayUnion([groupId]),
+        groupIds: updatedGroupIds,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
     });
