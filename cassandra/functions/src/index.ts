@@ -1796,23 +1796,60 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       continue;
     }
 
-    // Odds freeze: once a matchday has stored matches with real bookmaker odds,
-    // we only update live fields. This keeps the first available odds snapshot
-    // stable for the whole matchday.
-    //
-    // GUARD: if the stored odds are clearly deterministic (fallback), we do NOT
-    // freeze them — instead we fall through and re-fetch from the API so real
-    // bookmaker odds replace the placeholders.
+    // ── Per-match odds freeze ──────────────────────────────────────────
+    // Each match's odds are frozen individually when real bookmaker odds
+    // are fetched for it. Matches without real odds keep deterministic
+    // fallback values and are re-fetched on subsequent runs. This ensures
+    // postponed matches (posticipo) never get stuck with mock odds.
+    // The matchday-level `oddsFrozen` flag is set only when ALL matches
+    // have been individually frozen with real odds.
+
+    // Step 1: Recover already-frozen match IDs and their stored odds
+    const frozenMatchIds = new Set<string>(
+      Array.isArray(existingData?.oddsFrozenMatchIds)
+        ? (existingData!.oddsFrozenMatchIds as string[])
+        : [],
+    );
+    const existingOddsByMatchId = new Map<string, { home: number; draw: number; away: number }>();
+    if (Array.isArray(existingMatches)) {
+      for (const m of existingMatches) {
+        if (typeof m === "object" && m != null) {
+          const rec = m as Record<string, unknown>;
+          const id = String(rec.id ?? "");
+          const odds = rec.odds as { home?: number; draw?: number; away?: number } | undefined;
+          if (id && odds?.home != null && odds?.draw != null && odds?.away != null) {
+            existingOddsByMatchId.set(id, { home: odds.home!, draw: odds.draw!, away: odds.away! });
+          }
+        }
+      }
+    }
+
+    // Backward compat: if oddsFrozen is true but oddsFrozenMatchIds is
+    // empty, this doc was written before per-match tracking. Treat all
+    // existing matches as frozen if their odds look real.
     const existingMatchDocs: MatchDoc[] = Array.isArray(existingMatches)
       ? existingMatches
           .filter((m): m is Record<string, unknown> => typeof m === "object" && m != null)
           .map((m) => m as unknown as MatchDoc)
       : [];
-    const hasDeterministicOdds =
-      existingMatchDocs.length > 0 && looksLikeDeterministicOdds(existingMatchDocs);
+    if (
+      existingData?.oddsFrozen === true &&
+      frozenMatchIds.size === 0 &&
+      existingMatchDocs.length > 0 &&
+      !looksLikeDeterministicOdds(existingMatchDocs)
+    ) {
+      for (const m of existingMatchDocs) {
+        frozenMatchIds.add(m.id);
+      }
+    }
 
-    const oddsFrozenFlag = existingData?.oddsFrozen === true;
-    if (Array.isArray(existingMatches) && existingMatches.length > 0 && !hasDeterministicOdds && oddsFrozenFlag) {
+    const totalFixtures = fixtures.length;
+
+    // Step 2: If ALL matches already frozen, just merge live fields
+    if (
+      frozenMatchIds.size >= totalFixtures &&
+      fixtures.every((f) => frozenMatchIds.has(f.fixtureId.toString()))
+    ) {
       const mergedMatches = mergeLiveFieldsIntoExistingMatches(
         existingMatches,
         fixtures,
@@ -1824,6 +1861,7 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         updatedAt: FieldValue.serverTimestamp(),
         finalized,
         oddsFrozen: true,
+        oddsFrozenMatchIds: [...frozenMatchIds],
       };
       if (existingData?.oddsFrozenAt == null) {
         frozenPayload.oddsFrozenAt = FieldValue.serverTimestamp();
@@ -1833,74 +1871,60 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
       }
 
       await docRef.set(frozenPayload, { merge: true });
-      await recomputePicksScoresForMatchday(
-        db,
-        seasonKey,
-        md,
-        options.logPrefix
-      );
+      await recomputePicksScoresForMatchday(db, seasonKey, md, options.logPrefix);
       console.log(
-        `[${options.logPrefix}] Kept frozen odds for matchday ${md}: finalized=${finalized}`
+        `[${options.logPrefix}] All ${frozenMatchIds.size} matches frozen for matchday ${md}: finalized=${finalized}`
       );
       continue;
     }
 
-    if (hasDeterministicOdds) {
-      console.log(
-        `[${options.logPrefix}] Matchday ${md}: detected deterministic odds, re-fetching from API`
-      );
-    }
-
+    // Step 3: Fetch odds only for non-frozen matches
     const oddsByFixture = new Map<number, FixtureOdds>();
     for (const f of fixtures) {
+      if (frozenMatchIds.has(f.fixtureId.toString())) continue;
       const odds = await fetchOddsForFixture(f.fixtureId);
       if (odds) oddsByFixture.set(f.fixtureId, odds);
       await sleep(200);
     }
 
-    const realOddsCount = oddsByFixture.size;
-    const totalFixtures = fixtures.length;
+    // Step 4: Freeze matches that now have real odds
+    const newFrozenMatchIds = new Set(frozenMatchIds);
+    for (const f of fixtures) {
+      const matchId = f.fixtureId.toString();
+      if (frozenMatchIds.has(matchId)) continue;
+      if (oddsByFixture.has(f.fixtureId)) {
+        newFrozenMatchIds.add(matchId);
+      }
+    }
+
+    const newlyFrozenCount = newFrozenMatchIds.size - frozenMatchIds.size;
     console.log(
-      `[${options.logPrefix}] Matchday ${md}: fetched real odds for ${realOddsCount}/${totalFixtures} fixtures`
+      `[${options.logPrefix}] Matchday ${md}: ${frozenMatchIds.size} previously frozen, ` +
+        `${newlyFrozenCount} newly frozen, ` +
+        `${totalFixtures - newFrozenMatchIds.size} still awaiting real odds`
     );
 
-    // Don't write the matchday until we have real odds for at least 80% of
-    // fixtures.  This prevents deterministic fallback odds from being frozen
-    // as if they were real bookmaker odds.  Once a matchday is written with
-    // real odds it gets frozen and won't be overwritten.
-    const minRealOddsRatio = 0.8;
-    const hasEnoughRealOdds =
-      totalFixtures > 0 && realOddsCount / totalFixtures >= minRealOddsRatio;
-
-    if (!hasEnoughRealOdds && !existing.exists) {
-      console.log(
-        `[${options.logPrefix}] Matchday ${md}: skipping write — not enough real odds ` +
-          `(${realOddsCount}/${totalFixtures}, need ${Math.ceil(totalFixtures * minRealOddsRatio)})`
-      );
-      continue;
-    }
-
-    // If the doc already exists but had deterministic odds, only overwrite
-    // when we now have enough real odds.
-    if (!hasEnoughRealOdds && hasDeterministicOdds) {
-      console.log(
-        `[${options.logPrefix}] Matchday ${md}: still not enough real odds to replace deterministic ` +
-          `(${realOddsCount}/${totalFixtures}), keeping existing`
-      );
-      continue;
-    }
-
-    const shouldFreezeOdds = hasEnoughRealOdds;
-
+    // Step 5: Build match docs — frozen matches keep stored odds,
+    // non-frozen use fresh real odds or deterministic fallback
     const matches: MatchDoc[] = fixtures
       .sort((a, b) => a.kickoffUtc.localeCompare(b.kickoffUtc))
-      .map((f) =>
-        buildMatchDoc(
+      .map((f) => {
+        const matchId = f.fixtureId.toString();
+        if (frozenMatchIds.has(matchId) && existingOddsByMatchId.has(matchId)) {
+          const doc = buildMatchDoc(f, null, eventsByFixture.get(matchId) ?? null);
+          doc.odds = existingOddsByMatchId.get(matchId)!;
+          return doc;
+        }
+        return buildMatchDoc(
           f,
           oddsByFixture.get(f.fixtureId) ?? null,
-          eventsByFixture.get(f.fixtureId.toString()) ?? null
-        )
-      );
+          eventsByFixture.get(matchId) ?? null
+        );
+      });
+
+    // Step 6: Write to Firestore
+    const allFrozen = newFrozenMatchIds.size >= totalFixtures &&
+      fixtures.every((f) => newFrozenMatchIds.has(f.fixtureId.toString()));
 
     await docRef.set(
       {
@@ -1909,20 +1933,16 @@ async function refreshMatchdayDataCore(options: RefreshOptions): Promise<void> {
         lockTime: Timestamp.fromDate(lockTime),
         updatedAt: FieldValue.serverTimestamp(),
         finalized,
-        oddsFrozen: shouldFreezeOdds,
-        ...(shouldFreezeOdds ? { oddsFrozenAt: FieldValue.serverTimestamp() } : {}),
+        oddsFrozen: allFrozen,
+        oddsFrozenMatchIds: [...newFrozenMatchIds],
+        ...(allFrozen ? { oddsFrozenAt: FieldValue.serverTimestamp() } : {}),
       },
       { merge: true }
     );
-    await recomputePicksScoresForMatchday(
-      db,
-      seasonKey,
-      md,
-      options.logPrefix
-    );
+    await recomputePicksScoresForMatchday(db, seasonKey, md, options.logPrefix);
 
     console.log(
-      `[${options.logPrefix}] Wrote matchday ${md}: finalized=${finalized}`
+      `[${options.logPrefix}] Wrote matchday ${md}: ${newFrozenMatchIds.size}/${totalFixtures} frozen, finalized=${finalized}`
     );
   }
 

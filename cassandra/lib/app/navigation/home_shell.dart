@@ -281,7 +281,9 @@ class _HomeShellState extends State<HomeShell>
 
   // ── Swipe navigation ────────────────────────────────────────────────────
   double _swipeDx = 0;
-  static const _swipeThreshold = 60.0;
+  static const _swipeThreshold = 40.0;
+  static const _swipeVelocityThreshold = 400.0;
+  static const _swipeMinDxForVelocity = 15.0;
 
   void _onHorizontalDragStart(DragStartDetails _) {
     _swipeDx = 0;
@@ -291,26 +293,37 @@ class _HomeShellState extends State<HomeShell>
     _swipeDx += details.delta.dx;
   }
 
-  void _onHorizontalDragEnd(DragEndDetails _) {
-    if (_swipeDx < -_swipeThreshold && _index < _pages.length - 1) {
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final swipeRight = _swipeDx > _swipeThreshold ||
+        (_swipeDx > _swipeMinDxForVelocity && velocity > _swipeVelocityThreshold);
+    final swipeLeft = _swipeDx < -_swipeThreshold ||
+        (_swipeDx < -_swipeMinDxForVelocity && velocity < -_swipeVelocityThreshold);
+
+    if (swipeLeft && _index < _pages.length - 1) {
       _selectTab(_index + 1);
-    } else if (_swipeDx > _swipeThreshold && _index > 0) {
+    } else if (swipeRight && _index > 0) {
       _selectTab(_index - 1);
-    } else if (_swipeDx > _swipeThreshold && _index == 0) {
-      // Swipe right from Predictions → GroupHubPage slides in from left
+    } else if (swipeRight && _index == 0) {
+      // Swipe right from Predictions → GroupHubPage slides in from left.
+      // ColoredBox prevents the underlying PredictionsPage from being
+      // visible through the slide transition gap.
       Navigator.of(context).push(
         PageRouteBuilder(
           pageBuilder: (_, _, _) => const GroupHubPage(),
           transitionsBuilder: (_, animation, _, child) {
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(-1, 0),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              )),
-              child: child,
+            return ColoredBox(
+              color: CassandraColors.bg,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(-1, 0),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: child,
+              ),
             );
           },
         ),
