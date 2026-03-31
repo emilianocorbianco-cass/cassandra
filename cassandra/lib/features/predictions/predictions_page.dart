@@ -990,6 +990,12 @@ bool isPickCorrectForMatch(PredictionMatch match, PickOption pick) {
       return h == a;
     case PickOption.away:
       return a > h;
+    case PickOption.homeDraw:
+      return h >= a;
+    case PickOption.drawAway:
+      return a >= h;
+    case PickOption.homeAway:
+      return h != a;
     case PickOption.none:
       return false;
   }
@@ -1004,6 +1010,12 @@ bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
       return outcome == MatchOutcome.draw;
     case PickOption.away:
       return outcome == MatchOutcome.away;
+    case PickOption.homeDraw:
+      return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;
+    case PickOption.drawAway:
+      return outcome == MatchOutcome.draw || outcome == MatchOutcome.away;
+    case PickOption.homeAway:
+      return outcome == MatchOutcome.home || outcome == MatchOutcome.away;
     case PickOption.none:
       return false;
   }
@@ -1964,6 +1976,12 @@ class _CompactMatchCard extends StatelessWidget {
         return match.odds.draw;
       case PickOption.away:
         return match.odds.away;
+      case PickOption.homeDraw:
+        return match.odds.homeDraw;
+      case PickOption.drawAway:
+        return match.odds.drawAway;
+      case PickOption.homeAway:
+        return match.odds.homeAway;
       case PickOption.none:
         return 0;
     }
@@ -2140,6 +2158,12 @@ class _CompactMatchCard extends StatelessWidget {
         return h == a;
       case PickOption.away:
         return a > h;
+      case PickOption.homeDraw:
+        return h >= a;
+      case PickOption.drawAway:
+        return a >= h;
+      case PickOption.homeAway:
+        return h != a;
       case PickOption.none:
         return false;
     }

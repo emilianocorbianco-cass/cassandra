@@ -44,6 +44,34 @@ class CassandraScoringEngine {
     return 10;
   }
 
+  /// Bonus/malus basato sulla somma combinata (sqv + corretti).
+  ///   ≤9  → -7 | ≤12 → -4 | ≤15 → -1 | ≤18 → 0
+  ///   ≤22 → +1 | ≤26 → +4 | ≤30 → +7 | >30 → +10
+  static int bonusForCombinedScore(num combinedScore) {
+    if (combinedScore <= 9) return -7;
+    if (combinedScore <= 12) return -4;
+    if (combinedScore <= 15) return -1;
+    if (combinedScore <= 18) return 0;
+    if (combinedScore <= 22) return 1;
+    if (combinedScore <= 26) return 4;
+    if (combinedScore <= 30) return 7;
+    return 10;
+  }
+
+  /// Returns the single pick (home/draw/away) with the lowest odds.
+  static PickOption lowestOddsPick(PredictionMatch match) {
+    var min = match.odds.home;
+    var pick = PickOption.home;
+    if (match.odds.draw < min) {
+      min = match.odds.draw;
+      pick = PickOption.draw;
+    }
+    if (match.odds.away < min) {
+      pick = PickOption.away;
+    }
+    return pick;
+  }
+
   /// Public accessor for the odds of a given pick on a match.
   static double oddsForPick(PredictionMatch match, PickOption pick) {
     return _oddsPlayedForPick(match, pick) ?? 0;
