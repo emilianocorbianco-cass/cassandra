@@ -228,9 +228,26 @@ class _SerieAPageState extends State<SerieAPage> {
       );
     }
 
+    final isEnglish = l10n.localeName.startsWith('en');
+    final matchdayTitle = isEnglish
+        ? 'Matchday ${app.cassandraMatchdayCursor}'
+        : 'Giornata ${app.cassandraMatchdayCursor}';
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 90),
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Text(
+            matchdayTitle,
+            style: const TextStyle(
+              color: CassandraColors.brightSnow,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ),
         for (int i = 0; i < matches.length; i++) ...[
           if (i > 0) const SizedBox(height: 18),
           _buildMatchCard(context, matches[i], l10n),
