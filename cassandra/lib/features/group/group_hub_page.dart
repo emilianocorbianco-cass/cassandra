@@ -53,10 +53,16 @@ class _GroupHubPageState extends State<GroupHubPage> {
     // and history hydration in the background.
     app.setActiveGroupId(groupId);
 
-    // Navigate immediately — predictions page loads its own fixtures.
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomeShell()),
-    );
+    // If HomeShell is below us (came from swipe), just pop back to it.
+    // Otherwise (came from splash), replace this route with HomeShell.
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeShell()),
+      );
+    }
   }
 
   void _openCreateGroup() {
@@ -68,8 +74,9 @@ class _GroupHubPageState extends State<GroupHubPage> {
             final app = CassandraScope.of(context);
             // If only 1 group now, go directly to HomeShell
             if (app.firestoreGroupIds.length <= 1) {
-              Navigator.of(context).pushReplacement(
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const HomeShell()),
+                (route) => false,
               );
             } else {
               // Pop back to hub and refresh
@@ -90,8 +97,9 @@ class _GroupHubPageState extends State<GroupHubPage> {
             if (!mounted) return;
             final app = CassandraScope.of(context);
             if (app.firestoreGroupIds.length <= 1) {
-              Navigator.of(context).pushReplacement(
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const HomeShell()),
+                (route) => false,
               );
             } else {
               Navigator.of(context, rootNavigator: true).pop();

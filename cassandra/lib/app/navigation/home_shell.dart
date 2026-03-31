@@ -396,28 +396,30 @@ class _HomeShellState extends State<HomeShell>
                   onHorizontalDragStart: _onHorizontalDragStart,
                   onHorizontalDragUpdate: _onHorizontalDragUpdate,
                   onHorizontalDragEnd: _onHorizontalDragEnd,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 700),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      // The incoming page has key == _index; outgoing has old key.
-                      final isIncoming = child.key == ValueKey(_index);
-                      final offset = Tween<Offset>(
-                        begin: Offset(
-                          isIncoming ? _slideDirection.toDouble() : -_slideDirection.toDouble(),
-                          0,
-                        ),
-                        end: Offset.zero,
-                      );
-                      return SlideTransition(
-                        position: offset.animate(animation),
-                        child: child,
-                      );
-                    },
-                    child: KeyedSubtree(
-                      key: ValueKey(_index),
-                      child: _pages[_index],
+                  child: ClipRect(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 700),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        // The incoming page has key == _index; outgoing has old key.
+                        final isIncoming = child.key == ValueKey(_index);
+                        final offset = Tween<Offset>(
+                          begin: Offset(
+                            isIncoming ? _slideDirection.toDouble() : -_slideDirection.toDouble(),
+                            0,
+                          ),
+                          end: Offset.zero,
+                        );
+                        return SlideTransition(
+                          position: offset.animate(animation),
+                          child: child,
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey(_index),
+                        child: _pages[_index],
+                      ),
                     ),
                   ),
                 ),
