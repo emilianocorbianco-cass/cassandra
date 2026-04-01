@@ -851,22 +851,15 @@ class _PostLockMatchCard extends StatelessWidget {
 
             // ── Right: pick bubbles ───────────────────────────
             const SizedBox(width: 8),
-            if (hasPick) ...[
+            if (hasPick)
               _PostLockPickBubble(
                 label: pick.label,
                 odds: _winOdds,
                 bgColor: _playedBubbleBg,
                 borderColor: _playedBubbleBorder,
-              ),
-              const SizedBox(width: 4),
-              _PostLockPickBubble(
-                label: _opposingPickLabel(),
-                odds: -_loseOdds,
-                bgColor: _opposingBubbleBg,
-                borderColor: _opposingBubbleBorder,
-              ),
-            ] else
-              const SizedBox(width: 114),
+              )
+            else
+              const SizedBox(width: 56),
           ],
         ),
       ),

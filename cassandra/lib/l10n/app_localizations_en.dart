@@ -722,12 +722,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String statsBestMatchday(Object value) {
-    return 'Best matchday: $value';
+    return 'Best matchday$value';
   }
 
   @override
   String statsWorstMatchday(Object value) {
-    return 'Worst matchday: $value';
+    return 'Worst matchday$value';
   }
 
   @override

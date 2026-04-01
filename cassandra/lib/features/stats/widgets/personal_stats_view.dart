@@ -34,6 +34,16 @@ class PersonalStatsView extends StatelessWidget {
     );
   }
 
+  Widget _statsRow(Widget left, Widget right) {
+    return Row(
+      children: [
+        left,
+        const SizedBox(width: 18),
+        right,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -56,10 +66,11 @@ class PersonalStatsView extends StatelessWidget {
         : 'G${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 90),
       children: [
         if (entries.isNotEmpty)
           Card(
+            margin: EdgeInsets.zero,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: DropdownButtonHideUnderline(
@@ -95,64 +106,50 @@ class PersonalStatsView extends StatelessWidget {
               ),
             ),
           ),
-        if (entries.isNotEmpty) const SizedBox(height: 10),
-        Row(
-          children: [
-            _miniStat(label: l10n.statsTotal, value: totalLabel),
-            _miniStat(label: l10n.statsAvgMatchday, value: avgLabel),
-          ],
+        if (entries.isNotEmpty) const SizedBox(height: 18),
+        _statsRow(
+          _miniStat(label: l10n.statsTotal, value: totalLabel),
+          _miniStat(label: l10n.statsAvgMatchday, value: avgLabel),
         ),
-        Row(
-          children: [
-            _miniStat(
-              label: l10n.statsMatchdaysPlayed,
-              value: '${s?.daysPlayed ?? 0}',
-            ),
-            _miniStat(label: l10n.statsAvgOdds, value: oddsLabel),
-          ],
+        const SizedBox(height: 18),
+        _statsRow(
+          _miniStat(
+            label: l10n.statsMatchdaysPlayed,
+            value: '${s?.daysPlayed ?? 0}',
+          ),
+          _miniStat(label: l10n.statsAvgOdds, value: oddsLabel),
         ),
-        Row(
-          children: [
-            _miniStat(
-              label: l10n.statsTotalCorrect,
-              value: '${s?.totalCorrect ?? 0}/${s?.totalMatches ?? 0}',
-            ),
-            _miniStat(
-              label: l10n.statsMetricPercentCorrect,
-              value: _formatPercent(s?.correctRate ?? 0),
-            ),
-          ],
+        const SizedBox(height: 18),
+        _statsRow(
+          _miniStat(
+            label: l10n.statsTotalCorrect,
+            value: '${s?.totalCorrect ?? 0}/${s?.totalMatches ?? 0}',
+          ),
+          _miniStat(
+            label: l10n.statsMetricPercentCorrect,
+            value: _formatPercent(s?.correctRate ?? 0),
+          ),
         ),
-        Row(
-          children: [
-            _miniStat(
-              label: l10n.statsMetricPerfectWeeks,
-              value: '${s?.perfectWeeks ?? 0}',
-            ),
-            _miniStat(
-              label: l10n.statsAvgBonus,
-              value: formatOdds(s?.averageBonusPerDay ?? 0),
-            ),
-          ],
+        const SizedBox(height: 18),
+        _statsRow(
+          _miniStat(
+            label: l10n.statsMetricPerfectWeeks,
+            value: '${s?.perfectWeeks ?? 0}',
+          ),
+          _miniStat(
+            label: l10n.statsAvgBonus,
+            value: formatOdds(s?.averageBonusPerDay ?? 0),
+          ),
         ),
-        const SizedBox(height: 8),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  l10n.statsHighlights,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 10),
-                Text(l10n.statsBestMatchday(bestLabel)),
-                Text(l10n.statsWorstMatchday(worstLabel)),
-                const SizedBox(height: 8),
-                Text(l10n.statsTotalBonus('${s?.totalBonus ?? 0}')),
-              ],
-            ),
+        const SizedBox(height: 18),
+        _statsRow(
+          _miniStat(
+            label: l10n.statsBestMatchday(''),
+            value: bestLabel,
+          ),
+          _miniStat(
+            label: l10n.statsWorstMatchday(''),
+            value: worstLabel,
           ),
         ),
       ],

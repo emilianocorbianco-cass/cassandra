@@ -3,6 +3,7 @@ import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../badges/widgets/avatar_with_badges.dart';
 import '../leaderboards/models/matchday_data.dart';
 import '../predictions/models/formatters.dart';
 import '../predictions/models/pick_option.dart';
@@ -146,16 +147,32 @@ class GroupMatchdayPage extends StatelessWidget {
                           ),
                         );
                       },
-                      leading: CircleAvatar(
-                        backgroundColor: _avatarColorFromSeed(
-                          r.member.avatarSeed,
-                        ).withAlpha(40),
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: CassandraColors.primary,
-                          ),
+                      leading: SizedBox(
+                        width: 64,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 22,
+                              child: Text(
+                                '${i + 1}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: CassandraColors.inkBlack,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            AvatarWithBadges(
+                              radius: 18,
+                              backgroundColor: CassandraColors.primary,
+                              text: r.member.avatarInitial,
+                              badges: const [],
+                              imagePathOrUrl: r.member.photoUrl,
+                            ),
+                          ],
                         ),
                       ),
                       title: Text(

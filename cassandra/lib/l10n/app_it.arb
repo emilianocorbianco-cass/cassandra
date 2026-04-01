@@ -323,22 +323,22 @@
   "statsSegmentGroup": "gruppo",
   "statsMetricAverage": "media",
   "statsMetricTotal": "totale",
-  "statsMetricPercentCorrect": "% esatti",
-  "statsMetricPerfectWeeks": "settimane perfette",
-  "statsTotal": "totale",
-  "statsAvgMatchday": "media/giornata",
-  "statsMatchdaysPlayed": "giornate giocate",
-  "statsAvgOdds": "quota media",
-  "statsTotalCorrect": "esatti totali",
-  "statsAvgBonus": "bonus medio",
+  "statsMetricPercentCorrect": "% Esatti",
+  "statsMetricPerfectWeeks": "Settimane perfette",
+  "statsTotal": "Totale",
+  "statsAvgMatchday": "Media/giornata",
+  "statsMatchdaysPlayed": "Giornate giocate",
+  "statsAvgOdds": "Quota media",
+  "statsTotalCorrect": "Esatti totali",
+  "statsAvgBonus": "Bonus medio",
   "statsHighlights": "In evidenza",
-  "statsBestMatchday": "Miglior giornata: {value}",
+  "statsBestMatchday": "G. migliore{value}",
   "@statsBestMatchday": {
     "placeholders": {
       "value": {}
     }
   },
-  "statsWorstMatchday": "Peggior giornata: {value}",
+  "statsWorstMatchday": "G. peggiore{value}",
   "@statsWorstMatchday": {
     "placeholders": {
       "value": {}
@@ -607,7 +607,7 @@
   "groupHubTitle": "Scegli il tuo gruppo",
   "groupHubSubtitle": "Scegli il gruppo in cui entrare",
   "groupHubCreateGroup": "Crea un gruppo",
-  "groupHubJoinGroup": "Unisciti ad un gruppo",
+  "groupHubJoinGroup": "Unisciti a un gruppo",
   "groupHubMemberCount": "{count, plural, =1{1 membro} other{{count} membri}}",
   "@groupHubMemberCount": {
     "placeholders": {
@@ -617,7 +617,7 @@
   "settingsSwitchGroup": "Cambia gruppo",
   "predictionsSubmitButton": "Invia",
   "predictionsSubmittedButton": "Inviati",
-  "predictionsPicksMade": "Pronostici effettuati",
+  "predictionsPicksMade": "Pronostici",
   "predictionsMaxPoints": "Max Punti",
   "predictionsMinPoints": "Min Punti"
 }

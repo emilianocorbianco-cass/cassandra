@@ -50,6 +50,7 @@ class GroupPage extends StatefulWidget {
 }
 
 class _GroupPageState extends State<GroupPage> {
+  int _segment = 0; // 0 = classifica, 1 = giornate, 2 = stats
   bool _didApplyMatches = false;
 
   // Fallback demo: stabile, creato una volta.
@@ -1215,7 +1216,7 @@ class _GroupPageState extends State<GroupPage> {
                 imagePath: appState.groupImagePath,
                 radius: 65,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
               // ── Group name ──
               Text(
                 groupName,
@@ -1226,7 +1227,7 @@ class _GroupPageState extends State<GroupPage> {
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 36),
               // ── Classifica / Giornate / Stats buttons ──
               Container(
                 height: 48,
@@ -1240,63 +1241,43 @@ class _GroupPageState extends State<GroupPage> {
                     Expanded(
                       child: _GroupNavButton(
                         label: l10n.groupStandings,
-                        selected: true,
+                        selected: _segment == 0,
                         borderRadius: const BorderRadius.horizontal(
                           left: Radius.circular(15),
                         ),
-                        onTap: () {},
+                        onTap: () => setState(() => _segment = 0),
                       ),
                     ),
                     Container(width: 1, color: CassandraColors.brightSnow),
                     Expanded(
                       child: _GroupNavButton(
                         label: l10n.groupMatchdays,
+                        selected: _segment == 1,
                         borderRadius: BorderRadius.zero,
-                        onTap: () {
-                          Navigator.of(context, rootNavigator: true).push(
-                            MaterialPageRoute(
-                              builder: (_) => _GroupMatchdaysListPage(
-                                groupName: groupName,
-                                seasonMatchdaysDesc: seasonMatchdaysDesc,
-                                members: members,
-                                picksByMemberByDay: picksByMemberByDay,
-                                en: en,
-                                onRefresh: _refreshFromFirestore,
-                              ),
-                            ),
-                          );
-                        },
+                        onTap: () => setState(() => _segment = 1),
                       ),
                     ),
                     Container(width: 1, color: CassandraColors.brightSnow),
                     Expanded(
                       child: _GroupNavButton(
                         label: l10n.groupStats,
+                        selected: _segment == 2,
                         borderRadius: const BorderRadius.horizontal(
                           right: Radius.circular(15),
                         ),
-                        onTap: () {
-                          Navigator.of(context, rootNavigator: true).push(
-                            MaterialPageRoute(
-                              builder: (_) => const StatsPage(
-                                embedded: false,
-                                lockToPersonal: true,
-                              ),
-                            ),
-                          );
-                        },
+                        onTap: () => setState(() => _segment = 2),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
               // ── Divider ──
               const Divider(color: CassandraColors.brightSnow, thickness: 0.5, height: 0.5),
               // ── Pending members ──
               if (_pendingMembers.isNotEmpty)
                 _buildPendingMembersSection(appState, l10n),
-              // ── Member standings ──
+              // ── Content based on segment ──
               Expanded(
                 child: useFirestoreMembers &&
                         _firestoreLoading &&
@@ -1322,81 +1303,180 @@ class _GroupPageState extends State<GroupPage> {
                       )
                     : useFirestoreMembers && members.isEmpty
                     ? Center(child: Text(l10n.commonNoDataAvailable))
-                    : RefreshIndicator(
-                        onRefresh: _refreshFromFirestore,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.only(top: 18, bottom: 90),
-                          clipBehavior: Clip.none,
-                          itemCount: generalEntries.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 18),
-                          itemBuilder: (context, i) {
-                            final e = generalEntries[i];
-                            final pts = formatOdds(e.totalPoints);
-
-                            return Material(
-                              color: CassandraColors.platinum,
-                              borderRadius: BorderRadius.circular(16),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 22,
-                                      child: Text(
-                                        '${i + 1}',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: CassandraColors.inkBlack,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    AvatarWithBadges(
-                                      radius: 18,
-                                      backgroundColor: CassandraColors.primary,
-                                      text: e.member.avatarInitial,
-                                      badges: const [],
-                                      imagePathOrUrl: e.member.photoUrl,
-                                    ),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Text(
-                                        e.member.uiName,
-                                        style: const TextStyle(
-                                          color: CassandraColors.inkBlack,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    Text(
-                                      pts,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: e.totalPoints >= 0
-                                            ? CassandraColors.inkBlack
-                                            : CassandraColors.primary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    : _segment == 2
+                    ? const StatsPage(embedded: true, lockToPersonal: true)
+                    : _segment == 1
+                    ? _buildMatchdaysList(
+                        seasonMatchdaysDesc, members, groupName,
+                        picksByMemberByDay, en, l10n,
+                      )
+                    : _buildStandingsList(generalEntries),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStandingsList(List<_GeneralLeaderboardEntry> entries) {
+    return RefreshIndicator(
+      onRefresh: _refreshFromFirestore,
+      child: ListView.separated(
+        padding: const EdgeInsets.only(top: 18, bottom: 90),
+        clipBehavior: Clip.none,
+        itemCount: entries.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 18),
+        itemBuilder: (context, i) {
+          final e = entries[i];
+          final pts = formatOdds(e.totalPoints);
+
+          return Material(
+            color: CassandraColors.platinum,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 22,
+                    child: Text(
+                      '${i + 1}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: CassandraColors.inkBlack,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  AvatarWithBadges(
+                    radius: 18,
+                    backgroundColor: CassandraColors.primary,
+                    text: e.member.avatarInitial,
+                    badges: const [],
+                    imagePathOrUrl: e.member.photoUrl,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      e.member.uiName,
+                      style: const TextStyle(
+                        color: CassandraColors.inkBlack,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    pts,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: e.totalPoints >= 0
+                          ? CassandraColors.inkBlack
+                          : CassandraColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMatchdaysList(
+    List<MatchdayData> seasonMatchdaysDesc,
+    List<GroupMember> members,
+    String groupName,
+    Map<int, Map<String, Map<String, PickOption>>> picksByMemberByDay,
+    bool en,
+    AppLocalizations l10n,
+  ) {
+    return RefreshIndicator(
+      onRefresh: _refreshFromFirestore,
+      child: ListView.separated(
+        padding: const EdgeInsets.only(top: 18, bottom: 90),
+        clipBehavior: Clip.none,
+        itemCount: seasonMatchdaysDesc.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 18),
+        itemBuilder: (context, i) {
+          final md = seasonMatchdaysDesc[i];
+          final daysLabel = formatMatchdayWeekdayRange(
+            md.matches.map((m) => m.kickoff),
+            english: en,
+          );
+          final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
+
+          return Material(
+            color: CassandraColors.platinum,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () {
+                Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute(
+                    builder: (_) => GroupMatchdayPage(
+                      matchday: md,
+                      members: members,
+                      groupName: groupName,
+                      picksByMemberId:
+                          picksByMemberByDay[md.dayNumber] ??
+                          const <String, Map<String, PickOption>>{},
+                    ),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            mdTitle,
+                            style: const TextStyle(
+                              color: CassandraColors.inkBlack,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            daysLabel,
+                            style: TextStyle(
+                              color: CassandraColors.inkBlack.withValues(
+                                alpha: 0.6,
+                              ),
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: CassandraColors.inkBlack,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1434,115 +1514,6 @@ class _GroupNavButton extends StatelessWidget {
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GroupMatchdaysListPage extends StatelessWidget {
-  const _GroupMatchdaysListPage({
-    required this.groupName,
-    required this.seasonMatchdaysDesc,
-    required this.members,
-    required this.picksByMemberByDay,
-    required this.en,
-    required this.onRefresh,
-  });
-
-  final String groupName;
-  final List<MatchdayData> seasonMatchdaysDesc;
-  final List<GroupMember> members;
-  final Map<int, Map<String, Map<String, PickOption>>> picksByMemberByDay;
-  final bool en;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Text(
-          l10n.groupMatchdays,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: onRefresh,
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
-          itemCount: seasonMatchdaysDesc.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 18),
-          itemBuilder: (context, i) {
-            final md = seasonMatchdaysDesc[i];
-            final daysLabel = formatMatchdayWeekdayRange(
-              md.matches.map((m) => m.kickoff),
-              english: en,
-            );
-            final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
-
-            return Material(
-              color: CassandraColors.platinum,
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  Navigator.of(context, rootNavigator: true).push(
-                    MaterialPageRoute(
-                      builder: (_) => GroupMatchdayPage(
-                        matchday: md,
-                        members: members,
-                        groupName: groupName,
-                        picksByMemberId:
-                            picksByMemberByDay[md.dayNumber] ??
-                            const <String, Map<String, PickOption>>{},
-                      ),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              mdTitle,
-                              style: const TextStyle(
-                                color: CassandraColors.inkBlack,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              daysLabel,
-                              style: TextStyle(
-                                color: CassandraColors.inkBlack.withValues(
-                                  alpha: 0.6,
-                                ),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right,
-                        color: CassandraColors.inkBlack,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
         ),
       ),
     );

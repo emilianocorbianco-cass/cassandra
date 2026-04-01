@@ -28,7 +28,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 800),
     );
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
@@ -42,7 +42,7 @@ class _SplashScreenState extends State<SplashScreen>
       ProfileImageDisplay.preWarmCache(app.profile.photoUrl);
     });
 
-    _timer = Timer(const Duration(milliseconds: 3200), () {
+    _timer = Timer(const Duration(milliseconds: 2000), () {
       if (!mounted) return;
 
       final app = CassandraScope.of(context);

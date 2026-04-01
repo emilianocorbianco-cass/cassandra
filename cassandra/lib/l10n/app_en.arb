@@ -332,13 +332,13 @@
   "statsTotalCorrect": "total correct",
   "statsAvgBonus": "avg bonus",
   "statsHighlights": "Highlights",
-  "statsBestMatchday": "Best matchday: {value}",
+  "statsBestMatchday": "Best matchday{value}",
   "@statsBestMatchday": {
     "placeholders": {
       "value": {}
     }
   },
-  "statsWorstMatchday": "Worst matchday: {value}",
+  "statsWorstMatchday": "Worst matchday{value}",
   "@statsWorstMatchday": {
     "placeholders": {
       "value": {}

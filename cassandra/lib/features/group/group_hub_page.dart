@@ -138,7 +138,7 @@ class _GroupHubPageState extends State<GroupHubPage> {
                 imagePathOrUrl: app.profile.photoUrl,
                 radius: 65,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
               Text(
                 l10n.welcomeBackTitle(handle),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -147,7 +147,7 @@ class _GroupHubPageState extends State<GroupHubPage> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 36),
               // ── Create / Join buttons ──
               IntrinsicHeight(
                 child: Row(
@@ -193,7 +193,7 @@ class _GroupHubPageState extends State<GroupHubPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
               // ── Separator ──
               const Divider(color: CassandraColors.brightSnow, thickness: 0.5, height: 0.5),
               // ── Group list ──

@@ -1442,13 +1442,13 @@ abstract class AppLocalizations {
   /// No description provided for @statsBestMatchday.
   ///
   /// In en, this message translates to:
-  /// **'Best matchday: {value}'**
+  /// **'Best matchday{value}'**
   String statsBestMatchday(Object value);
 
   /// No description provided for @statsWorstMatchday.
   ///
   /// In en, this message translates to:
-  /// **'Worst matchday: {value}'**
+  /// **'Worst matchday{value}'**
   String statsWorstMatchday(Object value);
 
   /// No description provided for @statsTotalBonus.

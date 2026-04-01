@@ -64,7 +64,7 @@ class GroupStatsView extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           child: SegmentedButton<GroupMetric>(
             showSelectedIcon: false,
             segments: [
@@ -91,7 +91,7 @@ class GroupStatsView extends StatelessWidget {
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+            padding: const EdgeInsets.fromLTRB(0, 8, 0, 90),
             itemCount: sorted.length,
             itemBuilder: (context, i) {
               final p = sorted[i];

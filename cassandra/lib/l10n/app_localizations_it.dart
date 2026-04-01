@@ -694,40 +694,40 @@ class AppLocalizationsIt extends AppLocalizations {
   String get statsMetricTotal => 'totale';
 
   @override
-  String get statsMetricPercentCorrect => '% esatti';
+  String get statsMetricPercentCorrect => '% Esatti';
 
   @override
-  String get statsMetricPerfectWeeks => 'settimane perfette';
+  String get statsMetricPerfectWeeks => 'Settimane perfette';
 
   @override
-  String get statsTotal => 'totale';
+  String get statsTotal => 'Totale';
 
   @override
-  String get statsAvgMatchday => 'media/giornata';
+  String get statsAvgMatchday => 'Media/giornata';
 
   @override
-  String get statsMatchdaysPlayed => 'giornate giocate';
+  String get statsMatchdaysPlayed => 'Giornate giocate';
 
   @override
-  String get statsAvgOdds => 'quota media';
+  String get statsAvgOdds => 'Quota media';
 
   @override
-  String get statsTotalCorrect => 'esatti totali';
+  String get statsTotalCorrect => 'Esatti totali';
 
   @override
-  String get statsAvgBonus => 'bonus medio';
+  String get statsAvgBonus => 'Bonus medio';
 
   @override
   String get statsHighlights => 'In evidenza';
 
   @override
   String statsBestMatchday(Object value) {
-    return 'Miglior giornata: $value';
+    return 'G. migliore$value';
   }
 
   @override
   String statsWorstMatchday(Object value) {
-    return 'Peggior giornata: $value';
+    return 'G. peggiore$value';
   }
 
   @override
@@ -1115,7 +1115,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get groupHubCreateGroup => 'Crea un gruppo';
 
   @override
-  String get groupHubJoinGroup => 'Unisciti ad un gruppo';
+  String get groupHubJoinGroup => 'Unisciti a un gruppo';
 
   @override
   String groupHubMemberCount(num count) {
@@ -1138,7 +1138,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsSubmittedButton => 'Inviati';
 
   @override
-  String get predictionsPicksMade => 'Pronostici effettuati';
+  String get predictionsPicksMade => 'Pronostici';
 
   @override
   String get predictionsMaxPoints => 'Max Punti';

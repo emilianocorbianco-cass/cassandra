@@ -1161,8 +1161,12 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
   }
 
   String _bonusPointsLabel(int points) {
-    final sign = points > 0 ? '+' : '';
-    return widget.isEnglish ? '$sign$points points' : '$sign$points punti';
+    final abs = points.abs();
+    final suffix = abs == 1
+        ? (widget.isEnglish ? 'point' : 'punto')
+        : (widget.isEnglish ? 'points' : 'punti');
+    if (points < 0) return '-$abs $suffix';
+    return '$abs $suffix';
   }
 
   List<({String range, int points})> _bonusRuleRows() {
@@ -1275,8 +1279,8 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
         child: GestureDetector(
           onTap: widget.submitted ? null : widget.onSubmit,
           child: Container(
-            width: 100,
-            height: 100,
+            width: 92,
+            height: 92,
             decoration: BoxDecoration(
               color: submitBg,
               shape: BoxShape.circle,
@@ -1303,7 +1307,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
       );
     }
 
-    const ringSize = 112.0;
+    const ringSize = 104.0;
 
     return IntrinsicHeight(
       child: Row(
@@ -1351,7 +1355,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
           Expanded(
             flex: 50,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(32, 0, 20, 0),
+              padding: const EdgeInsets.fromLTRB(30, 0, 20, 0),
               child: widget.locked
                   ? _buildPostLockBreakdown(
                       l10n,
@@ -1559,61 +1563,82 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const SizedBox(height: 4),
         // 1. "Punti" — live base score
-        Text(
-          widget.isEnglish ? 'Points' : 'Punti',
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.isEnglish ? 'Points' : 'Punti',
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              formatOdds(basePoints),
+              style: TextStyle(
+                color: _valueColor(basePoints),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
-        Text(
-          formatOdds(basePoints),
-          style: TextStyle(
-            color: _valueColor(basePoints),
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 10),
         // 2. "Punti bonus"
-        Text(
-          widget.isEnglish ? 'Bonus points' : 'Punti bonus',
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.isEnglish ? 'Bonus points' : 'Punti bonus',
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              widget.bonusSigned,
+              style: TextStyle(
+                color: _valueColor(bonusVal),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
-        Text(
-          widget.bonusSigned,
-          style: TextStyle(
-            color: _valueColor(bonusVal),
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 10),
         // 3. "Punti totali"
-        Text(
-          widget.isEnglish ? 'Total points' : 'Punti totali',
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Text(
-          totalPoints,
-          style: TextStyle(
-            color: _valueColor(totalVal),
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.isEnglish ? 'Total points' : 'Punti totali',
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              totalPoints,
+              style: TextStyle(
+                color: _valueColor(totalVal),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1625,61 +1650,82 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const SizedBox(height: 4),
         // 1. Picks made
-        Text(
-          l10n.predictionsPicksMade,
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.predictionsPicksMade,
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              '${widget.pickedCount}/${widget.totalMatches}',
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
-        Text(
-          '${widget.pickedCount}/${widget.totalMatches}',
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 10),
         // 2. Max Points
-        Text(
-          l10n.predictionsMaxPoints,
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.predictionsMaxPoints,
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              formatOdds(maxScore),
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
-        Text(
-          formatOdds(maxScore),
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 10),
         // 3. Min Points
-        Text(
-          l10n.predictionsMinPoints,
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Text(
-          formatOdds(minScore),
-          style: const TextStyle(
-            color: _fg,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.predictionsMinPoints,
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              formatOdds(minScore),
+              style: const TextStyle(
+                color: _fg,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1708,6 +1754,8 @@ class _HeroCardFlipButton extends StatelessWidget {
               style: TextStyle(
                 color: CassandraColors.brightSnow,
                 fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
                 height: 1.0,
               ),
             ),
