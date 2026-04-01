@@ -758,8 +758,22 @@ class _GroupPageState extends State<GroupPage> {
         'memberUid': memberUid,
         'action': action,
       });
+      // Remove from local list immediately so the UI updates even if
+      // the Firestore stream hasn't fired yet.
+      if (mounted) {
+        setState(() {
+          _pendingMembers = _pendingMembers
+              .where((m) => m.uid != memberUid)
+              .toList(growable: false);
+        });
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('[approve] $action error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$action failed: $e')),
+        );
+      }
     }
   }
 
