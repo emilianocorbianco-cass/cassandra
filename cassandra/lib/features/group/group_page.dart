@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -750,30 +749,26 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Future<void> _callApproveReject(String groupId, String memberUid, String action) async {
-    try {
-      final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
-          .httpsCallable('approveGroupMember');
-      await callable.call<dynamic>({
-        'groupId': groupId,
-        'memberUid': memberUid,
-        'action': action,
+    final fs = CassandraScope.of(context).firestoreService;
+    if (fs == null) return;
+
+    // Remove from local list immediately for responsive UI.
+    if (mounted) {
+      setState(() {
+        _pendingMembers = _pendingMembers
+            .where((m) => m.uid != memberUid)
+            .toList(growable: false);
       });
-      // Remove from local list immediately so the UI updates even if
-      // the Firestore stream hasn't fired yet.
-      if (mounted) {
-        setState(() {
-          _pendingMembers = _pendingMembers
-              .where((m) => m.uid != memberUid)
-              .toList(growable: false);
-        });
+    }
+
+    try {
+      if (action == 'approve') {
+        await fs.approvePendingMember(groupId: groupId, memberUid: memberUid);
+      } else {
+        await fs.rejectPendingMember(groupId: groupId, memberUid: memberUid);
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[approve] $action error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$action failed: $e')),
-        );
-      }
     }
   }
 
