@@ -116,16 +116,7 @@ class GroupMatchdayPage extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                l10n.groupMatchdayTitle(matchday.dayNumber),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
+            const SizedBox(height: 18),
             const Divider(height: 1),
             Expanded(
               child: ListView.builder(

@@ -93,6 +93,8 @@ class _SerieAPageState extends State<SerieAPage> {
         .catchError((Object _) {});
 
     // Live stream for matchday fixtures + outcomes.
+    // If Firestore has no data for this day, fall back to cached matches
+    // (home_shell may have already fetched from API-Football).
     _matchdaySub = fs
         .streamMatchdayData(
           seasonKey: app.currentSeasonKey,
@@ -108,20 +110,36 @@ class _SerieAPageState extends State<SerieAPage> {
                 updatedAt: doc.updatedAt,
               );
               app.setCachedPredictionOutcomesByMatchId(doc.outcomesByMatchId);
+              setState(() {
+                _data = _SerieAData(
+                  matches: doc.matches,
+                  outcomesByMatchId: doc.outcomesByMatchId,
+                  fromBackend: true,
+                );
+              });
+            } else {
+              // Use cached matches from home_shell (may have been fetched
+              // from API-Football).
+              final cached = app.cachedPredictionMatches;
+              if (cached != null && cached.isNotEmpty) {
+                setState(() {
+                  _data = _SerieAData(
+                    matches: cached,
+                    outcomesByMatchId:
+                        app.effectivePredictionOutcomesByMatchId,
+                    fromBackend: true,
+                  );
+                });
+              } else {
+                setState(() {
+                  _data = const _SerieAData(
+                    matches: [],
+                    outcomesByMatchId: {},
+                    fromBackend: false,
+                  );
+                });
+              }
             }
-            setState(() {
-              _data = doc == null || doc.matches.isEmpty
-                  ? const _SerieAData(
-                      matches: [],
-                      outcomesByMatchId: {},
-                      fromBackend: false,
-                    )
-                  : _SerieAData(
-                      matches: doc.matches,
-                      outcomesByMatchId: doc.outcomesByMatchId,
-                      fromBackend: true,
-                    );
-            });
           },
           onError: (Object error) {
             if (!mounted) return;
@@ -234,17 +252,19 @@ class _SerieAPageState extends State<SerieAPage> {
         : 'Giornata ${app.cassandraMatchdayCursor}';
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 90),
+      padding: const EdgeInsets.fromLTRB(18, 44, 18, 90),
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: Text(
-            matchdayTitle,
-            style: const TextStyle(
-              color: CassandraColors.brightSnow,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
+          padding: const EdgeInsets.only(bottom: 18),
+          child: Center(
+            child: Text(
+              matchdayTitle,
+              style: const TextStyle(
+                color: CassandraColors.brightSnow,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
             ),
           ),
         ),
@@ -291,7 +311,7 @@ class _SerieAPageState extends State<SerieAPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: 14,
-            vertical: 12,
+            vertical: 18,
           ),
           child: Row(
             children: [
@@ -301,6 +321,7 @@ class _SerieAPageState extends State<SerieAPage> {
                   child: TeamName(
                     name: m.homeTeam,
                     logoUrl: m.homeTeamLogo,
+                    logoScale: 26 / 14,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -338,11 +359,10 @@ class _SerieAPageState extends State<SerieAPage> {
                     ] else ...[
                       Text(
                         kickoff,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 11,
-                          color: CassandraColors.inkBlackV2.withValues(
-                            alpha: 0.5,
-                          ),
+                          fontWeight: FontWeight.w600,
+                          color: CassandraColors.inkBlackV2,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -381,6 +401,7 @@ class _SerieAPageState extends State<SerieAPage> {
                   child: TeamName(
                     name: m.awayTeam,
                     logoUrl: m.awayTeamLogo,
+                    logoScale: 26 / 14,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,

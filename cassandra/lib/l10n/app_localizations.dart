@@ -836,7 +836,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsDisplayNameHint.
   ///
   /// In en, this message translates to:
-  /// **'Ex: Emiliano'**
+  /// **'Name'**
   String get settingsDisplayNameHint;
 
   /// No description provided for @settingsHandleLabel.

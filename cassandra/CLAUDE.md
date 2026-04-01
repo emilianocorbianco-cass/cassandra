@@ -87,9 +87,13 @@ Design completo in `docs/tournament-architecture.md`. Punti chiave:
 
 ## Scoring Rules
 
-Per match: single pick (1/X/2) scores +/- the chosen odds. Double chance (1X/X2/12) scores + double-chance odds if correct, or minus both component odds if wrong. Unplayed by user: -max(all three odds). Voided match: 0.
+Per match: correct pick scores +played odds; wrong pick scores 0. Unplayed by user: auto-assigned lowest odds (tiebreak: home > draw > away). Voided match: 0.
 
-Bonus table by correct count (0–10): -20, -10, -5, -2, -1, 0, +1, +2, +5, +10, +20.
+Single bonus based on combined score = (winning odds sum + correct count):
+- < 9 → -7 | 9–12 → -4 | 12–15 → -1 | 15–18 → 0
+- 18–22 → +1 | 22–26 → +4 | 26–30 → +7 | > 30 → +10
+
+Bonus applied only when all matches in the round have a final outcome.
 
 ## Non-Negotiable Rules
 

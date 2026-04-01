@@ -178,14 +178,18 @@ class CassandraScoringEngine {
       );
     }
 
-    // 3) Partita non giocata dall'utente: 0 punti
+    // 3) Partita non giocata dall'utente: auto-assegna quota più bassa
+    //    (regolamento: "ti verranno assegnate le quote più basse").
     if (pick.isNone) {
+      final autoPick = lowestOddsPick(match);
+      final autoOdds = _oddsPlayedForPick(match, autoPick)!;
+      final autoCorrect = _isCorrectSingle(autoPick, outcome);
       return MatchScoreBreakdown(
         matchId: match.id,
-        basePoints: 0,
-        correct: false,
-        playedOdds: null,
-        note: 'Non giocata',
+        basePoints: autoCorrect ? autoOdds : 0,
+        correct: autoCorrect,
+        playedOdds: autoOdds,
+        note: autoCorrect ? 'Auto-assegnata corretta' : 'Auto-assegnata sbagliata',
       );
     }
 
@@ -265,9 +269,10 @@ class CassandraScoringEngine {
       return o != null && !o.isPending;
     });
 
-    final oddsBonus = allGraded ? bonusForWinningOddsSum(winningOddsSum) : 0;
-    final correctBonus = allGraded ? bonusForCorrectCount(correctCount) : 0;
-    final bonus = oddsBonus + correctBonus;
+    // Bonus combinato: (somma quote vincenti + pronostici corretti)
+    // secondo il regolamento ufficiale (tabella singola).
+    final combinedScore = winningOddsSum + correctCount;
+    final bonus = allGraded ? bonusForCombinedScore(combinedScore) : 0;
     final total = baseTotal + bonus;
 
     final playedOddsValues = breakdowns
@@ -283,8 +288,8 @@ class CassandraScoringEngine {
       matchBreakdowns: breakdowns,
       baseTotal: baseTotal,
       bonusPoints: bonus,
-      oddsBonusPoints: oddsBonus,
-      correctBonusPoints: correctBonus,
+      oddsBonusPoints: 0,
+      correctBonusPoints: 0,
       total: total,
       correctCount: correctCount,
       averageOddsPlayed: avgOdds,

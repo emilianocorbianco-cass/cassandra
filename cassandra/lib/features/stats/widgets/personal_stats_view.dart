@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
 
 import '../../../app/theme/cassandra_colors.dart';
+import '../../badges/widgets/avatar_with_badges.dart';
 import '../../leaderboards/models/season_leaderboard_entry.dart';
 import '../../predictions/models/formatters.dart';
 import '../models/player_season_stats.dart';
@@ -69,7 +70,24 @@ class PersonalStatsView extends StatelessWidget {
                   items: entries.map((e) {
                     return DropdownMenuItem(
                       value: e.member.id,
-                      child: Text(e.member.uiName),
+                      child: Row(
+                        children: [
+                          AvatarWithBadges(
+                            radius: 14,
+                            backgroundColor: CassandraColors.primary,
+                            text: e.member.avatarInitial,
+                            badges: const [],
+                            imagePathOrUrl: e.member.photoUrl,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              e.member.uiName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   }).toList(),
                   onChanged: loading ? null : onMemberSelected,

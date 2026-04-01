@@ -27,6 +27,7 @@ import 'join_group_page.dart';
 import 'mock_group_data.dart';
 import 'group_matchday_page.dart';
 import 'models/group_member.dart';
+import 'widgets/group_image_picker.dart';
 import '../leaderboards/mock_season_data.dart';
 import '../../services/firestore/firestore_service.dart';
 import '../../services/storage/storage_service.dart';
@@ -64,7 +65,6 @@ class _GroupPageState extends State<GroupPage> {
   String _matchesSignature = '';
   String _pendingSignature = '';
 
-  int _segment = 0; // 0 = classifica, 1 = giornate, 2 = stats
 
   // Firestore state
   List<GroupMember>? _firestoreMembers;
@@ -1202,161 +1202,146 @@ class _GroupPageState extends State<GroupPage> {
       ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
 
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        backgroundColor: CassandraColors.charcoal,
-        automaticallyImplyLeading: false,
-        title: Text(
-          groupName,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          Builder(
-            builder: (buttonContext) => Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: () async {
-                  final code = appState.groupInviteCode ?? '';
-                  await _shareInvite(
-                    groupName: groupName,
-                    inviteCode: code,
-                    sourceContext: buttonContext,
-                    l10n: l10n,
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: CassandraColors.bg,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-              child: SegmentedButton<int>(
-                showSelectedIcon: false,
-                expandedInsets: EdgeInsets.zero,
-                segments: [
-                  ButtonSegment(value: 0, label: Text(l10n.groupStandings)),
-                  ButtonSegment(value: 1, label: Text(l10n.groupMatchdays)),
-                  ButtonSegment(value: 2, label: Text(l10n.groupStats)),
-                ],
-                selected: {_segment},
-                onSelectionChanged: (s) =>
-                    setState(() => _segment = s.first),
-                style: ButtonStyle(
-                  shape: WidgetStatePropertyAll(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Column(
+            children: [
+              const SizedBox(height: 32),
+              // ── Group image ──
+              GroupImageDisplay(
+                imagePath: appState.groupImagePath,
+                radius: 65,
               ),
-            ),
-            if (_pendingMembers.isNotEmpty)
-              _buildPendingMembersSection(appState, l10n),
-            const Divider(height: 1),
-            Expanded(
-              child:
-                  useFirestoreMembers &&
-                      _firestoreLoading &&
-                      _firestoreMembers == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : useFirestoreMembers && _firestoreLoadError
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(l10n.groupSyncError),
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: () => setState(() {
-                              _firestoreLoadError = false;
-                              _firestoreMembers = null;
-                            }),
-                            icon: const Icon(Icons.refresh),
-                            label: Text(l10n.groupSyncRetry),
-                          ),
-                        ],
+              const SizedBox(height: 12),
+              // ── Group name ──
+              Text(
+                groupName,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: CassandraColors.brightSnow,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 24),
+              // ── Classifica / Giornate / Stats buttons ──
+              Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  border: Border.all(color: CassandraColors.brightSnow),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _GroupNavButton(
+                        label: l10n.groupStandings,
+                        selected: true,
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(15),
+                        ),
+                        onTap: () {},
                       ),
-                    )
-                  : useFirestoreMembers && members.isEmpty
-                  ? Center(child: Text(l10n.commonNoDataAvailable))
-                  : _segment == 2
-                  ? const StatsPage(embedded: true, lockToPersonal: true)
-                  : _segment == 1
-                  ? RefreshIndicator(
-                      onRefresh: _refreshFromFirestore,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
-                        itemCount: seasonMatchdaysDesc.length,
-                        itemBuilder: (context, i) {
-                          final md = seasonMatchdaysDesc[i];
-
-                          final daysLabel = formatMatchdayWeekdayRange(
-                            md.matches.map((m) => m.kickoff),
-                            english: en,
-                          );
-
-                          final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 18),
-                            child: Card(
-                              margin: EdgeInsets.zero,
-                              child: ListTile(
-                                title: Text(mdTitle),
-                                subtitle: Text(daysLabel),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {
-                                  Navigator.of(
-                                    context,
-                                    rootNavigator: true,
-                                  ).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => GroupMatchdayPage(
-                                        matchday: md,
-                                        members: members,
-                                        groupName: groupName,
-                                        picksByMemberId:
-                                            picksByMemberByDay[md.dayNumber] ??
-                                            const <
-                                              String,
-                                              Map<String, PickOption>
-                                            >{},
-                                      ),
-                                    ),
-                                  );
-                                },
+                    ),
+                    Container(width: 1, color: CassandraColors.brightSnow),
+                    Expanded(
+                      child: _GroupNavButton(
+                        label: l10n.groupMatchdays,
+                        borderRadius: BorderRadius.zero,
+                        onTap: () {
+                          Navigator.of(context, rootNavigator: true).push(
+                            MaterialPageRoute(
+                              builder: (_) => _GroupMatchdaysListPage(
+                                groupName: groupName,
+                                seasonMatchdaysDesc: seasonMatchdaysDesc,
+                                members: members,
+                                picksByMemberByDay: picksByMemberByDay,
+                                en: en,
+                                onRefresh: _refreshFromFirestore,
                               ),
                             ),
                           );
                         },
                       ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _refreshFromFirestore,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
-                        itemCount: generalEntries.length,
-                        itemBuilder: (context, i) {
-                          final e = generalEntries[i];
+                    ),
+                    Container(width: 1, color: CassandraColors.brightSnow),
+                    Expanded(
+                      child: _GroupNavButton(
+                        label: l10n.groupStats,
+                        borderRadius: const BorderRadius.horizontal(
+                          right: Radius.circular(15),
+                        ),
+                        onTap: () {
+                          Navigator.of(context, rootNavigator: true).push(
+                            MaterialPageRoute(
+                              builder: (_) => const StatsPage(
+                                embedded: false,
+                                lockToPersonal: true,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // ── Divider ──
+              const Divider(color: CassandraColors.brightSnow, thickness: 0.5, height: 0.5),
+              // ── Pending members ──
+              if (_pendingMembers.isNotEmpty)
+                _buildPendingMembersSection(appState, l10n),
+              // ── Member standings ──
+              Expanded(
+                child: useFirestoreMembers &&
+                        _firestoreLoading &&
+                        _firestoreMembers == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : useFirestoreMembers && _firestoreLoadError
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(l10n.groupSyncError),
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () => setState(() {
+                                _firestoreLoadError = false;
+                                _firestoreMembers = null;
+                              }),
+                              icon: const Icon(Icons.refresh),
+                              label: Text(l10n.groupSyncRetry),
+                            ),
+                          ],
+                        ),
+                      )
+                    : useFirestoreMembers && members.isEmpty
+                    ? Center(child: Text(l10n.commonNoDataAvailable))
+                    : RefreshIndicator(
+                        onRefresh: _refreshFromFirestore,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.only(top: 18, bottom: 90),
+                          clipBehavior: Clip.none,
+                          itemCount: generalEntries.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 18),
+                          itemBuilder: (context, i) {
+                            final e = generalEntries[i];
+                            final pts = formatOdds(e.totalPoints);
 
-                          final pts = formatOdds(e.totalPoints);
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 18),
-                            child: Card(
-                              margin: EdgeInsets.zero,
-                              child: ListTile(
-                              leading: SizedBox(
-                                width: 64,
+                            return Material(
+                              color: CassandraColors.platinum,
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     SizedBox(
                                       width: 22,
@@ -1370,7 +1355,7 @@ class _GroupPageState extends State<GroupPage> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 10),
                                     AvatarWithBadges(
                                       radius: 18,
                                       backgroundColor: CassandraColors.primary,
@@ -1378,27 +1363,186 @@ class _GroupPageState extends State<GroupPage> {
                                       badges: const [],
                                       imagePathOrUrl: e.member.photoUrl,
                                     ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Text(
+                                        e.member.uiName,
+                                        style: const TextStyle(
+                                          color: CassandraColors.inkBlack,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Text(
+                                      pts,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: e.totalPoints >= 0
+                                            ? CassandraColors.inkBlack
+                                            : CassandraColors.primary,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                              title: Text(e.member.uiName),
-                              trailing: Text(
-                                pts,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: e.totalPoints >= 0
-                                      ? CassandraColors.inkBlack
-                                      : CassandraColors.primary,
-                                ),
-                              ),
-                            ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupNavButton extends StatelessWidget {
+  const _GroupNavButton({
+    required this.label,
+    required this.borderRadius,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final String label;
+  final BorderRadius borderRadius;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? CassandraColors.platinum : Colors.transparent,
+      borderRadius: borderRadius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: borderRadius,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected
+                  ? CassandraColors.inkBlack
+                  : CassandraColors.brightSnow,
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupMatchdaysListPage extends StatelessWidget {
+  const _GroupMatchdaysListPage({
+    required this.groupName,
+    required this.seasonMatchdaysDesc,
+    required this.members,
+    required this.picksByMemberByDay,
+    required this.en,
+    required this.onRefresh,
+  });
+
+  final String groupName;
+  final List<MatchdayData> seasonMatchdaysDesc;
+  final List<GroupMember> members;
+  final Map<int, Map<String, Map<String, PickOption>>> picksByMemberByDay;
+  final bool en;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: Text(
+          l10n.groupMatchdays,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
+          itemCount: seasonMatchdaysDesc.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 18),
+          itemBuilder: (context, i) {
+            final md = seasonMatchdaysDesc[i];
+            final daysLabel = formatMatchdayWeekdayRange(
+              md.matches.map((m) => m.kickoff),
+              english: en,
+            );
+            final mdTitle = l10n.groupMatchdayTitle(md.dayNumber);
+
+            return Material(
+              color: CassandraColors.platinum,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(
+                      builder: (_) => GroupMatchdayPage(
+                        matchday: md,
+                        members: members,
+                        groupName: groupName,
+                        picksByMemberId:
+                            picksByMemberByDay[md.dayNumber] ??
+                            const <String, Map<String, PickOption>>{},
                       ),
                     ),
-            ),
-          ],
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              mdTitle,
+                              style: const TextStyle(
+                                color: CassandraColors.inkBlack,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              daysLabel,
+                              style: TextStyle(
+                                color: CassandraColors.inkBlack.withValues(
+                                  alpha: 0.6,
+                                ),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: CassandraColors.inkBlack,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

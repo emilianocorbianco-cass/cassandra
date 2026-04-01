@@ -55,6 +55,21 @@ class LanguageSelector extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return CassandraColors.platinum;
+              }
+              return Colors.transparent;
+            }),
+            foregroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return CassandraColors.inkBlack;
+              }
+              return CassandraColors.brightSnow;
+            }),
+            side: const WidgetStatePropertyAll(
+              BorderSide(color: CassandraColors.brightSnow),
+            ),
           ),
         ),
       ],

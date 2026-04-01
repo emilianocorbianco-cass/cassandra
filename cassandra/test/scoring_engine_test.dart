@@ -23,6 +23,8 @@ void main() {
     odds: odds,
   );
 
+  // ── Singola corretta ─────────────────────────────────────────────────────
+
   test('single correct adds odds', () {
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
@@ -35,98 +37,97 @@ void main() {
     expect(s.playedOdds, closeTo(1.98, 0.0001));
   });
 
-  // ── Nuove regole penalità ────────────────────────────────────────────────
+  // ── Singola sbagliata: 0 punti (regolamento) ────────────────────────────
 
-  test('single wrong: home pick subtracts opposing double chance (X2)', () {
-    // Gioco 1 e sbaglio → perdo quota X2 (drawAway = 1.70)
+  test('single wrong: 0 points', () {
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
       pick: PickOption.home,
       outcome: MatchOutcome.away,
     );
 
-    expect(s.basePoints, closeTo(-1.70, 0.0001)); // -drawAway
+    expect(s.basePoints, closeTo(0.0, 0.0001));
     expect(s.correct, isFalse);
     expect(s.playedOdds, closeTo(1.98, 0.0001));
   });
 
-  test('single wrong: draw pick subtracts opposing double chance (12)', () {
-    // Gioco X e sbaglio → perdo quota 12 (homeAway = 1.45)
+  // ── Doppia corretta ──────────────────────────────────────────────────────
+
+  test('double correct adds double-chance odds', () {
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
-      pick: PickOption.draw,
+      pick: PickOption.homeDraw,
       outcome: MatchOutcome.home,
     );
 
-    expect(s.basePoints, closeTo(-1.45, 0.0001)); // -homeAway
-    expect(s.correct, isFalse);
-    expect(s.playedOdds, closeTo(3.25, 0.0001));
+    expect(s.basePoints, closeTo(1.32, 0.0001));
+    expect(s.correct, isTrue);
+    expect(s.playedOdds, closeTo(1.32, 0.0001));
   });
 
-  test('single wrong: away pick subtracts opposing double chance (1X)', () {
-    // Gioco 2 e sbaglio → perdo quota 1X (homeDraw = 1.32)
-    final s = CassandraScoringEngine.scoreMatch(
-      match: match,
-      pick: PickOption.away,
-      outcome: MatchOutcome.draw,
-    );
+  // ── Doppia sbagliata: 0 punti ────────────────────────────────────────────
 
-    expect(s.basePoints, closeTo(-1.32, 0.0001)); // -homeDraw
-    expect(s.correct, isFalse);
-    expect(s.playedOdds, closeTo(4.10, 0.0001));
-  });
-
-  test('double wrong: homeDraw pick subtracts opposing single (2)', () {
-    // Gioco 1X e sbaglio → perdo quota 2 (away = 4.10)
+  test('double wrong: 0 points', () {
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
       pick: PickOption.homeDraw,
       outcome: MatchOutcome.away,
     );
 
-    expect(s.basePoints, closeTo(-4.10, 0.0001)); // -away
+    expect(s.basePoints, closeTo(0.0, 0.0001));
     expect(s.correct, isFalse);
     expect(s.playedOdds, closeTo(1.32, 0.0001));
   });
 
-  test('double wrong: drawAway pick subtracts opposing single (1)', () {
-    // Gioco X2 e sbaglio → perdo quota 1 (home = 1.98)
-    final s = CassandraScoringEngine.scoreMatch(
-      match: match,
-      pick: PickOption.drawAway,
-      outcome: MatchOutcome.home,
-    );
+  // ── Non giocata: auto-assegna quota più bassa ────────────────────────────
 
-    expect(s.basePoints, closeTo(-1.98, 0.0001)); // -home
-    expect(s.correct, isFalse);
-    expect(s.playedOdds, closeTo(1.70, 0.0001));
-  });
-
-  test('double wrong: homeAway pick subtracts opposing single (X)', () {
-    // Gioco 12 e sbaglio → perdo quota X (draw = 3.25)
-    final s = CassandraScoringEngine.scoreMatch(
-      match: match,
-      pick: PickOption.homeAway,
-      outcome: MatchOutcome.draw,
-    );
-
-    expect(s.basePoints, closeTo(-3.25, 0.0001)); // -draw
-    expect(s.correct, isFalse);
-    expect(s.playedOdds, closeTo(1.45, 0.0001));
-  });
-
-  test('not played subtracts max of 1X2', () {
+  test('not played auto-assigns lowest odds (home=1.98 is lowest)', () {
     final s = CassandraScoringEngine.scoreMatch(
       match: match,
       pick: PickOption.none,
       outcome: MatchOutcome.home,
     );
 
-    // max tra 1.98, 3.25, 4.10 = 4.10
-    expect(s.basePoints, closeTo(-4.10, 0.0001));
-    expect(s.correct, isFalse);
-    expect(s.playedOdds, isNull);
+    // home (1.98) is lowest → auto-assigned home, outcome is home → correct
+    expect(s.basePoints, closeTo(1.98, 0.0001));
+    expect(s.correct, isTrue);
+    expect(s.playedOdds, closeTo(1.98, 0.0001));
   });
+
+  test('not played auto-assigns lowest odds, wrong outcome gives 0', () {
+    final s = CassandraScoringEngine.scoreMatch(
+      match: match,
+      pick: PickOption.none,
+      outcome: MatchOutcome.away,
+    );
+
+    // home (1.98) is lowest → auto-assigned home, outcome is away → wrong
+    expect(s.basePoints, closeTo(0.0, 0.0001));
+    expect(s.correct, isFalse);
+    expect(s.playedOdds, closeTo(1.98, 0.0001));
+  });
+
+  test('auto-assign tiebreak: home wins over draw', () {
+    final tieMatch = PredictionMatch(
+      id: 'm_tie',
+      homeTeam: 'X',
+      awayTeam: 'Y',
+      kickoff: DateTime(2026, 1, 1, 18, 0),
+      odds: const Odds(
+        home: 2.50,
+        draw: 2.50,
+        away: 3.00,
+        homeDraw: 1.20,
+        drawAway: 1.40,
+        homeAway: 1.30,
+      ),
+    );
+
+    final pick = CassandraScoringEngine.lowestOddsPick(tieMatch);
+    expect(pick, PickOption.home); // home wins tiebreak
+  });
+
+  // ── Voided / Pending ─────────────────────────────────────────────────────
 
   test('voided match yields zero', () {
     final s = CassandraScoringEngine.scoreMatch(
@@ -140,7 +141,7 @@ void main() {
     expect(s.playedOdds, isNull);
   });
 
-  test('pending outcome yields zero (no penalty yet) and no bonus', () {
+  test('pending outcome yields zero and no bonus', () {
     final day = CassandraScoringEngine.computeDayScore(
       matches: [match],
       picksByMatchId: {'m1': PickOption.home},
@@ -151,22 +152,9 @@ void main() {
     expect(day.bonusPoints, 0);
     expect(day.total, closeTo(0.0, 0.0001));
     expect(day.correctCount, 0);
-    expect(day.averageOddsPlayed, closeTo(1.98, 0.0001));
-    expect(day.matchBreakdowns, hasLength(1));
-    expect(day.matchBreakdowns.first.basePoints, closeTo(0.0, 0.0001));
-    expect(day.matchBreakdowns.first.playedOdds, closeTo(1.98, 0.0001));
   });
 
-  test('pending outcome does not apply not-played penalty yet', () {
-    final day = CassandraScoringEngine.computeDayScore(
-      matches: [match],
-      picksByMatchId: {},
-      outcomesByMatchId: {},
-    );
-
-    expect(day.matchBreakdowns.first.basePoints, closeTo(0.0, 0.0001));
-    expect(day.matchBreakdowns.first.playedOdds, isNull);
-  });
+  // ── Bonus combinato (regolamento ufficiale) ──────────────────────────────
 
   test('bonus is applied only when all matches are graded', () {
     final match2 = PredictionMatch(
@@ -185,7 +173,7 @@ void main() {
 
     expect(partial.baseTotal, closeTo(1.98, 0.0001));
     expect(partial.correctCount, 1);
-    expect(partial.bonusPoints, 0);
+    expect(partial.bonusPoints, 0); // not all graded
 
     final complete = CassandraScoringEngine.computeDayScore(
       matches: [match, match2],
@@ -193,50 +181,32 @@ void main() {
       outcomesByMatchId: {'m1': MatchOutcome.home, 'm2': MatchOutcome.away},
     );
 
-    // m1: home pick correct → +1.98
-    // m2: home pick wrong  → 0 (no penalty)
-    // base = 1.98
-    // winning odds sum = 1.98 → oddsBonus = -10 (< 5)
-    // correctCount = 1 out of 2 → correctBonus = -10 (0-1 correct)
-    // total bonus = -20
+    // m1: correct → +1.98, m2: wrong → 0. base = 1.98
+    // combined = winningOddsSum(1.98) + correctCount(1) = 2.98 → < 9 → bonus -7
     expect(complete.baseTotal, closeTo(1.98, 0.0001));
     expect(complete.correctCount, 1);
-    expect(complete.oddsBonusPoints, -10);
-    expect(complete.correctBonusPoints, -10);
-    expect(complete.bonusPoints, -20);
-    expect(complete.total, closeTo(-18.02, 0.0001));
+    expect(complete.bonusPoints, -7);
+    expect(complete.total, closeTo(-5.02, 0.0001));
   });
 
-  test('bonus table based on winning odds sum', () {
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(0), -10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(4.99), -10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(5.0), -7);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(7.99), -7);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(8.0), -4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(9.99), -4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(10.0), -1);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(10.99), -1);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(11.0), 1);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(11.99), 1);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(12.0), 4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(12.99), 4);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(13.0), 7);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(14.99), 7);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(15.0), 10);
-    expect(CassandraScoringEngine.bonusForWinningOddsSum(25.0), 10);
-  });
+  // ── Tabella bonus combinato ──────────────────────────────────────────────
 
-  test('bonus table based on correct count', () {
-    expect(CassandraScoringEngine.bonusForCorrectCount(0), -10);
-    expect(CassandraScoringEngine.bonusForCorrectCount(1), -10);
-    expect(CassandraScoringEngine.bonusForCorrectCount(2), -7);
-    expect(CassandraScoringEngine.bonusForCorrectCount(3), -7);
-    expect(CassandraScoringEngine.bonusForCorrectCount(4), -4);
-    expect(CassandraScoringEngine.bonusForCorrectCount(5), -4);
-    expect(CassandraScoringEngine.bonusForCorrectCount(6), -1);
-    expect(CassandraScoringEngine.bonusForCorrectCount(7), 1);
-    expect(CassandraScoringEngine.bonusForCorrectCount(8), 4);
-    expect(CassandraScoringEngine.bonusForCorrectCount(9), 7);
-    expect(CassandraScoringEngine.bonusForCorrectCount(10), 10);
+  test('bonus table based on combined score (sqv + correct count)', () {
+    expect(CassandraScoringEngine.bonusForCombinedScore(0), -7);
+    expect(CassandraScoringEngine.bonusForCombinedScore(9), -7);
+    expect(CassandraScoringEngine.bonusForCombinedScore(9.01), -4);
+    expect(CassandraScoringEngine.bonusForCombinedScore(12), -4);
+    expect(CassandraScoringEngine.bonusForCombinedScore(12.01), -1);
+    expect(CassandraScoringEngine.bonusForCombinedScore(15), -1);
+    expect(CassandraScoringEngine.bonusForCombinedScore(15.01), 0);
+    expect(CassandraScoringEngine.bonusForCombinedScore(18), 0);
+    expect(CassandraScoringEngine.bonusForCombinedScore(18.01), 1);
+    expect(CassandraScoringEngine.bonusForCombinedScore(22), 1);
+    expect(CassandraScoringEngine.bonusForCombinedScore(22.01), 4);
+    expect(CassandraScoringEngine.bonusForCombinedScore(26), 4);
+    expect(CassandraScoringEngine.bonusForCombinedScore(26.01), 7);
+    expect(CassandraScoringEngine.bonusForCombinedScore(30), 7);
+    expect(CassandraScoringEngine.bonusForCombinedScore(30.01), 10);
+    expect(CassandraScoringEngine.bonusForCombinedScore(50), 10);
   });
 }

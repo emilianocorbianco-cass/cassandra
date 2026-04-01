@@ -28,13 +28,18 @@ class ProfileImageHelper {
 
     if (!context.mounted) return null;
     final croppedPath = await Navigator.of(context).push<String?>(
-      MaterialPageRoute(
+      PageRouteBuilder(
         fullscreenDialog: true,
-        builder: (_) => ImageCropScreen(
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 250),
+        pageBuilder: (_, __, ___) => ImageCropScreen(
           imageFile: pickedFile,
           outputSize: 768,
           outputPath: dest.path,
         ),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
       ),
     );
 
@@ -146,7 +151,11 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
         imageProvider: image,
         heroTag: tag,
       ),
-      child: Hero(tag: tag, child: avatar),
+      child: Hero(
+        tag: tag,
+        createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+        child: avatar,
+      ),
     );
   }
 

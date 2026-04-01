@@ -1639,6 +1639,50 @@ class FirestoreService {
         });
   }
 
+  /// Returns the lowest matchday number that is not yet finalized,
+  /// i.e. the "current" matchday according to the backend data.
+  /// Returns null if no matchday documents exist.
+  Future<int?> getCurrentMatchday({required String seasonKey}) async {
+    // Fetch all non-finalized matchdays and pick the lowest number
+    // client-side, because document IDs are strings and Firestore
+    // sorts them lexicographically ("1" < "10" < "2").
+    final nonFinalSnap = await _withTimeout(
+      _db
+          .collection('seasons')
+          .doc(seasonKey)
+          .collection('matchdays')
+          .where('finalized', isEqualTo: false)
+          .get(),
+      operation: 'getCurrentMatchday',
+    );
+    if (nonFinalSnap.docs.isNotEmpty) {
+      final days = nonFinalSnap.docs
+          .map((d) => int.tryParse(d.id))
+          .whereType<int>()
+          .toList()
+        ..sort();
+      if (days.isNotEmpty) return days.first;
+    }
+    // Fallback: latest matchday overall (all finalized) → pick highest.
+    final allSnap = await _withTimeout(
+      _db
+          .collection('seasons')
+          .doc(seasonKey)
+          .collection('matchdays')
+          .get(),
+      operation: 'getCurrentMatchday.fallback',
+    );
+    if (allSnap.docs.isNotEmpty) {
+      final days = allSnap.docs
+          .map((d) => int.tryParse(d.id))
+          .whereType<int>()
+          .toList()
+        ..sort();
+      if (days.isNotEmpty) return days.last;
+    }
+    return null;
+  }
+
   Future<List<ApiFootballStanding>> getSeasonStandings({
     required String seasonKey,
   }) async {

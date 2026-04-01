@@ -131,6 +131,52 @@ class FirestoreSerializers {
   ///
   /// Throws [FormatException] (never [TypeError]) when required structural
   /// fields (id, kickoff, home, away, odds) are missing or have the wrong type.
+  static double? _optionalOddDouble(Object? raw) {
+    if (raw is num) return raw.toDouble();
+    return null;
+  }
+
+  /// Builds [Odds] from a Firestore map, deriving double-chance odds from
+  /// single odds when not stored (older documents / backend without DC).
+  static Odds _buildOdds(Map<String, dynamic> m) {
+    final home = _requireOddDouble(m['home'], 'home');
+    final draw = _requireOddDouble(m['draw'], 'draw');
+    final away = _requireOddDouble(m['away'], 'away');
+
+    var homeDraw = _optionalOddDouble(m['homeDraw']);
+    var drawAway = _optionalOddDouble(m['drawAway']);
+    var homeAway = _optionalOddDouble(m['homeAway']);
+
+    if (homeDraw == null || drawAway == null || homeAway == null) {
+      final p1 = 1.0 / home;
+      final pX = 1.0 / draw;
+      final p2 = 1.0 / away;
+      final s = p1 + pX + p2;
+      double dc(double a, double b) =>
+          ((s / (a + b)) * 100).roundToDouble() / 100;
+      double mn(double a, double b) => a < b ? a : b;
+      double cl(double v, {required double min, required double max}) {
+        if (max < min) return min;
+        return v.clamp(min, max);
+      }
+      homeDraw ??= cl(dc(p1, pX),
+          min: 1.05, max: ((mn(home, draw) - 0.01) * 100).roundToDouble() / 100);
+      drawAway ??= cl(dc(pX, p2),
+          min: 1.05, max: ((mn(draw, away) - 0.01) * 100).roundToDouble() / 100);
+      homeAway ??= cl(dc(p1, p2),
+          min: 1.05, max: ((mn(home, away) - 0.01) * 100).roundToDouble() / 100);
+    }
+
+    return Odds(
+      home: home,
+      draw: draw,
+      away: away,
+      homeDraw: homeDraw,
+      drawAway: drawAway,
+      homeAway: homeAway,
+    );
+  }
+
   static PredictionMatch predictionMatchFromMap(Map<String, dynamic> j) {
     final id = _requireString(j['id'], 'id');
     final kickoff = _requireKickoff(j['kickoff']);
@@ -168,14 +214,7 @@ class FirestoreSerializers {
             );
           })
           .toList(growable: false),
-      odds: Odds(
-        home: _requireOddDouble(oddsMap['home'], 'home'),
-        draw: _requireOddDouble(oddsMap['draw'], 'draw'),
-        away: _requireOddDouble(oddsMap['away'], 'away'),
-        homeDraw: _requireOddDouble(oddsMap['homeDraw'], 'homeDraw'),
-        drawAway: _requireOddDouble(oddsMap['drawAway'], 'drawAway'),
-        homeAway: _requireOddDouble(oddsMap['homeAway'], 'homeAway'),
-      ),
+      odds: _buildOdds(oddsMap),
     );
   }
 }

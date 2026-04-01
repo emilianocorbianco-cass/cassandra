@@ -107,6 +107,39 @@ class ApiFootballService {
   /// - next=10 durante una giornata già iniziata può “mischiare” partite di round diverse
   ///   (es. posticipo giornata 20 + anticipo giornata 21).
   ///
+  /// Ritorna il numero della prossima giornata di Serie A dall'API
+  /// (es. 31 per "Regular Season - 31"), o null se non disponibile.
+  Future<int?> getCurrentSerieAMatchday() async {
+    final season = _seasonStartYear(DateTime.now());
+    final leagueId = await _resolveSerieALeagueId(season: season);
+
+    final json = await _client.getJson(
+      'fixtures',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+        'next': '1',
+        'timezone': 'Europe/Rome',
+      },
+    );
+
+    final resp = json['response'];
+    if (resp is List && resp.isNotEmpty) {
+      final first = resp.first;
+      if (first is Map) {
+        final league = first['league'];
+        if (league is Map) {
+          final round = league['round'];
+          if (round is String) {
+            final m = RegExp(r'(\d{1,2})\s*$').firstMatch(round);
+            if (m != null) return int.tryParse(m.group(1)!);
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   /// Strategia:
   /// 1) chiede next=1 solo per scoprire la round della prossima partita
   /// 2) poi chiede TUTTI i fixtures di quella round

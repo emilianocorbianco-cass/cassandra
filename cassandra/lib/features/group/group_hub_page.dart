@@ -14,7 +14,10 @@ import 'widgets/group_image_picker.dart';
 /// Displays the user's profile, create/join buttons, and a list of groups
 /// to choose from.
 class GroupHubPage extends StatefulWidget {
-  const GroupHubPage({super.key});
+  const GroupHubPage({super.key, this.onBack});
+
+  /// Called when the user selects a group and wants to go back to the main view.
+  final VoidCallback? onBack;
 
   @override
   State<GroupHubPage> createState() => _GroupHubPageState();
@@ -49,12 +52,12 @@ class _GroupHubPageState extends State<GroupHubPage> {
 
   void _selectGroup(String groupId) {
     final app = CassandraScope.of(context);
-    // setActiveGroupId already triggers refreshActiveGroupMetadataFromFirestore
-    // and history hydration in the background.
     app.setActiveGroupId(groupId);
 
-    // If HomeShell is below us (came from swipe), just pop back to it.
-    // Otherwise (came from splash), replace this route with HomeShell.
+    if (widget.onBack != null) {
+      widget.onBack!();
+      return;
+    }
     final nav = Navigator.of(context);
     if (nav.canPop()) {
       nav.pop();

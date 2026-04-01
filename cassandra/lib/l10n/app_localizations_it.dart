@@ -224,13 +224,13 @@ class AppLocalizationsIt extends AppLocalizations {
   }
 
   @override
-  String get groupStandings => 'classifica';
+  String get groupStandings => 'Classifica';
 
   @override
-  String get groupMatchdays => 'giornate';
+  String get groupMatchdays => 'Giornate';
 
   @override
-  String get groupStats => 'stats';
+  String get groupStats => 'Stats';
 
   @override
   String get groupHistoryDemoCard => 'Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.';
@@ -412,7 +412,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsDisplayNameLabel => 'Nome utente';
 
   @override
-  String get settingsDisplayNameHint => 'Es: Emiliano';
+  String get settingsDisplayNameHint => 'Nome';
 
   @override
   String get settingsHandleLabel => 'Handle';

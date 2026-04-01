@@ -11,7 +11,6 @@ import '../../app/widgets/demo_banner.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
 import '../../l10n/app_localizations.dart';
-import '../../services/firestore/models/matchday_document.dart';
 import '../../services/firestore/models/picks_document.dart';
 import '../badges/widgets/avatar_with_badges.dart';
 import '../group/models/group_member.dart';
@@ -369,35 +368,37 @@ class _PredictionsPageState extends State<PredictionsPage>
       }
 
       final now = appState.now();
-      var dayNumber = appState.cassandraMatchdayCursor;
+      final cursorDay = appState.cassandraMatchdayCursor;
       appState.ensureOriginKickoffsLoaded();
 
-      MatchdayDocument? resolvedDoc;
+      // Trust the cursor — it was already corrected by API-Football in
+      // home_shell. Fetch exactly this day from Firestore.
+      final resolvedDoc = await fs.getMatchdayData(
+        seasonKey: appState.currentSeasonKey,
+        dayNumber: cursorDay,
+      );
+
+      await appState.persistOriginKickoffs();
+
       MatchdayProgress? resolvedProgress;
 
-      const maxLookAheadDays = 12;
-      for (var i = 0; i <= maxLookAheadDays; i++) {
-        final candidate = await fs.getMatchdayData(
-                seasonKey: appState.currentSeasonKey,
-                dayNumber: dayNumber,
-              );
-        if (candidate == null || candidate.matches.isEmpty) {
-          if (kDebugMode) {
-            debugPrint('[fixtures] no firestore data for day=$dayNumber');
-          }
-          dayNumber += 1;
-          continue;
-        }
+      // Use Firestore data if available; otherwise use cached matches
+      // (home_shell may have already fetched from API and cached them).
+      final mList = (resolvedDoc != null && resolvedDoc.matches.isNotEmpty)
+          ? resolvedDoc.matches
+          : appState.cachedPredictionMatches;
+      final outcomes = (resolvedDoc != null && resolvedDoc.matches.isNotEmpty)
+          ? resolvedDoc.outcomesByMatchId
+          : appState.effectivePredictionOutcomesByMatchId;
 
-        final mList = candidate.matches;
-        final outcomes = candidate.outcomesByMatchId;
+      if (mList != null && mList.isNotEmpty) {
         for (final m in mList) {
           appState.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
         }
 
         String statusFor(PredictionMatch m) =>
             (outcomes[m.id] ?? MatchOutcome.pending).isGraded ? 'FT' : 'NS';
-        final progress = computeMatchdayProgress<PredictionMatch>(
+        resolvedProgress = computeMatchdayProgress<PredictionMatch>(
           mList,
           now: now,
           kickoff: (m) => m.kickoff,
@@ -407,66 +408,43 @@ class _PredictionsPageState extends State<PredictionsPage>
           ),
           statusShort: (m) => statusFor(m),
         );
-
-        if (kDebugMode) {
-          debugPrint(
-            '[fixtures] progress day=${candidate.dayNumber} '
-            'primaryDone=${progress.primaryDone} finalDone=${progress.finalDone} '
-            'played=${progress.playedFixtures} void=${progress.voidFixtures}',
-          );
-        }
-
-        resolvedDoc = candidate;
-        resolvedProgress = progress;
-        if (!progress.readyToAdvance) break;
-        dayNumber += 1;
       }
 
-      await appState.persistOriginKickoffs();
-
-      if (resolvedDoc == null) {
+      if (mList == null || mList.isEmpty || resolvedProgress == null) {
         if (kDebugMode) {
-          debugPrint(
-            '[fixtures] no matchday data found after lookahead '
-            'from cursor=${appState.cassandraMatchdayCursor}',
-          );
+          debugPrint('[fixtures] no data for cursor day=$cursorDay');
         }
         if (mounted) {
           setState(() {
-            _shownMatchdayNumber = appState.uiMatchdayNumber;
+            _shownMatchdayNumber = cursorDay;
           });
         }
         return;
       }
 
-      if (resolvedDoc.dayNumber != appState.cassandraMatchdayCursor) {
-        await appState.setCassandraMatchdayCursor(resolvedDoc.dayNumber);
-      }
-
-      final resolvedDayNumber = resolvedDoc.dayNumber;
-      final mList = resolvedDoc.matches;
-      final outcomes = resolvedDoc.outcomesByMatchId;
+      final resolvedDayNumber = cursorDay;
       appState.setMatchdayProgress(
         matchdayNumber: resolvedDayNumber,
-        progress: resolvedProgress!,
+        progress: resolvedProgress,
         allowAutoAdvance: false,
       );
 
       if (!mounted) return;
+      final displayDay = appState.cassandraMatchdayCursor;
       setState(() {
-        _shownMatchdayNumber = resolvedDayNumber;
+        _shownMatchdayNumber = displayDay;
         _matches = mList;
         _usingRealFixtures = true;
       });
       scope.setCachedPredictionMatches(
         mList,
         isReal: true,
-        updatedAt: resolvedDoc.updatedAt,
+        updatedAt: resolvedDoc?.updatedAt ?? DateTime.now(),
       );
       scope.setCachedPredictionOutcomesByMatchId(outcomes);
       appState.setRecentMatchdayDataBulk(
-        matchesByMatchday: {resolvedDoc.dayNumber: mList},
-        outcomesByMatchday: {resolvedDoc.dayNumber: outcomes},
+        matchesByMatchday: {cursorDay: mList},
+        outcomesByMatchday: {cursorDay: outcomes},
       );
     } catch (e, st) {
       if (kDebugMode) {
@@ -836,7 +814,7 @@ class _PredictionsPageState extends State<PredictionsPage>
 
     // Hero card height: includes outer padding and a bit of extra room
     // to avoid bottom overflow on compact devices.
-    const heroAreaHeight = 240.0;
+    const heroAreaHeight = 224.0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -858,7 +836,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                     slivers: [
                       // Spacer so cards start below the hero card (+10 gap)
                       const SliverToBoxAdapter(
-                        child: SizedBox(height: heroAreaHeight + 18),
+                        child: SizedBox(height: heroAreaHeight + 14),
                       ),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
@@ -1059,7 +1037,7 @@ class _HeroScoreCard extends StatefulWidget {
 class _HeroScoreCardState extends State<_HeroScoreCard>
     with SingleTickerProviderStateMixin {
   static const _fg = CassandraColors.brightSnow;
-  static const _cardHeight = 232.0;
+  static const _cardHeight = 216.0;
   static const _flipDuration = Duration(milliseconds: 810);
 
   late final AnimationController _flipController = AnimationController(
@@ -1211,7 +1189,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
       ),
       child: Container(
         height: _cardHeight,
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
         decoration: BoxDecoration(
           color: CassandraColors.inkBlackV2,
           borderRadius: BorderRadius.circular(20),
@@ -1224,16 +1202,14 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
           ],
         ),
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
             Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 36),
-                child: child,
-              ),
+              child: child,
             ),
             Positioned(
-              top: 0,
-              right: 0,
+              top: -14,
+              right: -2,
               child: _HeroCardFlipButton(
                 tooltip: _flipButtonTooltip(),
                 onTap: _toggleCardFace,
@@ -1299,8 +1275,8 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
         child: GestureDetector(
           onTap: widget.submitted ? null : widget.onSubmit,
           child: Container(
-            width: 114,
-            height: 114,
+            width: 100,
+            height: 100,
             decoration: BoxDecoration(
               color: submitBg,
               shape: BoxShape.circle,
@@ -1327,63 +1303,75 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
       );
     }
 
-    const ringSize = 126.0;
+    const ringSize = 112.0;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 50,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                matchdayTitle,
-                style: const TextStyle(
-                  color: _fg,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 21),
-              SizedBox(
-                width: ringSize,
-                height: ringSize,
-                child: CustomPaint(
-                  painter: _RingPainter(
-                    segmentColors: segColors,
-                    segmentVoided: segVoided,
-                    segmentLive: segLive,
-                    solid: useSolidRing,
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 50,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  matchdayTitle,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: _fg,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
-                  child: ringCenter,
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+                Center(
+                  child: SizedBox(
+                    width: ringSize,
+                    height: ringSize,
+                    child: CustomPaint(
+                      painter: _RingPainter(
+                        segmentColors: segColors,
+                        segmentVoided: segVoided,
+                        segmentLive: segLive,
+                        solid: useSolidRing,
+                      ),
+                      child: ringCenter,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        Expanded(
-          flex: 50,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 24),
-            child: widget.locked
-                ? _buildPostLockBreakdown(
-                    l10n,
-                    correctCount,
-                    matchCount,
-                    totalPoints,
-                  )
-                : _buildPreLockBreakdown(l10n),
+          Container(
+            width: 0.5,
+            color: CassandraColors.brightSnow,
           ),
-        ),
-      ],
+          Expanded(
+            flex: 50,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 20, 0),
+              child: widget.locked
+                  ? _buildPostLockBreakdown(
+                      l10n,
+                      correctCount,
+                      matchCount,
+                      totalPoints,
+                    )
+                  : _buildPreLockBreakdown(l10n),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildBackFace() {
     final rules = _bonusRuleRows();
-    return Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
@@ -1521,6 +1509,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -1582,7 +1571,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           formatOdds(basePoints),
           style: TextStyle(
@@ -1591,7 +1579,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         // 2. "Punti bonus"
         Text(
           widget.isEnglish ? 'Bonus points' : 'Punti bonus',
@@ -1601,7 +1589,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           widget.bonusSigned,
           style: TextStyle(
@@ -1610,7 +1597,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         // 3. "Punti totali"
         Text(
           widget.isEnglish ? 'Total points' : 'Punti totali',
@@ -1620,7 +1607,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           totalPoints,
           style: TextStyle(
@@ -1651,7 +1637,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           '${widget.pickedCount}/${widget.totalMatches}',
           style: const TextStyle(
@@ -1660,7 +1645,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         // 2. Max Points
         Text(
           l10n.predictionsMaxPoints,
@@ -1670,7 +1655,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           formatOdds(maxScore),
           style: const TextStyle(
@@ -1679,7 +1663,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         // 3. Min Points
         Text(
           l10n.predictionsMinPoints,
@@ -1689,7 +1673,6 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           formatOdds(minScore),
           style: const TextStyle(
@@ -1713,29 +1696,19 @@ class _HeroCardFlipButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Ink(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: CassandraColors.brightSnow.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: CassandraColors.brightSnow.withValues(alpha: 0.16),
-              ),
-            ),
-            child: const Center(
-              child: Text(
-                '\u24D8',
-                style: TextStyle(
-                  color: CassandraColors.brightSnow,
-                  fontSize: 20,
-                  height: 1.0,
-                ),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: const SizedBox(
+          width: 36,
+          height: 36,
+          child: Center(
+            child: Text(
+              '\u24D8',
+              style: TextStyle(
+                color: CassandraColors.brightSnow,
+                fontSize: 22,
+                height: 1.0,
               ),
             ),
           ),
@@ -2599,7 +2572,7 @@ class _TeamLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const size = 30.0;
+    const size = 26.0;
 
     // Check for bundled override first (e.g. Juventus black fill SVG).
     final bundled = _bundledAssetFor(teamName);

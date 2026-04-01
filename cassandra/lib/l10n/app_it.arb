@@ -107,9 +107,9 @@
       "total": {}
     }
   },
-  "groupStandings": "classifica",
-  "groupMatchdays": "giornate",
-  "groupStats": "stats",
+  "groupStandings": "Classifica",
+  "groupMatchdays": "Giornate",
+  "groupStats": "Stats",
   "groupHistoryDemoCard": "Storico giornate (DEMO)\nQui mostriamo 16-19 dai mock. Appena abbiamo storico reale via API, lo rendiamo vero.",
   "groupMatchdayTitle": "Giornata {dayNumber}",
   "@groupMatchdayTitle": {
@@ -215,7 +215,7 @@
   "settingsProfile": "Profilo",
   "settingsProfileImageLabel": "Immagine del profilo",
   "settingsDisplayNameLabel": "Nome utente",
-  "settingsDisplayNameHint": "Es: Emiliano",
+  "settingsDisplayNameHint": "Nome",
   "settingsHandleLabel": "Handle",
   "settingsHandleHint": "Es: @emiliano",
   "settingsSegmentMySettings": "my settings",

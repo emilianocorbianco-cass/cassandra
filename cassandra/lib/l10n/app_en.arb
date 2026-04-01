@@ -215,7 +215,7 @@
   "settingsProfile": "Profile",
   "settingsProfileImageLabel": "Profile image",
   "settingsDisplayNameLabel": "User name",
-  "settingsDisplayNameHint": "Ex: Emiliano",
+  "settingsDisplayNameHint": "Name",
   "settingsHandleLabel": "Handle",
   "settingsHandleHint": "Ex: @emiliano",
   "settingsSegmentMySettings": "my settings",

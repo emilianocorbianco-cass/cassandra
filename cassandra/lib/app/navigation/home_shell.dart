@@ -15,12 +15,15 @@ import 'package:flutter/foundation.dart';
 import '../theme/cassandra_colors.dart';
 import '../widgets/target_icon.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
-    show MatchdayProgress, computeMatchdayProgress;
+    show computeMatchdayProgress;
 import '../../features/predictions/models/prediction_match.dart';
 import '../../features/scoring/models/match_outcome.dart';
-import '../../services/firestore/models/matchday_document.dart';
 import '../../services/api_football/models/api_football_standing.dart';
+import '../../services/api_football/api_football_client.dart';
+import '../../services/api_football/api_football_service.dart';
+import '../../features/predictions/adapters/api_football_fixture_adapter.dart';
 import '../../services/storage/storage_service.dart';
+import '../config/env.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -92,6 +95,36 @@ class _HomeShellState extends State<HomeShell>
       var dayNumber = app.cassandraMatchdayCursor;
       app.ensureOriginKickoffsLoaded();
 
+      // Ask API-Football for the actual current matchday round.
+      // This corrects the cursor if it drifted (auto-advance overshoot, stale
+      // cache, etc.) regardless of direction.
+      int? apiResolvedDay;
+      final apiKey = Env.apiFootballKey;
+      if (apiKey != null) {
+        try {
+          final client = ApiFootballClient(
+            apiKey: apiKey,
+            baseUrl: Env.baseUrl,
+            useRapidApi: Env.useRapidApi,
+            rapidApiHost: Env.rapidApiHost,
+          );
+          final apiService = ApiFootballService(client);
+          apiResolvedDay = await apiService.getCurrentSerieAMatchday();
+          if (apiResolvedDay != null && apiResolvedDay != dayNumber) {
+            debugPrint(
+              '[live-sync] API says current matchday is $apiResolvedDay '
+              '(cursor was $dayNumber), correcting',
+            );
+            dayNumber = apiResolvedDay;
+            await app.setCassandraMatchdayCursor(apiResolvedDay);
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[live-sync] API getCurrentMatchday failed: $e');
+          }
+        }
+      }
+
       // Serie A has 38 matchdays. If the cursor is at or beyond the last
       // matchday it may be a stale artefact (e.g. intermediate matchdays were
       // deleted and the look-ahead jumped ahead). Reset to a safe value so the
@@ -108,41 +141,63 @@ class _HomeShellState extends State<HomeShell>
         await app.setCassandraMatchdayCursor(safeCursorReset);
       }
 
-      MatchdayDocument? resolvedDoc;
-      MatchdayProgress? resolvedProgress;
+      // 1. Try Firestore for the exact cursor day.
+      final firestoreDoc = await fs.getMatchdayData(
+        seasonKey: app.currentSeasonKey,
+        dayNumber: dayNumber,
+      );
 
-      int consecutiveNulls = 0;
-      const maxConsecutiveNulls = 3;
+      List<PredictionMatch>? resolvedMatches;
+      Map<String, MatchOutcome> resolvedOutcomes = const {};
 
-      for (var i = 0; i <= maxLookAheadDays; i++) {
-        final candidate = await fs.getMatchdayData(
-                seasonKey: app.currentSeasonKey,
-                dayNumber: dayNumber,
-              );
-        if (candidate == null || candidate.matches.isEmpty) {
-          consecutiveNulls += 1;
-          if (consecutiveNulls > maxConsecutiveNulls) {
-            debugPrint(
-              '[live-sync] $consecutiveNulls consecutive missing matchdays '
-              'after day ${dayNumber - consecutiveNulls}, stopping look-ahead',
+      if (firestoreDoc != null && firestoreDoc.matches.isNotEmpty) {
+        resolvedMatches = firestoreDoc.matches;
+        resolvedOutcomes = firestoreDoc.outcomesByMatchId;
+      }
+
+      // 2. Fallback: fetch fixtures from API-Football for the current round.
+      if (resolvedMatches == null && apiKey != null) {
+        try {
+          final client = ApiFootballClient(
+            apiKey: apiKey,
+            baseUrl: Env.baseUrl,
+            useRapidApi: Env.useRapidApi,
+            rapidApiHost: Env.rapidApiHost,
+          );
+          final apiService = ApiFootballService(client);
+          final roundLabel = 'Regular Season - $dayNumber';
+          final apiFixtures = await apiService.getSerieAFixturesForRound(
+            round: roundLabel,
+          );
+          if (apiFixtures.isNotEmpty) {
+            resolvedMatches = predictionMatchesFromFixtures(
+              apiFixtures,
+              useMockIds: false,
+              matchdayNumber: dayNumber,
             );
-            break;
+            debugPrint(
+              '[live-sync] loaded ${resolvedMatches.length} fixtures '
+              'from API for round $dayNumber',
+            );
           }
-          dayNumber += 1;
-          continue;
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[live-sync] API fixtures fetch failed: $e');
+          }
         }
-        consecutiveNulls = 0;
+      }
 
-        final matches = candidate.matches;
-        final outcomes = candidate.outcomesByMatchId;
-        for (final m in matches) {
+      if (resolvedMatches != null && resolvedMatches.isNotEmpty) {
+        for (final m in resolvedMatches) {
           app.registerOriginKickoff(matchId: m.id, kickoff: m.kickoff);
         }
 
         String statusFor(PredictionMatch m) =>
-            (outcomes[m.id] ?? MatchOutcome.pending).isGraded ? 'FT' : 'NS';
+            (resolvedOutcomes[m.id] ?? MatchOutcome.pending).isGraded
+                ? 'FT'
+                : 'NS';
         final progress = computeMatchdayProgress<PredictionMatch>(
-          matches,
+          resolvedMatches,
           now: now,
           kickoff: (m) => m.kickoff,
           originKickoff: (m) =>
@@ -151,53 +206,24 @@ class _HomeShellState extends State<HomeShell>
         );
 
         app.setMatchdayProgress(
-          matchdayNumber: candidate.dayNumber,
+          matchdayNumber: dayNumber,
           progress: progress,
           allowAutoAdvance: false,
         );
 
-        resolvedDoc = candidate;
-        resolvedProgress = progress;
-        if (!progress.readyToAdvance) break;
-        dayNumber += 1;
+        app.setCachedPredictionMatches(
+          resolvedMatches,
+          isReal: true,
+          updatedAt: firestoreDoc?.updatedAt ?? DateTime.now(),
+        );
+        app.setCachedPredictionOutcomesByMatchId(resolvedOutcomes);
+        app.setRecentMatchdayDataBulk(
+          matchesByMatchday: {dayNumber: resolvedMatches},
+          outcomesByMatchday: {dayNumber: resolvedOutcomes},
+        );
       }
 
       await app.persistOriginKickoffs();
-
-      if (resolvedDoc != null && resolvedProgress != null) {
-        if (resolvedDoc.dayNumber != app.cassandraMatchdayCursor) {
-          await app.setCassandraMatchdayCursor(resolvedDoc.dayNumber);
-        }
-
-        final shouldUpdateCache =
-            app.cachedPredictionMatches == null ||
-            app.cachedPredictionMatches!.isEmpty ||
-            app.cachedPredictionMatchesUpdatedAt == null ||
-            resolvedDoc.updatedAt.isAfter(
-              app.cachedPredictionMatchesUpdatedAt!,
-            );
-
-        if (shouldUpdateCache) {
-          app.setCachedPredictionMatches(
-            resolvedDoc.matches,
-            isReal: true,
-            updatedAt: resolvedDoc.updatedAt,
-          );
-          app.setCachedPredictionOutcomesByMatchId(
-            resolvedDoc.outcomesByMatchId,
-          );
-          app.setRecentMatchdayDataBulk(
-            matchesByMatchday: {resolvedDoc.dayNumber: resolvedDoc.matches},
-            outcomesByMatchday: {
-              resolvedDoc.dayNumber: resolvedDoc.outcomesByMatchId,
-            },
-          );
-        } else {
-          app.setCachedPredictionOutcomesByMatchId(
-            resolvedDoc.outcomesByMatchId,
-          );
-        }
-      }
       app.clearBackendSyncError();
     } catch (e) {
       app.markBackendSyncError(e);
@@ -255,7 +281,9 @@ class _HomeShellState extends State<HomeShell>
     }
   }
 
+  // -1 = GroupHubPage, 0..3 = tab pages
   int _index = 0;
+  bool get _showingGroupHub => _index == -1;
   int _slideDirection = 1; // 1 = forward (left), -1 = backward (right)
   late final AnimationController _bubbleCtrl = AnimationController(
     vsync: this,
@@ -302,32 +330,8 @@ class _HomeShellState extends State<HomeShell>
 
     if (swipeLeft && _index < _pages.length - 1) {
       _selectTab(_index + 1);
-    } else if (swipeRight && _index > 0) {
+    } else if (swipeRight && _index > -1) {
       _selectTab(_index - 1);
-    } else if (swipeRight && _index == 0) {
-      // Swipe right from Predictions → GroupHubPage slides in from left.
-      // ColoredBox prevents the underlying PredictionsPage from being
-      // visible through the slide transition gap.
-      Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (_, _, _) => const GroupHubPage(),
-          transitionsBuilder: (_, animation, _, child) {
-            return ColoredBox(
-              color: CassandraColors.bg,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(-1, 0),
-                  end: Offset.zero,
-                ).animate(CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                )),
-                child: child,
-              ),
-            );
-          },
-        ),
-      );
     }
   }
 
@@ -418,7 +422,9 @@ class _HomeShellState extends State<HomeShell>
                       },
                       child: KeyedSubtree(
                         key: ValueKey(_index),
-                        child: _pages[_index],
+                        child: _showingGroupHub
+                            ? GroupHubPage(onBack: () => _selectTab(0))
+                            : _pages[_index],
                       ),
                     ),
                   ),
@@ -428,32 +434,17 @@ class _HomeShellState extends State<HomeShell>
           ),
 
           // ── Floating liquid-glass tab bar ──────────────────────────
-          Positioned(
+          if (!_showingGroupHub) Positioned(
             left: 18,
             right: 18,
             bottom: Platform.isAndroid
                 ? MediaQuery.of(context).viewPadding.bottom + 6
                 : 14 + MediaQuery.of(context).viewPadding.bottom * 0.3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Container(
+            child: Container(
                   height: 50,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(14),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.50),
-                        Colors.black.withValues(alpha: 0.50),
-                      ],
-                    ),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      width: 0.8,
-                    ),
+                    color: Colors.black,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.20),
@@ -538,8 +529,6 @@ class _HomeShellState extends State<HomeShell>
                       );
                     },
                   ),
-                ),
-              ),
             ),
           ),
         ],

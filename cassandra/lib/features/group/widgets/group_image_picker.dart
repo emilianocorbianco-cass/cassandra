@@ -149,6 +149,7 @@ class _GroupImageDisplayState extends State<GroupImageDisplay> {
         onTap: _openFullScreen,
         child: Hero(
           tag: 'group_image_${widget.imagePath}',
+          createRectTween: (begin, end) => RectTween(begin: begin, end: end),
           child: CircleAvatar(
             radius: widget.radius,
             backgroundImage: _resolvedImage,

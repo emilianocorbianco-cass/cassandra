@@ -23,6 +23,8 @@ class ImageViewerOverlay extends StatelessWidget {
         opaque: false,
         barrierDismissible: true,
         barrierColor: Colors.black87,
+        transitionDuration: const Duration(milliseconds: 400),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
         pageBuilder: (_, animation, secondaryAnimation) => ImageViewerOverlay(
           imageProvider: imageProvider,
           heroTag: heroTag,
@@ -53,7 +55,18 @@ class ImageViewerOverlay extends StatelessWidget {
     );
 
     final imageWidget = heroTag != null
-        ? Hero(tag: heroTag!, child: circleImage)
+        ? Hero(
+            tag: heroTag!,
+            flightShuttleBuilder: (_, animation, direction, fromContext, toContext) {
+              // Use the destination widget during flight for consistent look.
+              return toContext.widget;
+            },
+            createRectTween: (begin, end) {
+              // Linear path instead of the default curved materialRectArc.
+              return RectTween(begin: begin, end: end);
+            },
+            child: circleImage,
+          )
         : circleImage;
 
     return GestureDetector(

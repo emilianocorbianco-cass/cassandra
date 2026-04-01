@@ -412,7 +412,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDisplayNameLabel => 'User name';
 
   @override
-  String get settingsDisplayNameHint => 'Ex: Emiliano';
+  String get settingsDisplayNameHint => 'Name';
 
   @override
   String get settingsHandleLabel => 'Handle';

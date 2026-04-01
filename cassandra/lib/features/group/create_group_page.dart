@@ -330,7 +330,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   Icon(
                     Icons.check_circle_outline,
                     size: 64,
-                    color: CassandraColors.primary,
+                    color: CassandraColors.brightSnow,
                   ),
                 const SizedBox(height: 16),
                 Text(
@@ -411,8 +411,8 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                       icon: const Icon(Icons.share),
                       label: Text(l10n.createGroupShareInviteCode),
                       style: FilledButton.styleFrom(
-                        backgroundColor: CassandraColors.primary,
-                        foregroundColor: CassandraColors.brightSnow,
+                        backgroundColor: CassandraColors.brightSnow,
+                        foregroundColor: CassandraColors.inkBlackV2,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),

@@ -167,7 +167,8 @@ class _StatsPageState extends State<StatsPage> {
                 onSelectionChanged: (s) => setState(() => _segment = s.first),
               ),
             ),
-          const Divider(height: 1),
+          if (!widget.lockToPersonal && !widget.lockToGroup)
+            const Divider(height: 1),
           Expanded(
             child: _loading && _entries.isEmpty
                 ? const Center(child: CircularProgressIndicator())
