@@ -2237,74 +2237,89 @@ export const deleteGroupAsAdmin = onCall(
       throw new HttpsError("permission-denied", "Only admin can delete");
     }
 
-    // Mark as deleting
-    await groupRef.set(
-      { deleting: true, updatedAt: FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-
-    // Delete invite doc
-    const inviteCode = String(groupSnap.data()?.inviteCode ?? "").trim();
-    if (inviteCode) {
-      try {
-        await db.collection("groupInvites").doc(inviteCode).delete();
-      } catch (_) { /* best effort */ }
-    }
-
-    // Get all members
-    const membersSnap = await groupRef.collection("members").get();
-    const memberUids = membersSnap.docs.map((d) => d.id);
-
-    // Remove groupId from each member's user doc + delete member doc
-    const batchSize = 200;
-    for (let i = 0; i < memberUids.length; i += batchSize) {
-      const chunk = memberUids.slice(i, i + batchSize);
-      const batch = db.batch();
-      for (const memberUid of chunk) {
-        batch.set(
-          db.collection("users").doc(memberUid),
-          {
-            groupIds: FieldValue.arrayRemove([groupId]),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        batch.delete(groupRef.collection("members").doc(memberUid));
-      }
-      await batch.commit();
-    }
-
-    // Delete picks subcollections
-    const picksSnap = await groupRef.collection("picks").get();
-    if (picksSnap.docs.length > 0) {
-      const picksBatch = db.batch();
-      for (const doc of picksSnap.docs) {
-        picksBatch.delete(doc.ref);
-      }
-      await picksBatch.commit();
-    }
-
-    // Delete the group document
-    await groupRef.delete();
-
-    // Cleanup stale invites
     try {
-      const staleInvites = await db
-        .collection("groupInvites")
-        .where("groupId", "==", groupId)
-        .limit(20)
-        .get();
-      if (staleInvites.docs.length > 0) {
-        const staleBatch = db.batch();
-        for (const doc of staleInvites.docs) {
-          staleBatch.delete(doc.ref);
-        }
-        await staleBatch.commit();
-      }
-    } catch (_) { /* best effort */ }
+      // Mark as deleting
+      await groupRef.set(
+        { deleting: true, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
 
-    console.log(`[deleteGroup] deleted group ${groupId} by admin ${uid}`);
-    return { status: "deleted" };
+      // Delete invite doc
+      const inviteCode = String(groupSnap.data()?.inviteCode ?? "").trim();
+      if (inviteCode) {
+        try {
+          await db.collection("group_invites").doc(inviteCode).delete();
+        } catch (e) {
+          console.warn(`[deleteGroup] invite cleanup failed: ${e}`);
+        }
+      }
+
+      // Get all members
+      const membersSnap = await groupRef.collection("members").get();
+      const memberUids = membersSnap.docs.map((d: { id: string }) => d.id);
+
+      // Remove groupId from each member's user doc + delete member doc
+      for (let i = 0; i < memberUids.length; i += 200) {
+        const chunk = memberUids.slice(i, i + 200);
+        const batch = db.batch();
+        for (const memberUid of chunk) {
+          batch.set(
+            db.collection("users").doc(memberUid),
+            {
+              groupIds: FieldValue.arrayRemove([groupId]),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          batch.delete(groupRef.collection("members").doc(memberUid));
+        }
+        await batch.commit();
+      }
+
+      // Delete picks subcollections (best effort)
+      try {
+        const picksSnap = await groupRef.collection("picks").get();
+        if (picksSnap.docs.length > 0) {
+          for (let i = 0; i < picksSnap.docs.length; i += 400) {
+            const picksBatch = db.batch();
+            const chunk = picksSnap.docs.slice(i, i + 400);
+            for (const doc of chunk) {
+              picksBatch.delete(doc.ref);
+            }
+            await picksBatch.commit();
+          }
+        }
+      } catch (e) {
+        console.warn(`[deleteGroup] picks cleanup failed: ${e}`);
+      }
+
+      // Delete the group document
+      await groupRef.delete();
+
+      // Cleanup stale invites (best effort)
+      try {
+        const staleInvites = await db
+          .collection("group_invites")
+          .where("groupId", "==", groupId)
+          .limit(20)
+          .get();
+        if (staleInvites.docs.length > 0) {
+          const staleBatch = db.batch();
+          for (const doc of staleInvites.docs) {
+            staleBatch.delete(doc.ref);
+          }
+          await staleBatch.commit();
+        }
+      } catch (e) {
+        console.warn(`[deleteGroup] stale invite cleanup failed: ${e}`);
+      }
+
+      console.log(`[deleteGroup] deleted group ${groupId} by admin ${uid}`);
+      return { status: "deleted" };
+    } catch (e) {
+      console.error(`[deleteGroup] failed for group ${groupId}: ${e}`);
+      throw new HttpsError("internal", `Delete failed: ${e}`);
+    }
   }
 );
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../app/state/app_settings.dart';
@@ -1080,7 +1081,9 @@ class FirestoreService {
       final data = groupDoc.data();
       if (data['deleting'] != true) continue;
       try {
-        await deleteGroupAsAdmin(groupId: groupDoc.id, adminUid: uid);
+        final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+            .httpsCallable('deleteGroupAsAdmin');
+        await callable.call({'groupId': groupDoc.id});
       } catch (e) {
         if (kDebugMode) {
           debugPrint(
