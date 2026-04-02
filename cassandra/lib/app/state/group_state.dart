@@ -416,11 +416,8 @@ class GroupState extends ChangeNotifier {
 
     try {
       final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
-          .httpsCallable(
-        'deleteGroupAsAdmin',
-        options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
-      );
-      await callable.call<dynamic>({'groupId': groupId});
+          .httpsCallable('deleteGroupAsAdmin');
+      await callable.call({'groupId': groupId});
     } catch (error, stackTrace) {
       _logGroupError('deleteGroup.deleteAsAdmin', error, stackTrace);
       return _friendlyGroupError(error, 'Delete group failed');

@@ -65,10 +65,20 @@ class PersonalStatsView extends StatelessWidget {
         ? '-'
         : 'G${s.worstDayNumber}: ${formatOdds(s.worstDayPoints!)}';
 
+    // Sort entries: current user first, then alphabetical.
+    final sortedEntries = List<SeasonLeaderboardEntry>.of(entries)
+      ..sort((a, b) {
+        if (a.member.id == selectedMemberId) return -1;
+        if (b.member.id == selectedMemberId) return 1;
+        return a.member.uiName.toLowerCase().compareTo(
+              b.member.uiName.toLowerCase(),
+            );
+      });
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 90),
+      padding: const EdgeInsets.fromLTRB(0, 18, 0, 90),
       children: [
-        if (entries.isNotEmpty)
+        if (sortedEntries.isNotEmpty)
           Card(
             margin: EdgeInsets.zero,
             child: Padding(
@@ -78,7 +88,7 @@ class PersonalStatsView extends StatelessWidget {
                   value: selectedMemberId,
                   isExpanded: true,
                   dropdownColor: CassandraColors.platinum,
-                  items: entries.map((e) {
+                  items: sortedEntries.map((e) {
                     return DropdownMenuItem(
                       value: e.member.id,
                       child: Row(

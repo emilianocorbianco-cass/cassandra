@@ -767,18 +767,18 @@ class _GroupPageState extends State<GroupPage> {
 
     try {
       final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
-          .httpsCallable(
-        'approveGroupMember',
-        options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
-      );
-      await callable.call<dynamic>({
+          .httpsCallable('approveGroupMember');
+      await callable.call({
         'groupId': groupId,
         'memberUid': memberUid,
         'action': action,
       });
       if (kDebugMode) debugPrint('[approve] $action success for $memberUid');
-    } catch (e) {
-      if (kDebugMode) debugPrint('[approve] $action error: $e');
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[approve] $action error: $e');
+        debugPrint('$st');
+      }
       // Restore pending member on failure.
       if (mounted && removed.isNotEmpty) {
         setState(() {
@@ -1233,12 +1233,14 @@ class _GroupPageState extends State<GroupPage> {
       backgroundColor: CassandraColors.bg,
       body: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          child: Column(
-            children: [
-              const SizedBox(height: 32),
-              // ── Group image ──
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                children: [
+                  const SizedBox(height: 32),
+                  // ── Group image ──
               GroupImageDisplay(
                 imagePath: appState.groupImagePath,
                 radius: 65,
@@ -1341,6 +1343,27 @@ class _GroupPageState extends State<GroupPage> {
               ),
             ],
           ),
+        ),
+        // ── Share button in top-right ──
+        Positioned(
+          top: 10,
+          right: 18,
+          child: Builder(
+            builder: (buttonContext) => IconButton(
+              icon: const Icon(Icons.share, color: CassandraColors.brightSnow),
+              onPressed: () {
+                final code = appState.groupInviteCode ?? '';
+                _shareInvite(
+                  groupName: groupName,
+                  inviteCode: code,
+                  sourceContext: buttonContext,
+                  l10n: l10n,
+                );
+              },
+            ),
+          ),
+        ),
+          ],
         ),
       ),
     );

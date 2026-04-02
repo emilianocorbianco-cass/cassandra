@@ -1563,7 +1563,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // 1. "Punti" — live base score
         Column(
@@ -1590,6 +1590,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             ),
           ],
         ),
+        const SizedBox(height: 10),
         // 2. "Punti bonus"
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1615,6 +1616,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             ),
           ],
         ),
+        const SizedBox(height: 10),
         // 3. "Punti totali"
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1650,7 +1652,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // 1. Picks made
         Column(
@@ -1677,6 +1679,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             ),
           ],
         ),
+        const SizedBox(height: 10),
         // 2. Max Points
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1702,6 +1705,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             ),
           ],
         ),
+        const SizedBox(height: 10),
         // 3. Min Points
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
