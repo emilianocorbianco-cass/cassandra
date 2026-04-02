@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cassandra/l10n/app_localizations.dart';
@@ -748,11 +749,14 @@ class _GroupPageState extends State<GroupPage> {
     }
   }
 
+  bool _approveInFlight = false;
+
   Future<void> _callApproveReject(String groupId, String memberUid, String action) async {
-    final fs = CassandraScope.of(context).firestoreService;
-    if (fs == null) return;
+    if (_approveInFlight) return;
+    _approveInFlight = true;
 
     // Remove from local list immediately for responsive UI.
+    final removed = _pendingMembers.where((m) => m.uid == memberUid).toList();
     if (mounted) {
       setState(() {
         _pendingMembers = _pendingMembers
@@ -762,13 +766,27 @@ class _GroupPageState extends State<GroupPage> {
     }
 
     try {
-      if (action == 'approve') {
-        await fs.approvePendingMember(groupId: groupId, memberUid: memberUid);
-      } else {
-        await fs.rejectPendingMember(groupId: groupId, memberUid: memberUid);
-      }
+      final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable(
+        'approveGroupMember',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
+      );
+      await callable.call<dynamic>({
+        'groupId': groupId,
+        'memberUid': memberUid,
+        'action': action,
+      });
+      if (kDebugMode) debugPrint('[approve] $action success for $memberUid');
     } catch (e) {
       if (kDebugMode) debugPrint('[approve] $action error: $e');
+      // Restore pending member on failure.
+      if (mounted && removed.isNotEmpty) {
+        setState(() {
+          _pendingMembers = [..._pendingMembers, ...removed];
+        });
+      }
+    } finally {
+      _approveInFlight = false;
     }
   }
 

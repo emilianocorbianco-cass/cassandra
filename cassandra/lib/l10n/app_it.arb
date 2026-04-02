@@ -52,7 +52,7 @@
   "createGroupShareInviteCode": "Condividi codice invito",
   "createGroupContinue": "Continua",
   "createGroupError": "Impossibile creare il gruppo. Riprova.",
-  "groupShareInviteMessage": "Unisciti al mio gruppo \"{groupName}\" su Cassandra! Codice: {inviteCode}",
+  "groupShareInviteMessage": "Unisciti al mio gruppo \"{groupName}\" su Cassandra!\n\nCodice: {inviteCode}\n\nhttps://cassandrabet.app/join/{inviteCode}",
   "@groupShareInviteMessage": {
     "placeholders": {
       "groupName": {},

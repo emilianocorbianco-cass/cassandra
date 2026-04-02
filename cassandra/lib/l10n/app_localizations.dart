@@ -314,7 +314,7 @@ abstract class AppLocalizations {
   /// No description provided for @groupShareInviteMessage.
   ///
   /// In en, this message translates to:
-  /// **'Join my group \"{groupName}\" on Cassandra! Code: {inviteCode}'**
+  /// **'Join my group \"{groupName}\" on Cassandra!\n\nCode: {inviteCode}\n\nhttps://cassandrabet.app/join/{inviteCode}'**
   String groupShareInviteMessage(Object groupName, Object inviteCode);
 
   /// No description provided for @joinGroupTitle.

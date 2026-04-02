@@ -124,7 +124,7 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String groupShareInviteMessage(Object groupName, Object inviteCode) {
-    return 'Unisciti al mio gruppo \"$groupName\" su Cassandra! Codice: $inviteCode';
+    return 'Unisciti al mio gruppo \"$groupName\" su Cassandra!\n\nCodice: $inviteCode\n\nhttps://cassandrabet.app/join/$inviteCode';
   }
 
   @override
