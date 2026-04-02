@@ -2216,6 +2216,98 @@ export const approveGroupMember = onCall(
   }
 );
 
+// ─── Delete group (callable, admin only) ───────────────────────────────────────
+
+export const deleteGroupAsAdmin = onCall(
+  { region: "europe-west1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Not signed in");
+
+    const raw = request.data as Record<string, unknown>;
+    const groupId = String(raw.groupId ?? "").trim();
+    if (!groupId) throw new HttpsError("invalid-argument", "Missing groupId");
+
+    const db = getFirestore();
+    const groupRef = db.collection("groups").doc(groupId);
+
+    const groupSnap = await groupRef.get();
+    if (!groupSnap.exists) throw new HttpsError("not-found", "Group not found");
+    if (groupSnap.data()?.adminUid !== uid) {
+      throw new HttpsError("permission-denied", "Only admin can delete");
+    }
+
+    // Mark as deleting
+    await groupRef.set(
+      { deleting: true, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    // Delete invite doc
+    const inviteCode = String(groupSnap.data()?.inviteCode ?? "").trim();
+    if (inviteCode) {
+      try {
+        await db.collection("groupInvites").doc(inviteCode).delete();
+      } catch (_) { /* best effort */ }
+    }
+
+    // Get all members
+    const membersSnap = await groupRef.collection("members").get();
+    const memberUids = membersSnap.docs.map((d) => d.id);
+
+    // Remove groupId from each member's user doc + delete member doc
+    const batchSize = 200;
+    for (let i = 0; i < memberUids.length; i += batchSize) {
+      const chunk = memberUids.slice(i, i + batchSize);
+      const batch = db.batch();
+      for (const memberUid of chunk) {
+        batch.set(
+          db.collection("users").doc(memberUid),
+          {
+            groupIds: FieldValue.arrayRemove([groupId]),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        batch.delete(groupRef.collection("members").doc(memberUid));
+      }
+      await batch.commit();
+    }
+
+    // Delete picks subcollections
+    const picksSnap = await groupRef.collection("picks").get();
+    if (picksSnap.docs.length > 0) {
+      const picksBatch = db.batch();
+      for (const doc of picksSnap.docs) {
+        picksBatch.delete(doc.ref);
+      }
+      await picksBatch.commit();
+    }
+
+    // Delete the group document
+    await groupRef.delete();
+
+    // Cleanup stale invites
+    try {
+      const staleInvites = await db
+        .collection("groupInvites")
+        .where("groupId", "==", groupId)
+        .limit(20)
+        .get();
+      if (staleInvites.docs.length > 0) {
+        const staleBatch = db.batch();
+        for (const doc of staleInvites.docs) {
+          staleBatch.delete(doc.ref);
+        }
+        await staleBatch.commit();
+      }
+    } catch (_) { /* best effort */ }
+
+    console.log(`[deleteGroup] deleted group ${groupId} by admin ${uid}`);
+    return { status: "deleted" };
+  }
+);
+
 export const cleanupGroupChatMessages = onSchedule(
   {
     region: "europe-west1",

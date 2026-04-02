@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -414,7 +415,12 @@ class GroupState extends ChangeNotifier {
     if (group.adminUid != uid) return 'Not admin';
 
     try {
-      await fs.deleteGroupAsAdmin(groupId: groupId, adminUid: uid);
+      final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable(
+        'deleteGroupAsAdmin',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
+      );
+      await callable.call<dynamic>({'groupId': groupId});
     } catch (error, stackTrace) {
       _logGroupError('deleteGroup.deleteAsAdmin', error, stackTrace);
       return _friendlyGroupError(error, 'Delete group failed');
