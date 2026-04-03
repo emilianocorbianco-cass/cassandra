@@ -194,7 +194,7 @@ abstract class AppLocalizations {
   /// No description provided for @welcomeBackTitle.
   ///
   /// In en, this message translates to:
-  /// **'Welcome back {handle}'**
+  /// **'Hi {handle}'**
   String welcomeBackTitle(Object handle);
 
   /// No description provided for @welcomeBackEnter.
@@ -1997,6 +1997,12 @@ abstract class AppLocalizations {
   /// **'Picks already submitted for this matchday.'**
   String get predictionsAlreadySubmitted;
 
+  /// No description provided for @memberPickNotSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Not submitted'**
+  String get memberPickNotSubmitted;
+
   /// No description provided for @commonNoDataAvailable.
   ///
   /// In en, this message translates to:
@@ -2158,6 +2164,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Min Points'**
   String get predictionsMinPoints;
+
+  /// No description provided for @groupEditHandleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Group handle'**
+  String get groupEditHandleTitle;
+
+  /// No description provided for @groupEditHandleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom handle'**
+  String get groupEditHandleHint;
+
+  /// No description provided for @groupEditHandleReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Use profile name'**
+  String get groupEditHandleReset;
+
+  /// No description provided for @groupEditHandleSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Handle updated'**
+  String get groupEditHandleSaved;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

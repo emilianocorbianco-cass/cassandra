@@ -15,7 +15,11 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _displayNameCtrl = TextEditingController();
   final _teamNameCtrl = TextEditingController();
 
@@ -26,19 +30,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    _saveIfNeeded();
+    _displayNameCtrl.removeListener(_onDisplayNameChanged);
+    _teamNameCtrl.removeListener(_onTeamNameChanged);
     _displayNameCtrl.dispose();
     _teamNameCtrl.dispose();
     super.dispose();
   }
 
-  void _saveIfNeeded() {
-    final app = _app;
-    if (app == null) return;
-    app.updateDisplayName(_displayNameCtrl.text);
-    app.updateTeamName(_teamNameCtrl.text);
-    app.updateFavoriteTeam(_selectedFavoriteTeam ?? '');
-    app.updateLanguage(_language);
+  void _onDisplayNameChanged() {
+    _app?.updateDisplayName(_displayNameCtrl.text);
+  }
+
+  void _onTeamNameChanged() {
+    _app?.updateTeamName(_teamNameCtrl.text);
   }
 
   @override
@@ -56,11 +60,15 @@ class _SettingsPageState extends State<SettingsPage> {
         : app.favoriteTeam.trim();
     _language = app.language;
 
+    _displayNameCtrl.addListener(_onDisplayNameChanged);
+    _teamNameCtrl.addListener(_onTeamNameChanged);
+
     _initialized = true;
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final app = CassandraScope.of(context);
 
     return Scaffold(
@@ -76,6 +84,7 @@ class _SettingsPageState extends State<SettingsPage> {
               selectedFavoriteTeam: _selectedFavoriteTeam,
               onFavoriteTeamChanged: (value) {
                 setState(() => _selectedFavoriteTeam = value);
+                _app?.updateFavoriteTeam(value ?? '');
               },
             ),
             GroupSettingsSection(app: app),
@@ -84,6 +93,7 @@ class _SettingsPageState extends State<SettingsPage> {
               currentValue: _language,
               onChanged: (value) {
                 setState(() => _language = value);
+                _app?.updateLanguage(value);
               },
             ),
             const SizedBox(height: 24),

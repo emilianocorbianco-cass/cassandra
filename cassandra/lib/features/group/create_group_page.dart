@@ -148,33 +148,22 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 ),
               ),
             ),
-            // ── Top third: title + subtitle ──
-            Expanded(
-              flex: 1,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      l10n.createGroupTitle,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: CassandraColors.brightSnow,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+            // ── Title ──
+            Text(
+              l10n.createGroupTitle,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: CassandraColors.brightSnow,
               ),
+              textAlign: TextAlign.center,
             ),
             // ── Middle: image + name field, centered ──
             Expanded(
-              flex: 3,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: 50),
+                    padding: const EdgeInsets.only(top: 30),
                     child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -184,13 +173,13 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                           children: [
                             GroupImageDisplay(
                               imagePath: _pickedImagePath,
-                              radius: 52,
+                              radius: 65,
                             ),
                             const SizedBox(height: 6),
                             Text(
                               l10n.createGroupTapAddPhoto,
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: CassandraColors.slate,
+                                color: CassandraColors.brightSnow,
                                 fontSize: 11,
                               ),
                             ),
@@ -241,7 +230,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
             Expanded(
               flex: 1,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
+                padding: const EdgeInsets.fromLTRB(32, 190, 32, 0),
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -270,32 +259,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                                   ),
                                 )
                               : Text(l10n.createGroupButton),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.of(context, rootNavigator: true).push(
-                              MaterialPageRoute(
-                                builder: (_) => JoinGroupPage(
-                                  onJoined: () {
-                                    Navigator.of(context, rootNavigator: true).pop();
-                                    widget.onGroupCreated?.call();
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: CassandraColors.brightSnow,
-                            side: const BorderSide(color: CassandraColors.brightSnow),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: Text(l10n.createGroupHaveInviteCode),
                         ),
                       ),
                     ],

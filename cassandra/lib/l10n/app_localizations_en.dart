@@ -62,7 +62,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String welcomeBackTitle(Object handle) {
-    return 'Welcome back $handle';
+    return 'Hi $handle';
   }
 
   @override
@@ -1048,6 +1048,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get predictionsAlreadySubmitted => 'Picks already submitted for this matchday.';
 
   @override
+  String get memberPickNotSubmitted => 'Not submitted';
+
+  @override
   String get commonNoDataAvailable => 'No data available';
 
   @override
@@ -1145,4 +1148,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get predictionsMinPoints => 'Min Points';
+
+  @override
+  String get groupEditHandleTitle => 'Group handle';
+
+  @override
+  String get groupEditHandleHint => 'Custom handle';
+
+  @override
+  String get groupEditHandleReset => 'Use profile name';
+
+  @override
+  String get groupEditHandleSaved => 'Handle updated';
 }

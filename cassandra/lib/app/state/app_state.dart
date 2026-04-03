@@ -1045,6 +1045,7 @@ class AppState extends ChangeNotifier {
     if (next == groupState.activeGroupId) return;
 
     groupState.setActiveGroupId(next);
+    clearMemberPicks();
     _triggerHistoryHydrationWithRetry();
     unawaited(
       refreshActiveGroupMetadataFromFirestore().catchError((

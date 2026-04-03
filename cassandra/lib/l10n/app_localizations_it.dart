@@ -62,7 +62,7 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String welcomeBackTitle(Object handle) {
-    return 'Bentornato $handle';
+    return 'Ciao $handle';
   }
 
   @override
@@ -90,7 +90,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get createGroupSubtitle => 'Sfida i tuoi amici sui pronostici di Serie A';
 
   @override
-  String get createGroupTapAddPhoto => 'Tocca per aggiungere foto';
+  String get createGroupTapAddPhoto => 'Aggiungi foto';
 
   @override
   String get createGroupNameLabel => 'Nome del gruppo';
@@ -1048,6 +1048,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get predictionsAlreadySubmitted => 'Pronostici già inviati per questa giornata.';
 
   @override
+  String get memberPickNotSubmitted => 'Non inviato';
+
+  @override
   String get commonNoDataAvailable => 'Nessun dato disponibile';
 
   @override
@@ -1145,4 +1148,16 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get predictionsMinPoints => 'Min Punti';
+
+  @override
+  String get groupEditHandleTitle => 'Handle del gruppo';
+
+  @override
+  String get groupEditHandleHint => 'Handle personalizzato';
+
+  @override
+  String get groupEditHandleReset => 'Usa il nome profilo';
+
+  @override
+  String get groupEditHandleSaved => 'Handle aggiornato';
 }

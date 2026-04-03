@@ -105,7 +105,9 @@ class _StatsPageState extends State<StatsPage> {
           (_selectedMemberId != null &&
               entries.any((e) => e.member.id == _selectedMemberId))
           ? _selectedMemberId
-          : entries.first.member.id;
+          : (entries.any((e) => e.member.id == currentUser.id)
+              ? currentUser.id
+              : entries.first.member.id);
 
       if (!mounted) return;
       setState(() {
@@ -179,6 +181,9 @@ class _StatsPageState extends State<StatsPage> {
                     entries: _entries,
                     stats: _selectedStats,
                     selectedMemberId: _selectedMemberId,
+                    currentUserId: StatsEntriesLoader.currentUserMember(
+                      CassandraScope.of(context),
+                    ).id,
                     onMemberSelected: (v) =>
                         setState(() => _selectedMemberId = v),
                     loading: _loading,

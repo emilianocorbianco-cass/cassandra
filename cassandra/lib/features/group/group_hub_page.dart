@@ -119,10 +119,10 @@ class _GroupHubPageState extends State<GroupHubPage> {
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
 
-    final rawHandle = app.profile.teamName.trim();
-    final handle = rawHandle.isEmpty
-        ? '@cassandra'
-        : (rawHandle.startsWith('@') ? rawHandle : '@$rawHandle');
+    final rawName = app.profile.displayName.trim();
+    final firstName = rawName.isEmpty
+        ? 'Cassandra'
+        : rawName.split(' ').first;
 
     return Scaffold(
       backgroundColor: CassandraColors.bg,
@@ -140,7 +140,7 @@ class _GroupHubPageState extends State<GroupHubPage> {
               ),
               const SizedBox(height: 18),
               Text(
-                l10n.welcomeBackTitle(handle),
+                l10n.welcomeBackTitle(firstName),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: CassandraColors.brightSnow,

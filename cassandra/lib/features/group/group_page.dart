@@ -49,7 +49,11 @@ class GroupPage extends StatefulWidget {
   State<GroupPage> createState() => _GroupPageState();
 }
 
-class _GroupPageState extends State<GroupPage> {
+class _GroupPageState extends State<GroupPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   int _segment = 0; // 0 = classifica, 1 = giornate, 2 = stats
   bool _didApplyMatches = false;
 
@@ -244,9 +248,12 @@ class _GroupPageState extends State<GroupPage> {
         final own = members[ownIdx];
         final profilePhoto = (appState.profile.photoUrl ?? '').trim();
         final memberPhoto = (own.photoUrl ?? '').trim();
+        final teamNameDrifted =
+            !own.hasCustomTeamName &&
+            own.teamName != appState.profile.teamName;
         if (profilePhoto != memberPhoto ||
             own.displayName != appState.profile.displayName ||
-            own.teamName != appState.profile.teamName) {
+            teamNameDrifted) {
           unawaited(
             appState.firestoreService!.updateGroupMemberProfileInGroups(
               uid: appState.profile.id,
@@ -261,9 +268,12 @@ class _GroupPageState extends State<GroupPage> {
           members[ownIdx] = GroupMember(
             id: own.id,
             displayName: appState.profile.displayName,
-            teamName: appState.profile.teamName,
+            teamName: own.hasCustomTeamName
+                ? own.teamName
+                : appState.profile.teamName,
             avatarSeed: appState.currentUserAvatarSeed,
             favoriteTeam: appState.profile.favoriteTeam,
+            hasCustomTeamName: own.hasCustomTeamName,
             photoUrl: profilePhoto.isEmpty ? null : profilePhoto,
           );
         }
@@ -387,6 +397,7 @@ class _GroupPageState extends State<GroupPage> {
                     teamName: d.teamName,
                     avatarSeed: d.avatarSeed,
                     favoriteTeam: d.favoriteTeam,
+                    hasCustomTeamName: d.hasCustomTeamName,
                     photoUrl: (d.photoUrl ?? '').trim().isEmpty
                         ? null
                         : d.photoUrl,
@@ -464,6 +475,7 @@ class _GroupPageState extends State<GroupPage> {
             teamName: result[i].teamName,
             avatarSeed: result[i].avatarSeed,
             favoriteTeam: result[i].favoriteTeam,
+            hasCustomTeamName: result[i].hasCustomTeamName,
             photoUrl: cached,
           );
           changed = true;
@@ -785,6 +797,11 @@ class _GroupPageState extends State<GroupPage> {
           _pendingMembers = [..._pendingMembers, ...removed];
         });
       }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$action failed: $e')),
+        );
+      }
     } finally {
       _approveInFlight = false;
     }
@@ -904,6 +921,7 @@ class _GroupPageState extends State<GroupPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final appState = CassandraScope.of(context);
     _ensureFirestoreMembersLoaded(appState);
     final l10n = AppLocalizations.of(context)!;
@@ -1052,12 +1070,22 @@ class _GroupPageState extends State<GroupPage> {
     // Aggancia la cache runtime (che viene aggiornata da Pronostici/Settings).
     _syncFromCacheIfNeeded(appState);
 
+    // Prefer per-group handle from Firestore member doc when available.
+    final firestoreSelf = _firestoreMembers
+        ?.cast<GroupMember?>()
+        .firstWhere(
+          (m) => m?.id == appState.profile.id,
+          orElse: () => null,
+        );
     final overrideMember = GroupMember(
       id: appState.profile.id,
       displayName: appState.profile.displayName,
-      teamName: appState.profile.teamName,
+      teamName: firestoreSelf?.hasCustomTeamName == true
+          ? firestoreSelf!.teamName
+          : appState.profile.teamName,
       avatarSeed: appState.currentUserAvatarSeed,
       favoriteTeam: appState.profile.favoriteTeam,
+      hasCustomTeamName: firestoreSelf?.hasCustomTeamName ?? false,
       photoUrl: appState.profile.photoUrl,
     );
 
@@ -1374,7 +1402,6 @@ class _GroupPageState extends State<GroupPage> {
       onRefresh: _refreshFromFirestore,
       child: ListView.separated(
         padding: const EdgeInsets.only(top: 18, bottom: 90),
-        clipBehavior: Clip.none,
         itemCount: entries.length,
         separatorBuilder: (_, __) => const SizedBox(height: 18),
         itemBuilder: (context, i) {
@@ -1455,7 +1482,6 @@ class _GroupPageState extends State<GroupPage> {
       onRefresh: _refreshFromFirestore,
       child: ListView.separated(
         padding: const EdgeInsets.only(top: 18, bottom: 90),
-        clipBehavior: Clip.none,
         itemCount: seasonMatchdaysDesc.length,
         separatorBuilder: (_, __) => const SizedBox(height: 18),
         itemBuilder: (context, i) {

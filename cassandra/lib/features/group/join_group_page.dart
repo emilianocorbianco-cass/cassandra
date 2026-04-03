@@ -108,47 +108,28 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                 ),
               ),
             ),
-            // ── Top third: title + subtitle ──
-            Expanded(
-              flex: 1,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      l10n.joinGroupTitle,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: CassandraColors.brightSnow,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      l10n.joinGroupEnterInviteCode,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CassandraColors.brightSnow,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+            // ── Title ──
+            Text(
+              l10n.joinGroupTitle,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: CassandraColors.brightSnow,
               ),
+              textAlign: TextAlign.center,
             ),
             // ── Middle: icon + code field ──
             Expanded(
-              flex: 3,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: 50),
+                    padding: const EdgeInsets.only(top: 30),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.group_add,
-                          size: 84,
+                          size: 130,
                           color: CassandraColors.primary,
                         ),
                         const SizedBox(height: 20),
@@ -196,11 +177,11 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
                 ),
               ),
             ),
-            // ── Bottom fifth: button ──
+            // ── Bottom: button ──
             Expanded(
               flex: 1,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
+                padding: const EdgeInsets.fromLTRB(32, 190, 32, 0),
                 child: Center(
                   child: SizedBox(
                     width: double.infinity,

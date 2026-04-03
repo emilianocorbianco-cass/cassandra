@@ -209,12 +209,18 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
 
-    final rawHandle = app.rememberedHandle.trim();
-    final handle = rawHandle.isEmpty
-        ? '@cassandra'
-        : (rawHandle.startsWith('@') ? rawHandle : '@$rawHandle');
+    final name = app.profile.displayName.trim();
+    final greeting = name.isEmpty ? 'Ciao' : l10n.welcomeBackTitle(name);
 
     const snow = CassandraColors.brightSnow;
+    final buttonStyle = OutlinedButton.styleFrom(
+      foregroundColor: snow,
+      backgroundColor: Colors.transparent,
+      side: const BorderSide(color: snow),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+    );
 
     return Scaffold(
       backgroundColor: CassandraColors.bg,
@@ -231,7 +237,7 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  l10n.welcomeBackTitle(handle),
+                  greeting,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: snow,
@@ -241,13 +247,17 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
+                  child: OutlinedButton(
                     onPressed: _loading ? null : _enter,
+                    style: buttonStyle,
                     child: _loading
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: snow,
+                            ),
                           )
                         : Text(l10n.welcomeBackEnter),
                   ),
@@ -257,10 +267,7 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _loading ? null : _notYou,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: snow,
-                      side: const BorderSide(color: snow),
-                    ),
+                    style: buttonStyle,
                     child: Text(l10n.welcomeBackNotYou),
                   ),
                 ),

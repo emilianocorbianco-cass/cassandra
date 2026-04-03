@@ -27,7 +27,7 @@
   "profileSetupSubtitle": "Set your details so Cassandra can recognize you instantly.",
   "profileSetupRememberMe": "Remember me on this device",
   "profileSetupContinue": "Continue",
-  "welcomeBackTitle": "Welcome back {handle}",
+  "welcomeBackTitle": "Hi {handle}",
   "@welcomeBackTitle": {
     "placeholders": {
       "handle": {}
@@ -563,6 +563,7 @@
   "predictionsConfirmYes": "Yes",
   "predictionsConfirmNo": "No",
   "predictionsAlreadySubmitted": "Picks already submitted for this matchday.",
+  "memberPickNotSubmitted": "Not submitted",
   "commonNoDataAvailable": "No data available",
   "predictionsBaseLabel": "Base",
   "predictionsDataDemoFixturesNotSaved": "Data: DEMO (fixtures not saved)",
@@ -619,5 +620,9 @@
   "predictionsSubmittedButton": "Submitted",
   "predictionsPicksMade": "Picks made",
   "predictionsMaxPoints": "Max Points",
-  "predictionsMinPoints": "Min Points"
+  "predictionsMinPoints": "Min Points",
+  "groupEditHandleTitle": "Group handle",
+  "groupEditHandleHint": "Custom handle",
+  "groupEditHandleReset": "Use profile name",
+  "groupEditHandleSaved": "Handle updated"
 }

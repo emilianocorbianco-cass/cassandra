@@ -23,16 +23,15 @@ class SerieAPage extends StatefulWidget {
   State<SerieAPage> createState() => _SerieAPageState();
 }
 
-class _SerieAPageState extends State<SerieAPage> {
+class _SerieAPageState extends State<SerieAPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   bool _didLoad = false;
 
   _SerieAData? _data;
   StreamSubscription<MatchdayDocument?>? _matchdaySub;
-
-  @override
-  void initState() {
-    super.initState();
-  }
 
   @override
   void didChangeDependencies() {
@@ -185,6 +184,7 @@ class _SerieAPageState extends State<SerieAPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final app = CassandraScope.of(context);
     final l10n = AppLocalizations.of(context)!;
 

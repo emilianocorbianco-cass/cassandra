@@ -192,6 +192,7 @@ service cloud.firestore {
                             'photoUrl',
                             'avatarSeed',
                             'favoriteTeam',
+                            'hasCustomTeamName',
                             'updatedAt',
                           ])
                         )

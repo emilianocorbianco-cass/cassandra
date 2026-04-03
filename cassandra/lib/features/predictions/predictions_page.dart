@@ -54,6 +54,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   String? _expandedMatchId;
   List<GroupMember>? _cachedGroupMembers;
   bool _memberPicksFetched = false;
+  String? _lastGroupId;
 
   // ── Group leaderboard (post-lock) ──
   List<_LeaderboardEntry> _leaderboardEntries = const [];
@@ -105,6 +106,15 @@ class _PredictionsPageState extends State<PredictionsPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final currentGroupId = CassandraScope.of(context).activeGroupId;
+    if (_lastGroupId != null && _lastGroupId != currentGroupId) {
+      _memberPicksFetched = false;
+      _cachedGroupMembers = null;
+      _expandedMatchId = null;
+      _leaderboardFetched = false;
+      _leaderboardEntries = const [];
+    }
+    _lastGroupId = currentGroupId;
     if (_didLoadRealFixtures) return;
     _didLoadRealFixtures = true;
 
@@ -141,7 +151,7 @@ class _PredictionsPageState extends State<PredictionsPage>
   int get _pickedCount => matches.where((m) => !_pickFor(m.id).isNone).length;
   /// Matches that are still playable (not started) but have no pick.
   int get _playableMissingCount =>
-      matches.where((m) => _pickFor(m.id).isNone && !_isMatchStarted(m)).length;
+      matches.where((m) => _pickFor(m.id).isNone && !_isMatchdayLocked).length;
   /// Lock = already submitted (per-user, not time-based).
   bool get _locked {
     final override = CassandraScope.of(context).debugLockOverride;
@@ -149,9 +159,16 @@ class _PredictionsPageState extends State<PredictionsPage>
     return _submitted;
   }
 
-  /// Whether a match is locked (30 minutes before kickoff).
-  bool _isMatchStarted(PredictionMatch match) =>
-      CassandraScope.of(context).now().isAfter(match.kickoff.subtract(const Duration(minutes: 30)));
+  /// Whether the matchday is locked (15 minutes before the first kickoff).
+  bool get _isMatchdayLocked {
+    if (matches.isEmpty) return false;
+    final firstKickoff = matches
+        .map((m) => m.kickoff)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    return CassandraScope.of(context)
+        .now()
+        .isAfter(firstKickoff.subtract(const Duration(minutes: 15)));
+  }
 
   void _setPick(String matchId, PickOption pick) {
     final l10n = AppLocalizations.of(context)!;
@@ -165,7 +182,7 @@ class _PredictionsPageState extends State<PredictionsPage>
       (m) => m?.id == matchId,
       orElse: () => null,
     );
-    if (match != null && _isMatchStarted(match)) {
+    if (match != null && _isMatchdayLocked) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.predictionsPickLockedSnack)));
@@ -498,12 +515,28 @@ class _PredictionsPageState extends State<PredictionsPage>
         s != null && const {'1H', 'HT', '2H', 'ET', 'BT', 'LIVE'}.contains(s);
     final isFT = s == 'FT' || s == 'AET' || s == 'PEN';
     final isStarted = isLive || isFT;
+    final matchLocked = _isMatchdayLocked;
     final rows = <_MemberPickData>[];
     for (final member in members) {
       if (member.id == currentUid) continue;
       final memberPicks = allPicks[member.id];
       var pick = memberPicks?[match.id] ?? PickOption.none;
       final isAuto = pick.isNone;
+      if (!matchLocked && isAuto) {
+        // Pre-lock: member hasn't submitted — show "Non inviato"
+        rows.add(_MemberPickData(
+          name: member.uiName,
+          pick: PickOption.none,
+          odds: 0,
+          opposingLabel: '',
+          opposingOdds: 0,
+          isCorrect: false,
+          isLive: false,
+          isFT: false,
+          hidden: true,
+        ));
+        continue;
+      }
       if (isAuto) {
         pick = CassandraScoringEngine.lowestOddsPick(match);
       }
@@ -519,7 +552,7 @@ class _PredictionsPageState extends State<PredictionsPage>
           isCorrect: isCorrect,
           isLive: isLive,
           isFT: isFT,
-          isAuto: isAuto,
+          isAuto: matchLocked && isAuto,
         ),
       );
     }
@@ -1171,14 +1204,14 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
 
   List<({String range, int points})> _bonusRuleRows() {
     return const [
-      (range: '< 9', points: -7),
-      (range: '9 - 12', points: -4),
-      (range: '12 - 15', points: -1),
-      (range: '15 - 18', points: 0),
-      (range: '18 - 22', points: 1),
-      (range: '22 - 26', points: 4),
-      (range: '26 - 30', points: 7),
       (range: '> 30', points: 10),
+      (range: '26 - 30', points: 7),
+      (range: '22 - 26', points: 4),
+      (range: '18 - 22', points: 1),
+      (range: '15 - 18', points: 0),
+      (range: '12 - 15', points: -1),
+      (range: '9 - 12', points: -4),
+      (range: '< 9', points: -7),
     ];
   }
 
@@ -1315,37 +1348,43 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
         children: [
           Expanded(
             flex: 50,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  matchdayTitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
+            child: Transform.translate(
+              offset: const Offset(0, -4),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    matchdayTitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
                     color: _fg,
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.3,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Center(
-                  child: SizedBox(
-                    width: ringSize,
-                    height: ringSize,
-                    child: CustomPaint(
-                      painter: _RingPainter(
-                        segmentColors: segColors,
-                        segmentVoided: segVoided,
-                        segmentLive: segLive,
-                        solid: useSolidRing,
+                const SizedBox(height: 28),
+                Transform.translate(
+                  offset: const Offset(0, -8),
+                  child: Center(
+                    child: SizedBox(
+                      width: ringSize,
+                      height: ringSize,
+                      child: CustomPaint(
+                        painter: _RingPainter(
+                          segmentColors: segColors,
+                          segmentVoided: segVoided,
+                          segmentLive: segLive,
+                          solid: useSolidRing,
+                        ),
+                        child: ringCenter,
                       ),
-                      child: ringCenter,
                     ),
                   ),
                 ),
               ],
+            ),
             ),
           ),
           Container(
@@ -2699,6 +2738,7 @@ class _MemberPickData {
   final bool isLive;
   final bool isFT;
   final bool isAuto;
+  final bool hidden;
 
   const _MemberPickData({
     required this.name,
@@ -2710,6 +2750,7 @@ class _MemberPickData {
     required this.isLive,
     required this.isFT,
     this.isAuto = false,
+    this.hidden = false,
   });
 }
 
@@ -2723,6 +2764,39 @@ class _MemberPickRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (data.hidden) {
+      final l10n = AppLocalizations.of(context)!;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Flexible(
+              child: Text(
+                data.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: CassandraColors.inkBlackV2,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              l10n.memberPickNotSubmitted,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                fontStyle: FontStyle.italic,
+                color: CassandraColors.inkBlackV2.withValues(alpha: 0.45),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     // Single bubble: fill on FT, border on live
     Color? bg;
     Color? border;

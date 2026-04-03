@@ -534,6 +534,7 @@ class GroupState extends ChangeNotifier {
         teamName: d.teamName,
         avatarSeed: d.avatarSeed,
         favoriteTeam: d.favoriteTeam,
+        hasCustomTeamName: d.hasCustomTeamName,
         photoUrl: photo.isEmpty ? null : photo,
       );
     }).toList();

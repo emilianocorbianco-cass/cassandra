@@ -27,7 +27,7 @@
   "profileSetupSubtitle": "Imposta i tuoi dati per riconoscerti subito su Cassandra.",
   "profileSetupRememberMe": "Ricordami su questo dispositivo",
   "profileSetupContinue": "Continua",
-  "welcomeBackTitle": "Bentornato {handle}",
+  "welcomeBackTitle": "Ciao {handle}",
   "@welcomeBackTitle": {
     "placeholders": {
       "handle": {}
@@ -41,7 +41,7 @@
   "welcomeBackUidMismatch": "Questo account non corrisponde al profilo salvato su questo dispositivo. Tocca \"Non sei tu?\" per cambiare account.",
   "createGroupTitle": "Crea il tuo gruppo",
   "createGroupSubtitle": "Sfida i tuoi amici sui pronostici di Serie A",
-  "createGroupTapAddPhoto": "Tocca per aggiungere foto",
+  "createGroupTapAddPhoto": "Aggiungi foto",
   "createGroupNameLabel": "Nome del gruppo",
   "createGroupButton": "Crea gruppo",
   "createGroupHaveInviteCode": "Invita un amico",
@@ -563,6 +563,7 @@
   "predictionsConfirmYes": "Sì",
   "predictionsConfirmNo": "No",
   "predictionsAlreadySubmitted": "Pronostici già inviati per questa giornata.",
+  "memberPickNotSubmitted": "Non inviato",
   "commonNoDataAvailable": "Nessun dato disponibile",
   "predictionsBaseLabel": "Base",
   "predictionsDataDemoFixturesNotSaved": "Dati: DEMO (fixture non storicizzate)",
@@ -619,5 +620,9 @@
   "predictionsSubmittedButton": "Inviati",
   "predictionsPicksMade": "Pronostici",
   "predictionsMaxPoints": "Max Punti",
-  "predictionsMinPoints": "Min Punti"
+  "predictionsMinPoints": "Min Punti",
+  "groupEditHandleTitle": "Handle del gruppo",
+  "groupEditHandleHint": "Handle personalizzato",
+  "groupEditHandleReset": "Usa il nome profilo",
+  "groupEditHandleSaved": "Handle aggiornato"
 }

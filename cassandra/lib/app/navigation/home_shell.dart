@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
-import 'dart:ui';
 
 import '../../features/predictions/predictions_page.dart';
 import '../../features/group/group_page.dart';
-
 import '../../features/group/group_hub_page.dart';
 import '../../features/settings/settings_page.dart';
 import 'package:cassandra/features/serie_a/serie_a_page.dart';
@@ -32,8 +30,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell>
-    with SingleTickerProviderStateMixin {
+class _HomeShellState extends State<HomeShell> {
   Timer? _liveSyncTimer;
   bool _liveSyncInFlight = false;
   bool _didInitialLiveSync = false;
@@ -281,58 +278,66 @@ class _HomeShellState extends State<HomeShell>
     }
   }
 
-  // -1 = GroupHubPage, 0..3 = tab pages
   int _index = 0;
-  bool get _showingGroupHub => _index == -1;
-  int _slideDirection = 1; // 1 = forward (left), -1 = backward (right)
-  late final AnimationController _bubbleCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 700),
-  );
-  late final CurvedAnimation _bubbleCurve = CurvedAnimation(
-    parent: _bubbleCtrl,
-    curve: Curves.easeOutBack,
-  );
-  double _bubbleFrom = 0;
-  double _bubbleTo = 0;
+  late final PageController _pageCtrl = PageController();
+  bool _groupHubTriggered = false;
 
   void _selectTab(int i) {
     if (i == _index) return;
-    setState(() {
-      _slideDirection = i > _index ? 1 : -1;
-      _bubbleFrom = _index.toDouble();
-      _bubbleTo = i.toDouble();
-      _index = i;
-      _bubbleCtrl.forward(from: 0);
-    });
+    _pageCtrl.animateToPage(
+      i,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
   }
 
-  // ── Swipe navigation ────────────────────────────────────────────────────
-  double _swipeDx = 0;
-  static const _swipeThreshold = 40.0;
-  static const _swipeVelocityThreshold = 400.0;
-  static const _swipeMinDxForVelocity = 15.0;
-
-  void _onHorizontalDragStart(DragStartDetails _) {
-    _swipeDx = 0;
+  void _onPageChanged(int page) {
+    setState(() => _index = page);
   }
 
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    _swipeDx += details.delta.dx;
+  void _openGroupHub() {
+    final app = CassandraScope.of(context);
+    if (!app.isAuthenticated) return;
+    Navigator.of(context, rootNavigator: true).push(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => GroupHubPage(
+          onBack: () => Navigator.of(context, rootNavigator: true).pop(),
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(-1, 0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            )),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 250),
+      ),
+    );
   }
 
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    final swipeRight = _swipeDx > _swipeThreshold ||
-        (_swipeDx > _swipeMinDxForVelocity && velocity > _swipeVelocityThreshold);
-    final swipeLeft = _swipeDx < -_swipeThreshold ||
-        (_swipeDx < -_swipeMinDxForVelocity && velocity < -_swipeVelocityThreshold);
-
-    if (swipeLeft && _index < _pages.length - 1) {
-      _selectTab(_index + 1);
-    } else if (swipeRight && _index > -1) {
-      _selectTab(_index - 1);
+  bool _handleHorizontalOverscroll(ScrollNotification notification) {
+    if (_index != 0) return false;
+    if (notification.metrics.axis != Axis.horizontal) return false;
+    if (notification is ScrollStartNotification) {
+      _groupHubTriggered = false;
     }
+    if (_groupHubTriggered) return false;
+    if (notification is OverscrollNotification && notification.overscroll < -8) {
+      _groupHubTriggered = true;
+      _openGroupHub();
+    }
+    if (notification is ScrollUpdateNotification &&
+        notification.metrics.pixels < -50) {
+      _groupHubTriggered = true;
+      _openGroupHub();
+    }
+    return false;
   }
 
   static final _pages = <Widget>[
@@ -346,8 +351,7 @@ class _HomeShellState extends State<HomeShell>
   void dispose() {
     _standingsSub?.cancel();
     _liveSyncTimer?.cancel();
-    _bubbleCurve.dispose();
-    _bubbleCtrl.dispose();
+    _pageCtrl.dispose();
     super.dispose();
   }
 
@@ -395,38 +399,12 @@ class _HomeShellState extends State<HomeShell>
                   ),
                 ),
               Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragStart: _onHorizontalDragStart,
-                  onHorizontalDragUpdate: _onHorizontalDragUpdate,
-                  onHorizontalDragEnd: _onHorizontalDragEnd,
-                  child: ClipRect(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 700),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        // The incoming page has key == _index; outgoing has old key.
-                        final isIncoming = child.key == ValueKey(_index);
-                        final offset = Tween<Offset>(
-                          begin: Offset(
-                            isIncoming ? _slideDirection.toDouble() : -_slideDirection.toDouble(),
-                            0,
-                          ),
-                          end: Offset.zero,
-                        );
-                        return SlideTransition(
-                          position: offset.animate(animation),
-                          child: child,
-                        );
-                      },
-                      child: KeyedSubtree(
-                        key: ValueKey(_index),
-                        child: _showingGroupHub
-                            ? GroupHubPage(onBack: () => _selectTab(0))
-                            : _pages[_index],
-                      ),
-                    ),
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _handleHorizontalOverscroll,
+                  child: PageView(
+                    controller: _pageCtrl,
+                    onPageChanged: _onPageChanged,
+                    children: _pages,
                   ),
                 ),
               ),
@@ -434,14 +412,14 @@ class _HomeShellState extends State<HomeShell>
           ),
 
           // ── Floating liquid-glass tab bar ──────────────────────────
-          if (!_showingGroupHub) Positioned(
+          Positioned(
             left: 18,
             right: 18,
             bottom: Platform.isAndroid
-                ? MediaQuery.of(context).viewPadding.bottom + 6
-                : 14 + MediaQuery.of(context).viewPadding.bottom * 0.3,
+                ? MediaQuery.of(context).viewPadding.bottom + 3
+                : 11 + MediaQuery.of(context).viewPadding.bottom * 0.3,
             child: Container(
-                  height: 50,
+                  height: 56,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(14),
                     color: Colors.black,
@@ -459,16 +437,13 @@ class _HomeShellState extends State<HomeShell>
                       final barH = constraints.maxHeight;
                       return Stack(
                         children: [
-                          // ── Pill highlight (Fitness-style) ─────
+                          // ── Pill highlight (tracks PageView position) ─────
                           AnimatedBuilder(
-                            animation: _bubbleCtrl,
+                            animation: _pageCtrl,
                             builder: (context, _) {
-                              final t = _bubbleCurve.value;
-                              final pos = lerpDouble(
-                                _bubbleFrom,
-                                _bubbleTo,
-                                t,
-                              )!;
+                              final pos = _pageCtrl.hasClients
+                                  ? (_pageCtrl.page ?? _index.toDouble())
+                                  : _index.toDouble();
                               const hPad = 4.0;
                               const vPad = 5.0;
                               final left = pos * tabW + hPad;

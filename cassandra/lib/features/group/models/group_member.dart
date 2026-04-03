@@ -10,6 +10,9 @@ class GroupMember {
   /// Squadra del cuore (per badge 🦉)
   final String? favoriteTeam;
 
+  /// True se l'utente ha un handle personalizzato in questo gruppo.
+  final bool hasCustomTeamName;
+
   const GroupMember({
     required this.id,
     required this.displayName,
@@ -17,6 +20,7 @@ class GroupMember {
     required this.avatarSeed,
     this.photoUrl,
     this.favoriteTeam,
+    this.hasCustomTeamName = false,
   });
 
   String get uiName {

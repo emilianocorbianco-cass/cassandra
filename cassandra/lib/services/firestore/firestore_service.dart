@@ -439,7 +439,7 @@ class FirestoreService {
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
           'memberCount': hasCreatorMembership ? 1 : 0,
-          'adminApproval': true,
+          'adminApproval': false,
           'competitions': ['serie-a'],
         });
         txn.set(inviteRef, {
@@ -644,7 +644,7 @@ class FirestoreService {
             (groupSnap.data()?['maxMembers'] as num?)?.toInt() ?? 0;
         final deleting = groupSnap.data()?['deleting'] == true;
         final adminApproval =
-            groupSnap.data()?['adminApproval'] as bool? ?? true;
+            groupSnap.data()?['adminApproval'] as bool? ?? false;
 
         if (deleting) {
           throw FirebaseException(
@@ -828,24 +828,28 @@ class FirestoreService {
           operation: 'updateGroupMemberProfileInGroups.prefetchMembers',
         );
 
-        final existingMemberRefs = memberSnapshots
+        final existingSnapshots = memberSnapshots
             .where((snap) => snap.exists)
-            .map((snap) => snap.reference)
             .toList(growable: false);
-        if (existingMemberRefs.isEmpty) {
+        if (existingSnapshots.isEmpty) {
           return;
         }
 
         final batch = _db.batch();
-        for (final memberRef in existingMemberRefs) {
-          batch.set(memberRef, {
+        for (final snap in existingSnapshots) {
+          final hasCustom =
+              snap.data()?['hasCustomTeamName'] as bool? ?? false;
+          final data = <String, dynamic>{
             'displayName': displayName,
-            'teamName': teamName,
             'photoUrl': photoUrl,
             'avatarSeed': avatarSeed,
             'favoriteTeam': favoriteTeam,
             'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          };
+          if (!hasCustom) {
+            data['teamName'] = teamName;
+          }
+          batch.set(snap.reference, data, SetOptions(merge: true));
         }
         await _withTimeout(
           batch.commit(),
@@ -885,6 +889,31 @@ class FirestoreService {
         '(${uniqueGroupIds.length} group(s), ${chunks.length} chunk(s))',
       );
     }
+  }
+
+  /// Updates the teamName for a single group member document.
+  /// When [hasCustomTeamName] is true, the global profile sync will skip
+  /// this group's teamName. When false, [teamName] is treated as the
+  /// default (usually displayName) and the next global sync will overwrite it.
+  Future<void> updateGroupMemberTeamName({
+    required String groupId,
+    required String uid,
+    required String teamName,
+    required bool hasCustomTeamName,
+  }) async {
+    final memberRef = _db
+        .collection('groups')
+        .doc(groupId)
+        .collection('members')
+        .doc(uid);
+    await _withTimeout(
+      memberRef.set({
+        'teamName': teamName,
+        'hasCustomTeamName': hasCustomTeamName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+      operation: 'updateGroupMemberTeamName',
+    );
   }
 
   Future<void> leaveGroup({
@@ -1093,6 +1122,23 @@ class FirestoreService {
         }
       }
     }
+  }
+
+  Future<GroupMemberDocument?> getGroupMember(
+    String groupId,
+    String uid,
+  ) async {
+    final snap = await _withTimeout(
+      _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .doc(uid)
+          .get(),
+      operation: 'getGroupMember',
+    );
+    if (!snap.exists) return null;
+    return GroupMemberDocument.fromFirestore(snap);
   }
 
   Future<List<GroupMemberDocument>> getGroupMembers(String groupId) async {

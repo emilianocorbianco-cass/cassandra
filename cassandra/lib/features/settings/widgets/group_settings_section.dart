@@ -75,8 +75,15 @@ class _GroupSettingsSectionState extends State<GroupSettingsSection> {
 
     if (confirmed != true || !mounted) return;
 
-    await app.deleteActiveGroupIfAdmin();
+    final error = await app.deleteActiveGroupIfAdmin();
     if (!mounted) return;
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
 
     Navigator.of(context, rootNavigator: true).pushReplacement(
       MaterialPageRoute(builder: (_) => const GroupHubPage()),

@@ -14,6 +14,7 @@ class PersonalStatsView extends StatelessWidget {
     required this.entries,
     required this.stats,
     required this.selectedMemberId,
+    required this.currentUserId,
     required this.onMemberSelected,
     required this.loading,
   });
@@ -21,6 +22,7 @@ class PersonalStatsView extends StatelessWidget {
   final List<SeasonLeaderboardEntry> entries;
   final PlayerSeasonStats? stats;
   final String? selectedMemberId;
+  final String currentUserId;
   final ValueChanged<String?> onMemberSelected;
   final bool loading;
 
@@ -68,8 +70,8 @@ class PersonalStatsView extends StatelessWidget {
     // Sort entries: current user first, then alphabetical.
     final sortedEntries = List<SeasonLeaderboardEntry>.of(entries)
       ..sort((a, b) {
-        if (a.member.id == selectedMemberId) return -1;
-        if (b.member.id == selectedMemberId) return 1;
+        if (a.member.id == currentUserId) return -1;
+        if (b.member.id == currentUserId) return 1;
         return a.member.uiName.toLowerCase().compareTo(
               b.member.uiName.toLowerCase(),
             );

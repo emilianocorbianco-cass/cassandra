@@ -1993,16 +1993,25 @@ export const refreshMatchdayData = onSchedule(
 export const refreshLiveMatchdayData = onSchedule(
   {
     region: "europe-west1",
-    schedule: "every 1 minutes",
-    timeoutSeconds: 180,
+    schedule: "*/1 * * * *",
+    timeoutSeconds: 55,
     memory: "256MiB",
   },
   async () => {
+    // First call immediately
     await refreshMatchdayDataCore({
       includeOdds: false,
       lastFixtures: 20,
       nextFixtures: 40,
-      logPrefix: "refresh-live",
+      logPrefix: "refresh-live-1",
+    });
+    // Wait 30 seconds, then second call
+    await new Promise((resolve) => setTimeout(resolve, 30_000));
+    await refreshMatchdayDataCore({
+      includeOdds: false,
+      lastFixtures: 20,
+      nextFixtures: 40,
+      logPrefix: "refresh-live-2",
     });
   }
 );
@@ -2183,20 +2192,18 @@ export const approveGroupMember = onCall(
     }
 
     // Approve: update member status, increment memberCount, add groupId to user
-    const currentCount = (groupSnap.data()?.memberCount as number) ?? 0;
-    const safeGroupId = `${groupId}`;
-
-    // Read user doc BEFORE the transaction to get current groupIds
-    // (transactions require all reads before writes).
-    const userSnap = await userRef.get();
-    const existing: string[] = Array.isArray(userSnap.data()?.groupIds)
-      ? (userSnap.data()!.groupIds as string[])
-      : [];
-    const updatedGroupIds = existing.includes(safeGroupId)
-      ? existing
-      : [...existing, safeGroupId];
-
     await db.runTransaction(async (txn) => {
+      const groupSnapTxn = await txn.get(groupRef);
+      const userSnapTxn = await txn.get(userRef);
+
+      const currentCount = (groupSnapTxn.data()?.memberCount as number) ?? 0;
+      const existing: string[] = Array.isArray(userSnapTxn.data()?.groupIds)
+        ? (userSnapTxn.data()!.groupIds as string[])
+        : [];
+      const updatedGroupIds = existing.includes(groupId)
+        ? existing
+        : [...existing, groupId];
+
       txn.update(memberRef, {
         status: "active",
         updatedAt: FieldValue.serverTimestamp(),
@@ -2266,7 +2273,7 @@ export const deleteGroupAsAdmin = onCall(
           batch.set(
             db.collection("users").doc(memberUid),
             {
-              groupIds: FieldValue.arrayRemove([groupId]),
+              groupIds: FieldValue.arrayRemove(groupId),
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -2276,21 +2283,21 @@ export const deleteGroupAsAdmin = onCall(
         await batch.commit();
       }
 
-      // Delete picks subcollections (best effort)
-      try {
-        const picksSnap = await groupRef.collection("picks").get();
-        if (picksSnap.docs.length > 0) {
-          for (let i = 0; i < picksSnap.docs.length; i += 400) {
-            const picksBatch = db.batch();
-            const chunk = picksSnap.docs.slice(i, i + 400);
+      // Delete subcollections (best effort)
+      for (const subcol of ["chatMessages", "flash_matchdays"]) {
+        try {
+          const snap = await groupRef.collection(subcol).get();
+          for (let i = 0; i < snap.docs.length; i += 400) {
+            const batch = db.batch();
+            const chunk = snap.docs.slice(i, i + 400);
             for (const doc of chunk) {
-              picksBatch.delete(doc.ref);
+              batch.delete(doc.ref);
             }
-            await picksBatch.commit();
+            await batch.commit();
           }
+        } catch (e) {
+          console.warn(`[deleteGroup] ${subcol} cleanup failed: ${e}`);
         }
-      } catch (e) {
-        console.warn(`[deleteGroup] picks cleanup failed: ${e}`);
       }
 
       // Delete the group document
@@ -3313,14 +3320,15 @@ export const coldTestTimeTravel = onCall(
 
 // ─── Matchday Reminder Notification ──────────────────────────────────────────
 //
-// Fires daily at 13:00 Europe/Rome. Checks if any matchday has its first
-// kickoff today (Rome timezone). If so, sends a reminder push to all users
-// with the lock time and first match info.
+// Fires every 15 minutes. Checks if any matchday has its first kickoff in
+// approximately 2h15m (= 2 hours before the lock, which is 15 min before
+// first kickoff). Uses a ±8 min window to ensure exactly one hit per
+// 15-minute cron cycle. Sends a push to all users.
 
 export const sendMatchdayReminder = onSchedule(
   {
     region: "europe-west1",
-    schedule: "0 13 * * *",
+    schedule: "*/15 * * * *",
     timeZone: "Europe/Rome",
     timeoutSeconds: 60,
     memory: "256MiB",
@@ -3328,36 +3336,24 @@ export const sendMatchdayReminder = onSchedule(
   async () => {
     const db = getFirestore();
     const seasonKey = seasonStartYear().toString();
+    const now = Date.now();
 
-    // Build today's date boundaries in Europe/Rome (UTC+1 or UTC+2 DST).
-    const nowRome = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "Europe/Rome" })
-    );
-    const todayStart = new Date(
-      nowRome.getFullYear(),
-      nowRome.getMonth(),
-      nowRome.getDate(),
-      0, 0, 0
-    );
-    const todayEnd = new Date(
-      nowRome.getFullYear(),
-      nowRome.getMonth(),
-      nowRome.getDate(),
-      23, 59, 59
-    );
+    // Window: first kickoff between 2h07m and 2h23m from now
+    // (lock = kickoff - 15min, reminder = lock - 2h = kickoff - 2h15m)
+    const windowStart = new Date(now + (2 * 60 + 7) * 60_000);
+    const windowEnd = new Date(now + (2 * 60 + 23) * 60_000);
 
-    // Scan matchdays for one whose lockTime falls today.
     const matchdaysSnap = await db
       .collection("seasons")
       .doc(seasonKey)
       .collection("matchdays")
-      .where("lockTime", ">=", Timestamp.fromDate(todayStart))
-      .where("lockTime", "<=", Timestamp.fromDate(todayEnd))
+      .where("lockTime", ">=", Timestamp.fromDate(windowStart))
+      .where("lockTime", "<=", Timestamp.fromDate(windowEnd))
       .limit(1)
       .get();
 
     if (matchdaysSnap.empty) {
-      console.log("[reminder] no matchday with lockTime today, skipping");
+      // No matchday with lockTime in the 2-hour window — skip silently.
       return;
     }
 
@@ -3375,25 +3371,8 @@ export const sendMatchdayReminder = onSchedule(
       return;
     }
 
-    // Find the first match by kickoff time.
-    const sorted = [...matches].sort(
-      (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
-    );
-    const firstMatch = sorted[0];
-    const firstKickoff = new Date(firstMatch.kickoff);
-
-    // Format time in Europe/Rome as HH:MM.
-    const lockTimeFormatted = firstKickoff.toLocaleTimeString("it-IT", {
-      timeZone: "Europe/Rome",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-
-    const title = "Pronostici aperti!";
-    const body =
-      `Ricordati che puoi inviare i pronostici fino alle ore ${lockTimeFormatted}.\n` +
-      `La prima partita del turno sarà ${firstMatch.home}-${firstMatch.away} alle ore ${lockTimeFormatted}.`;
+    const title = "Cassandra";
+    const body = "Hai ancora due ore per inviare i tuoi pronostici su Cassandra!";
 
     const tokens = await collectAllFcmTokens(db);
     if (tokens.length === 0) {
@@ -3412,8 +3391,7 @@ export const sendMatchdayReminder = onSchedule(
     });
 
     console.log(
-      `[reminder] sent matchday ${matchdayDoc.id} reminder to ${tokens.length} token(s): ` +
-      `${firstMatch.home}-${firstMatch.away} @ ${lockTimeFormatted}`
+      `[reminder] sent matchday ${matchdayDoc.id} reminder to ${tokens.length} token(s)`
     );
   }
 );

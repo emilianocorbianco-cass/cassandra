@@ -5,6 +5,12 @@ class CassandraTheme {
   static ThemeData light() {
     return ThemeData(
       useMaterial3: true,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
       cardTheme: CardThemeData(
         color: CassandraColors.cardBg,
         surfaceTintColor: Colors.transparent,
@@ -27,6 +33,14 @@ class CassandraTheme {
             const BorderSide(color: CassandraColors.brightSnow, width: 1),
           ),
         ),
+      ),
+
+      // Divider
+      dividerColor: CassandraColors.brightSnow,
+      dividerTheme: const DividerThemeData(
+        color: CassandraColors.brightSnow,
+        thickness: 0.5,
+        space: 0.5,
       ),
 
       // Colori base

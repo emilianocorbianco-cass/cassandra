@@ -25,7 +25,7 @@ class GroupDocument {
     required this.memberCount,
     required this.maxMembers,
     this.deleting = false,
-    this.adminApproval = true,
+    this.adminApproval = false,
     this.competitions = const ['serie-a'],
   });
 
@@ -50,7 +50,7 @@ class GroupDocument {
       memberCount: (d['memberCount'] as num?)?.toInt() ?? 0,
       maxMembers: (d['maxMembers'] as num?)?.toInt() ?? 50,
       deleting: d['deleting'] as bool? ?? false,
-      adminApproval: d['adminApproval'] as bool? ?? true,
+      adminApproval: d['adminApproval'] as bool? ?? false,
       competitions: competitions,
     );
   }
@@ -63,6 +63,7 @@ class GroupMemberDocument {
   final String? photoUrl;
   final int avatarSeed;
   final String? favoriteTeam;
+  final bool hasCustomTeamName;
   final DateTime joinedAt;
   final String role;
   final String status;
@@ -74,6 +75,7 @@ class GroupMemberDocument {
     this.photoUrl,
     required this.avatarSeed,
     this.favoriteTeam,
+    this.hasCustomTeamName = false,
     required this.joinedAt,
     required this.role,
     this.status = 'active',
@@ -90,6 +92,7 @@ class GroupMemberDocument {
       photoUrl: d['photoUrl'] as String?,
       avatarSeed: (d['avatarSeed'] as num?)?.toInt() ?? 0,
       favoriteTeam: d['favoriteTeam'] as String?,
+      hasCustomTeamName: d['hasCustomTeamName'] as bool? ?? false,
       joinedAt: (d['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       role: d['role'] as String? ?? 'member',
       status: d['status'] as String? ?? 'active',
