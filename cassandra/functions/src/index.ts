@@ -3325,6 +3325,7 @@ export const coldTestTimeTravel = onCall(
 // first kickoff). Uses a ±8 min window to ensure exactly one hit per
 // 15-minute cron cycle. Sends a push to all users.
 
+// v2: window-based reminder (2h before lock)
 export const sendMatchdayReminder = onSchedule(
   {
     region: "europe-west1",
