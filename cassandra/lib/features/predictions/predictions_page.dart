@@ -732,14 +732,21 @@ class _PredictionsPageState extends State<PredictionsPage>
             } else {
               currentPicks = firestorePicks;
             }
-            final currentDayScore = CassandraScoringEngine.computeDayScore(
-              matches: currentMatches,
-              picksByMatchId: currentPicks,
-              outcomesByMatchId: effectiveOutcomesByMatchId,
-            );
-            totalPoints += currentDayScore.total;
-            if (currentDayScore.averageOddsPlayed != null) {
-              avgOddsValues.add(currentDayScore.averageOddsPlayed!);
+            if (effectiveOutcomesByMatchId.isNotEmpty) {
+              final currentDayScore = CassandraScoringEngine.computeDayScore(
+                matches: currentMatches,
+                picksByMatchId: currentPicks,
+                outcomesByMatchId: effectiveOutcomesByMatchId,
+              );
+              totalPoints += currentDayScore.total;
+              if (currentDayScore.averageOddsPlayed != null) {
+                avgOddsValues.add(currentDayScore.averageOddsPlayed!);
+              }
+            } else if (currentDoc?.score != null) {
+              totalPoints += currentDoc!.score!.total;
+              if (currentDoc.score!.averageOddsPlayed != null) {
+                avgOddsValues.add(currentDoc.score!.averageOddsPlayed!);
+              }
             }
 
             final avgOdds = avgOddsValues.isEmpty

@@ -224,9 +224,8 @@ class StorageService {
       _putCache(key, bytes);
       return bytes;
     } on FirebaseException catch (e) {
-      if (e.code == 'object-not-found' || e.code == 'unauthorized') {
+      if (e.code == 'object-not-found') {
         _putCache(key, null);
-        return null;
       }
       return null;
     } on TimeoutException {

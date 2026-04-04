@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../app/theme/cassandra_colors.dart';
 import '../../l10n/app_localizations.dart';
 
 class ImageCropScreen extends StatefulWidget {
@@ -272,6 +273,11 @@ class _ImageCropScreenState extends State<ImageCropScreen>
               onPressed: _saving ? null : _save,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
+                backgroundColor: CassandraColors.platinum,
+                foregroundColor: CassandraColors.inkBlackV2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
               child: _saving
                   ? const SizedBox(
@@ -279,7 +285,7 @@ class _ImageCropScreenState extends State<ImageCropScreen>
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: CassandraColors.inkBlackV2,
                       ),
                     )
                   : Text(l10n.settingsSave),
