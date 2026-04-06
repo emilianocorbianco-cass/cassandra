@@ -100,8 +100,10 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
 
   Future<bool> _verifyDeviceOwner(String reason) async {
     try {
-      final available = await _auth.canCheckBiometrics;
-      final supported = await _auth.isDeviceSupported();
+      final available = await _auth.canCheckBiometrics
+          .timeout(const Duration(seconds: 5), onTimeout: () => false);
+      final supported = await _auth.isDeviceSupported()
+          .timeout(const Duration(seconds: 5), onTimeout: () => false);
       if (!available && !supported) return true;
       return _auth.authenticate(
         localizedReason: reason,
@@ -109,7 +111,7 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
           biometricOnly: false,
           stickyAuth: true,
         ),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () => true);
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[welcome-back] biometric check error: $e');
@@ -163,7 +165,8 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
     }
 
     try {
-      final resumed = await _signInWithRememberedProvider();
+      final resumed = await _signInWithRememberedProvider()
+          .timeout(const Duration(seconds: 30), onTimeout: () => _resultUnavailable);
       if (!mounted) return;
       if (resumed == _resultSuccess) return;
 
@@ -266,7 +269,7 @@ class _WelcomeBackPageState extends State<WelcomeBackPage> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: _loading ? null : _notYou,
+                    onPressed: _notYou,
                     style: buttonStyle,
                     child: Text(l10n.welcomeBackNotYou),
                   ),

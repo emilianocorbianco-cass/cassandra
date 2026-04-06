@@ -1150,11 +1150,6 @@ class _MatchdayLeaderboardSection extends StatelessWidget {
   final List<_LeaderboardRow> rows;
   final bool isEnglish;
 
-  Color _avatarColorFromSeed(int seed) {
-    final hue = (seed % 360).toDouble();
-    return HSLColor.fromAHSL(1, hue, 0.45, 0.65).toColor();
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -1216,7 +1211,7 @@ class _MatchdayLeaderboardSection extends StatelessWidget {
               const SizedBox(width: 6),
               AvatarWithBadges(
                 radius: 18,
-                backgroundColor: _avatarColorFromSeed(row.member.avatarSeed),
+                backgroundColor: CassandraColors.primary,
                 text: row.member.avatarInitial,
                 badges: const [],
                 imagePathOrUrl: row.member.photoUrl,
