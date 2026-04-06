@@ -152,11 +152,11 @@ class _PredictionsPageState extends State<PredictionsPage>
   /// Matches that are still playable (not started) but have no pick.
   int get _playableMissingCount =>
       matches.where((m) => _pickFor(m.id).isNone && !_isMatchdayLocked).length;
-  /// Lock = already submitted (per-user, not time-based).
+  /// Lock = already submitted OR matchday lock time has passed.
   bool get _locked {
     final override = CassandraScope.of(context).debugLockOverride;
     if (override != null) return override;
-    return _submitted;
+    return _submitted || _isMatchdayLocked;
   }
 
   /// Whether the matchday is locked (15 minutes before the first kickoff).
