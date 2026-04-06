@@ -83,8 +83,11 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
   /// Static in-memory cache so Storage images are instant after first load.
   static final Map<String, Uint8List> _bytesCache = {};
 
+  static const _maxRetries = 3;
+
   String? _cachedSource;
   Future<Uint8List?>? _storageBytesFuture;
+  int _retryCount = 0;
 
   Uint8List? _decodeDataImage(String source) {
     final lower = source.toLowerCase();
@@ -100,19 +103,28 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     }
   }
 
-  Future<Uint8List?> _loadStorageBytes(String source) async {
+  Future<Uint8List?> _loadStorageBytesWithRetry(String source) async {
     final cached = _bytesCache[source];
     if (cached != null) return cached;
-    try {
-      final bytes = await StorageService().readBytesByReference(source);
-      if (bytes != null && bytes.isNotEmpty) {
-        _bytesCache[source] = bytes;
+    for (var attempt = 0; attempt <= _maxRetries; attempt++) {
+      try {
+        final bytes = await StorageService().readBytesByReference(source);
+        if (bytes != null && bytes.isNotEmpty) {
+          _bytesCache[source] = bytes;
+          return bytes;
+        }
+      } catch (_) {}
+      if (attempt < _maxRetries) {
+        await Future<void>.delayed(Duration(seconds: 2 * (attempt + 1)));
       }
-      return bytes;
-    } catch (_) {
-      return null;
     }
+    // Fallback: resolve download URL and fetch via HTTP.
+    _downloadUrl ??= await StorageService().getDownloadUrl(source);
+    return null;
   }
+
+  /// HTTP download URL fallback when direct Storage fetch fails.
+  String? _downloadUrl;
 
   @override
   void initState() {
@@ -130,17 +142,27 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     final source = (widget.imagePathOrUrl ?? '').trim();
     if (source == _cachedSource) return;
     _cachedSource = source;
+    _retryCount = 0;
     if (StorageService.isStorageReference(source)) {
-      // Return instantly from cache if available.
       final cached = _bytesCache[source];
       if (cached != null) {
         _storageBytesFuture = Future.value(cached);
       } else {
-        _storageBytesFuture = _loadStorageBytes(source);
+        _storageBytesFuture = _loadStorageBytesWithRetry(source);
       }
     } else {
       _storageBytesFuture = null;
     }
+  }
+
+  void _retryLoad() {
+    final source = (widget.imagePathOrUrl ?? '').trim();
+    if (source.isEmpty || !StorageService.isStorageReference(source)) return;
+    if (_retryCount >= _maxRetries) return;
+    _retryCount++;
+    setState(() {
+      _storageBytesFuture = _loadStorageBytesWithRetry(source);
+    });
   }
 
   Widget _tappable(ImageProvider image, Widget avatar) {
@@ -201,7 +223,42 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
                 ),
               );
             }
-            return _placeholder();
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return CircleAvatar(
+                radius: widget.radius,
+                backgroundColor: CassandraColors.charcoal,
+                child: SizedBox(
+                  width: widget.radius * 0.6,
+                  height: widget.radius * 0.6,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: CassandraColors.brightSnow,
+                  ),
+                ),
+              );
+            }
+            // Direct Storage fetch failed — try HTTP download URL fallback.
+            if (_downloadUrl != null && _downloadUrl!.isNotEmpty) {
+              final img = NetworkImage(_downloadUrl!);
+              return _tappable(
+                img,
+                CircleAvatar(
+                  radius: widget.radius,
+                  foregroundImage: img,
+                  backgroundColor: CassandraColors.primary,
+                  child: Icon(
+                    Icons.person,
+                    color: CassandraColors.onPrimary,
+                    size: widget.radius,
+                  ),
+                ),
+              );
+            }
+            // All failed: show placeholder, tap to retry
+            return GestureDetector(
+              onTap: _retryLoad,
+              child: _placeholder(),
+            );
           },
         );
       }
