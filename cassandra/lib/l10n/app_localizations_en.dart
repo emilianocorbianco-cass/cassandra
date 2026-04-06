@@ -1051,6 +1051,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get memberPickNotSubmitted => 'Not submitted';
 
   @override
+  String get submitMultiGroupTitle => 'Submit picks';
+
+  @override
+  String get submitMultiGroupBody => 'You are in multiple groups. Do you want to submit your picks to all groups?';
+
+  @override
+  String get submitMultiGroupAll => 'Yes, send to all';
+
+  @override
+  String get submitMultiGroupSingle => 'No, send individually';
+
+  @override
   String get commonNoDataAvailable => 'No data available';
 
   @override

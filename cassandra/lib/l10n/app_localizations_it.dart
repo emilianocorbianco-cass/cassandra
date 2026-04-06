@@ -1051,6 +1051,18 @@ class AppLocalizationsIt extends AppLocalizations {
   String get memberPickNotSubmitted => 'Non inviato';
 
   @override
+  String get submitMultiGroupTitle => 'Invio pronostici';
+
+  @override
+  String get submitMultiGroupBody => 'Sei iscritto a più gruppi. Vuoi inviare i pronostici a tutti i gruppi?';
+
+  @override
+  String get submitMultiGroupAll => 'Sì, invia a tutti';
+
+  @override
+  String get submitMultiGroupSingle => 'No, invia singolarmente';
+
+  @override
   String get commonNoDataAvailable => 'Nessun dato disponibile';
 
   @override

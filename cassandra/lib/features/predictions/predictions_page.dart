@@ -56,6 +56,9 @@ class _PredictionsPageState extends State<PredictionsPage>
   bool _memberPicksFetched = false;
   String? _lastGroupId;
 
+  // ── Multi-group submit: remember "send individually" choice per matchday ──
+  static int? _individualSubmitMatchday;
+
   // ── Group leaderboard (post-lock) ──
   List<_LeaderboardEntry> _leaderboardEntries = const [];
   bool _leaderboardFetched = false;
@@ -207,9 +210,75 @@ class _PredictionsPageState extends State<PredictionsPage>
       );
       return;
     }
-    _submit(VisibilityChoice.public).then((ok) {
+    final appState = CassandraScope.of(context);
+    final groupIds = appState.firestoreGroupIds;
+    if (groupIds.length > 1 &&
+        _individualSubmitMatchday != _effectiveMatchdayNumber) {
+      _showMultiGroupDialog();
+    } else {
+      _submit(VisibilityChoice.public).then((ok) {
+        if (mounted && ok) setState(() => _submitted = true);
+      });
+    }
+  }
+
+  Future<void> _showMultiGroupDialog() async {
+    final l10n = AppLocalizations.of(context)!;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: CassandraColors.inkBlack,
+        title: Text(
+          l10n.submitMultiGroupTitle,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
+        content: Text(
+          l10n.submitMultiGroupBody,
+          style: const TextStyle(color: CassandraColors.brightSnow),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              l10n.submitMultiGroupSingle,
+              style: const TextStyle(color: CassandraColors.brightSnow),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: CassandraColors.primary,
+            ),
+            child: Text(l10n.submitMultiGroupAll),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    if (result) {
+      await _submitToAllGroups();
+    } else {
+      _individualSubmitMatchday = _effectiveMatchdayNumber;
+      final ok = await _submit(VisibilityChoice.public);
       if (mounted && ok) setState(() => _submitted = true);
-    });
+    }
+  }
+
+  Future<void> _submitToAllGroups() async {
+    final appState = CassandraScope.of(context);
+    final groupIds = List<String>.from(appState.firestoreGroupIds);
+    final originalGroupId = appState.activeGroupId;
+    var allOk = true;
+    for (final groupId in groupIds) {
+      appState.setActiveGroupId(groupId);
+      final ok = await _submit(VisibilityChoice.public);
+      if (!ok) allOk = false;
+    }
+    // Restore original group
+    if (originalGroupId != null) {
+      appState.setActiveGroupId(originalGroupId);
+    }
+    if (mounted && allOk) setState(() => _submitted = true);
   }
 
   Future<bool> _confirmSubmitIfMissing(int missing) async {

@@ -2003,6 +2003,30 @@ abstract class AppLocalizations {
   /// **'Not submitted'**
   String get memberPickNotSubmitted;
 
+  /// No description provided for @submitMultiGroupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit picks'**
+  String get submitMultiGroupTitle;
+
+  /// No description provided for @submitMultiGroupBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You are in multiple groups. Do you want to submit your picks to all groups?'**
+  String get submitMultiGroupBody;
+
+  /// No description provided for @submitMultiGroupAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, send to all'**
+  String get submitMultiGroupAll;
+
+  /// No description provided for @submitMultiGroupSingle.
+  ///
+  /// In en, this message translates to:
+  /// **'No, send individually'**
+  String get submitMultiGroupSingle;
+
   /// No description provided for @commonNoDataAvailable.
   ///
   /// In en, this message translates to:
