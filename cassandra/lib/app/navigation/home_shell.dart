@@ -93,8 +93,9 @@ class _HomeShellState extends State<HomeShell> {
       app.ensureOriginKickoffsLoaded();
 
       // Ask API-Football for the actual current matchday round.
-      // This corrects the cursor if it drifted (auto-advance overshoot, stale
-      // cache, etc.) regardless of direction.
+      // Only accept a FORWARD move if the current matchday is finalized
+      // in Firestore (all matches done). This prevents jumping to X+1
+      // while X still has live matches.
       int? apiResolvedDay;
       final apiKey = Env.apiFootballKey;
       if (apiKey != null) {
@@ -108,12 +109,34 @@ class _HomeShellState extends State<HomeShell> {
           final apiService = ApiFootballService(client);
           apiResolvedDay = await apiService.getCurrentSerieAMatchday();
           if (apiResolvedDay != null && apiResolvedDay != dayNumber) {
-            debugPrint(
-              '[live-sync] API says current matchday is $apiResolvedDay '
-              '(cursor was $dayNumber), correcting',
-            );
-            dayNumber = apiResolvedDay;
-            await app.setCassandraMatchdayCursor(apiResolvedDay);
+            if (apiResolvedDay < dayNumber) {
+              // Backward correction is always safe.
+              debugPrint(
+                '[live-sync] API says current matchday is $apiResolvedDay '
+                '(cursor was $dayNumber), correcting backward',
+              );
+              dayNumber = apiResolvedDay;
+              await app.setCassandraMatchdayCursor(apiResolvedDay);
+            } else {
+              // Forward: only advance if the current matchday is finalized.
+              final currentDoc = await fs.getMatchdayData(
+                seasonKey: app.currentSeasonKey,
+                dayNumber: dayNumber,
+              );
+              if (currentDoc != null && currentDoc.finalized) {
+                debugPrint(
+                  '[live-sync] API says current matchday is $apiResolvedDay '
+                  '(cursor was $dayNumber, finalized), advancing',
+                );
+                dayNumber = apiResolvedDay;
+                await app.setCassandraMatchdayCursor(apiResolvedDay);
+              } else {
+                debugPrint(
+                  '[live-sync] API says $apiResolvedDay but matchday '
+                  '$dayNumber not finalized yet, staying',
+                );
+              }
+            }
           }
         } catch (e) {
           if (kDebugMode) {

@@ -190,17 +190,20 @@ MatchdayProgress computeMatchdayProgress<T>(
   );
   final finalDone = sorted.every((f) => res(f) != FixtureResolution.pending);
 
-  // Hold: mezzogiorno del giorno dopo l'ultimo kickoff del cluster primario.
-  final lastPrimaryKickoff = primaryCluster.isNotEmpty
-      ? kickoff(primaryCluster.last)
-      : firstKickoff;
-  final lastLocal = lastPrimaryKickoff.toLocal();
-  final holdUntil = DateTime(
-    lastLocal.year,
-    lastLocal.month,
-    lastLocal.day,
-  ).add(const Duration(days: 1, hours: 12));
-  final readyToAdvance = primaryDone && now.isAfter(holdUntil);
+  // Hold: 12h after the last played match ends (~2h after kickoff).
+  // Voided matches don't count — if all are void, no hold.
+  final playedList = sorted
+      .where((f) => res(f) == FixtureResolution.finalResult)
+      .toList();
+  final DateTime holdUntil;
+  if (playedList.isNotEmpty) {
+    final lastPlayedKickoff = kickoff(playedList.last);
+    // Match end ≈ kickoff + 2h, then hold 12h → kickoff + 14h
+    holdUntil = lastPlayedKickoff.add(const Duration(hours: 14));
+  } else {
+    holdUntil = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  }
+  final readyToAdvance = finalDone && now.isAfter(holdUntil);
 
   final played = sorted
       .where((f) => res(f) == FixtureResolution.finalResult)
