@@ -146,8 +146,13 @@ service cloud.firestore {
     }
 
     // /groups/{groupId}
+    // Read: members, admin, or any signed-in user via get (needed for join flow).
+    // List (query across groups) is restricted to members/admin only.
     match /groups/{groupId} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if signedIn()
+                  && (isGroupMember(groupId)
+                      || isGroupAdmin(groupId));
       allow create: if signedIn()
                     && request.resource.data.adminUid == request.auth.uid
                     && request.resource.data.memberCount is int
@@ -161,9 +166,17 @@ service cloud.firestore {
                       || isCreateWithCreatorMembership(groupId)
                     );
       allow update: if signedIn()
-                    && (resource.data.adminUid == request.auth.uid
-                        || isSelfMembershipJoin(groupId)
-                        || isSelfMembershipLeave(groupId));
+                    && (
+                      (resource.data.adminUid == request.auth.uid
+                        && (!request.resource.data.keys().hasAny(['maxMembers'])
+                            || (request.resource.data.maxMembers is int
+                                && request.resource.data.maxMembers > 0))
+                        && (!request.resource.data.keys().hasAny(['adminApproval'])
+                            || request.resource.data.adminApproval is bool)
+                      )
+                      || isSelfMembershipJoin(groupId)
+                      || isSelfMembershipLeave(groupId)
+                    );
       allow delete: if signedIn() && resource.data.adminUid == request.auth.uid;
 
       // /groups/{groupId}/members/{uid}
