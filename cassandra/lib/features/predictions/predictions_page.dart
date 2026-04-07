@@ -754,25 +754,24 @@ class _PredictionsPageState extends State<PredictionsPage>
 
             for (final pd in docs) {
               if (pd.dayNumber == currentMatchdayNumber) continue;
-              final md = seasonMatchdayByDay[pd.dayNumber];
-              if (md != null && md.matches.isNotEmpty) {
-                // Always recompute to apply current scoring rules.
-                final dayScore = CassandraScoringEngine.computeDayScore(
-                  matches: md.matches,
-                  picksByMatchId: pd.picksByMatchId,
-                  outcomesByMatchId: md.outcomesByMatchId,
-                );
-                totalPoints += dayScore.total;
-                if (dayScore.averageOddsPlayed != null) {
-                  avgOddsValues.add(dayScore.averageOddsPlayed!);
+              // Prefer server-side score; fall back to client recompute.
+              final score = pd.score;
+              if (score != null) {
+                totalPoints += score.total;
+                if (score.averageOddsPlayed != null) {
+                  avgOddsValues.add(score.averageOddsPlayed!);
                 }
               } else {
-                // Fallback to cached score when matchday data is unavailable.
-                final score = pd.score;
-                if (score != null) {
-                  totalPoints += score.total;
-                  if (score.averageOddsPlayed != null) {
-                    avgOddsValues.add(score.averageOddsPlayed!);
+                final md = seasonMatchdayByDay[pd.dayNumber];
+                if (md != null && md.matches.isNotEmpty) {
+                  final dayScore = CassandraScoringEngine.computeDayScore(
+                    matches: md.matches,
+                    picksByMatchId: pd.picksByMatchId,
+                    outcomesByMatchId: md.outcomesByMatchId,
+                  );
+                  totalPoints += dayScore.total;
+                  if (dayScore.averageOddsPlayed != null) {
+                    avgOddsValues.add(dayScore.averageOddsPlayed!);
                   }
                 }
               }
@@ -801,7 +800,15 @@ class _PredictionsPageState extends State<PredictionsPage>
             } else {
               currentPicks = firestorePicks;
             }
-            if (effectiveOutcomesByMatchId.isNotEmpty) {
+            // Prefer server-side score (computed by Cloud Function every
+            // minute). Only fall back to client-side calculation when the
+            // server hasn't scored this document yet (just submitted).
+            if (currentDoc?.score != null) {
+              totalPoints += currentDoc!.score!.total;
+              if (currentDoc.score!.averageOddsPlayed != null) {
+                avgOddsValues.add(currentDoc.score!.averageOddsPlayed!);
+              }
+            } else if (effectiveOutcomesByMatchId.isNotEmpty) {
               final currentDayScore = CassandraScoringEngine.computeDayScore(
                 matches: currentMatches,
                 picksByMatchId: currentPicks,
@@ -810,11 +817,6 @@ class _PredictionsPageState extends State<PredictionsPage>
               totalPoints += currentDayScore.total;
               if (currentDayScore.averageOddsPlayed != null) {
                 avgOddsValues.add(currentDayScore.averageOddsPlayed!);
-              }
-            } else if (currentDoc?.score != null) {
-              totalPoints += currentDoc!.score!.total;
-              if (currentDoc.score!.averageOddsPlayed != null) {
-                avgOddsValues.add(currentDoc.score!.averageOddsPlayed!);
               }
             }
 
