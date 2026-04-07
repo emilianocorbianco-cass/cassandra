@@ -60,7 +60,9 @@ class _HomeShellState extends State<HomeShell> {
 
     if (!_didInitialLiveSync) {
       _didInitialLiveSync = true;
-      unawaited(_syncLiveFromBackend());
+      // Fast first load: Firestore only (skip slow API-Football call).
+      // The API correction runs on the next periodic sync.
+      unawaited(_syncLiveFromBackend(skipApi: true));
       unawaited(_preWarmGroupMemberPhotos());
     }
   }
@@ -78,7 +80,7 @@ class _HomeShellState extends State<HomeShell> {
         });
   }
 
-  Future<void> _syncLiveFromBackend() async {
+  Future<void> _syncLiveFromBackend({bool skipApi = false}) async {
     if (!mounted || _liveSyncInFlight) return;
 
     final app = CassandraScope.of(context);
@@ -96,9 +98,10 @@ class _HomeShellState extends State<HomeShell> {
       // Only accept a FORWARD move if the current matchday is finalized
       // in Firestore (all matches done). This prevents jumping to X+1
       // while X still has live matches.
+      // Skipped on first load for faster startup.
       int? apiResolvedDay;
       final apiKey = Env.apiFootballKey;
-      if (apiKey != null) {
+      if (apiKey != null && !skipApi) {
         try {
           final client = ApiFootballClient(
             apiKey: apiKey,
@@ -110,7 +113,6 @@ class _HomeShellState extends State<HomeShell> {
           apiResolvedDay = await apiService.getCurrentSerieAMatchday();
           if (apiResolvedDay != null && apiResolvedDay != dayNumber) {
             if (apiResolvedDay < dayNumber) {
-              // Backward correction is always safe.
               debugPrint(
                 '[live-sync] API says current matchday is $apiResolvedDay '
                 '(cursor was $dayNumber), correcting backward',
@@ -118,7 +120,6 @@ class _HomeShellState extends State<HomeShell> {
               dayNumber = apiResolvedDay;
               await app.setCassandraMatchdayCursor(apiResolvedDay);
             } else {
-              // Forward: only advance if the current matchday is finalized.
               final currentDoc = await fs.getMatchdayData(
                 seasonKey: app.currentSeasonKey,
                 dayNumber: dayNumber,
