@@ -204,7 +204,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				D81521178CFF40E65C178128 /* [CP] Embed Pods Frameworks */,
 				D9937D3A3F66EB7B07BD4E9A /* [CP] Copy Pods Resources */,
-				E0906112A588151B93237E34 /* Strip Simulator Architectures */,
+				E0679C7C1E7F3CC1EB59EF59 /* Strip Simulator Architectures */,
 			);
 			buildRules = (
 			);
@@ -386,7 +386,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		E0906112A588151B93237E34 /* Strip Simulator Architectures */ = {
+		E0679C7C1E7F3CC1EB59EF59 /* Strip Simulator Architectures */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -402,7 +402,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Strip simulator platform references from embedded frameworks (Flutter 3.41 + Xcode 26 fix)\nfind \"${BUILT_PRODUCTS_DIR}\" -name \"*.framework\" -type d | while read framework; do\n  binary=\"${framework}/$(basename \"${framework}\" .framework)\"\n  if [ -f \"${binary}\" ]; then\n    if lipo -info \"${binary}\" 2>/dev/null | grep -q \"arm64\"; then\n      if vtool -show \"${binary}\" 2>/dev/null | grep -q \"IOSSIMULATOR\\|SIMULAT\"; then\n        vtool -remove-build-version 7 -output \"${binary}\" \"${binary}\" 2>/dev/null || true\n      fi\n    fi\n  fi\ndone\n";
+			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ] && [ \"${CONFIGURATION}\" != \"Profile\" ]; then\n  exit 0\nfi\nfind \"${CODESIGNING_FOLDER_PATH}/Frameworks\" -name \"*.framework\" -type d 2>/dev/null | while read framework; do\n  binary=\"${framework}/$(basename \"${framework}\" .framework)\"\n  if [ ! -f \"${binary}\" ]; then\n    continue\n  fi\n  if vtool -show \"${binary}\" 2>/dev/null | grep -q \"platform IOSSIMULATOR\"; then\n    echo \"Stripping simulator platform from ${binary}\"\n    vtool -remove-build-version 7 -output \"${binary}_fixed\" \"${binary}\" && mv \"${binary}_fixed\" \"${binary}\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${binary}\" 2>/dev/null || true\n  fi\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
