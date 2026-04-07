@@ -147,7 +147,9 @@ class _FormDots extends StatelessWidget {
     final f = form;
     if (f == null || f.isEmpty) return const SizedBox.shrink();
 
-    final chars = f.length > 5 ? f.substring(f.length - 5) : f;
+    // API returns most recent first; display oldest→newest (left→right).
+    final trimmed = f.length > 5 ? f.substring(0, 5) : f;
+    final chars = trimmed.split('').reversed.join();
 
     return Row(
       mainAxisSize: MainAxisSize.min,
