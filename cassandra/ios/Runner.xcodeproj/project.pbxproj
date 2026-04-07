@@ -204,7 +204,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				D81521178CFF40E65C178128 /* [CP] Embed Pods Frameworks */,
 				D9937D3A3F66EB7B07BD4E9A /* [CP] Copy Pods Resources */,
-				377E8B9E441A50964DD19313 /* Strip Simulator Architectures */,
+				CF79B4A684FD1C100C316B76 /* Strip Simulator Architectures */,
 			);
 			buildRules = (
 			);
@@ -277,24 +277,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		377E8B9E441A50964DD19313 /* Strip Simulator Architectures */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Strip Simulator Architectures";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ] && [ \"${CONFIGURATION}\" != \"Profile\" ]; then\n  exit 0\nfi\nfind \"${CODESIGNING_FOLDER_PATH}/Frameworks\" -name \"*.framework\" -type d 2>/dev/null | while read framework; do\n  binary=\"${framework}/$(basename \"${framework}\" .framework)\"\n  if [ ! -f \"${binary}\" ]; then\n    continue\n  fi\n  if vtool -show \"${binary}\" 2>/dev/null | grep -q \"platform IOSSIMULATOR\"; then\n    echo \"Replacing simulator platform with iOS in ${binary}\"\n    MIN_VER=$(vtool -show \"${binary}\" 2>/dev/null | grep -A2 \"platform IOSSIMULATOR\" | grep \"minos\" | awk \"{print \\$2}\" || echo \"16.0\")\n    SDK_VER=$(vtool -show \"${binary}\" 2>/dev/null | grep -A2 \"platform IOSSIMULATOR\" | grep \"sdk\" | awk \"{print \\$2}\" || echo \"26.0\")\n    [ -z \"${MIN_VER}\" ] && MIN_VER=\"16.0\"\n    [ -z \"${SDK_VER}\" ] && SDK_VER=\"26.0\"\n    vtool -set-build-version ios \"${MIN_VER}\" \"${SDK_VER}\" -replace -output \"${binary}_fixed\" \"${binary}\" && mv \"${binary}_fixed\" \"${binary}\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${binary}\" 2>/dev/null || true\n  fi\ndone\n";
-		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -369,6 +351,24 @@
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
+		};
+		CF79B4A684FD1C100C316B76 /* Strip Simulator Architectures */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Strip Simulator Architectures";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ] && [ \"${CONFIGURATION}\" != \"Profile\" ]; then\n  exit 0\nfi\nfind \"${CODESIGNING_FOLDER_PATH}/Frameworks\" -name \"*.framework\" -type d 2>/dev/null | while read framework; do\n  binary=\"${framework}/$(basename \"${framework}\" .framework)\"\n  if [ ! -f \"${binary}\" ]; then\n    continue\n  fi\n  # Fix Mach-O: replace IOSSIMULATOR platform with iOS\n  if vtool -show \"${binary}\" 2>/dev/null | grep -q \"platform IOSSIMULATOR\"; then\n    echo \"Replacing simulator platform with iOS in ${binary}\"\n    MIN_VER=$(vtool -show \"${binary}\" 2>/dev/null | grep -A2 \"platform IOSSIMULATOR\" | grep \"minos\" | awk \"{print \\$2}\" || echo \"16.0\")\n    SDK_VER=$(vtool -show \"${binary}\" 2>/dev/null | grep -A2 \"platform IOSSIMULATOR\" | grep \"sdk\" | awk \"{print \\$2}\" || echo \"26.0\")\n    [ -z \"${MIN_VER}\" ] && MIN_VER=\"16.0\"\n    [ -z \"${SDK_VER}\" ] && SDK_VER=\"26.0\"\n    vtool -set-build-version ios \"${MIN_VER}\" \"${SDK_VER}\" -replace -output \"${binary}_fixed\" \"${binary}\" && mv \"${binary}_fixed\" \"${binary}\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${binary}\" 2>/dev/null || true\n  fi\n  # Fix Info.plist: ensure CFBundleSupportedPlatforms is iPhoneOS\n  plist=\"${framework}/Info.plist\"\n  if [ -f \"${plist}\" ]; then\n    /usr/libexec/PlistBuddy -c \"Delete :CFBundleSupportedPlatforms\" \"${plist}\" 2>/dev/null || true\n    /usr/libexec/PlistBuddy -c \"Add :CFBundleSupportedPlatforms array\" \"${plist}\" 2>/dev/null || true\n    /usr/libexec/PlistBuddy -c \"Add :CFBundleSupportedPlatforms:0 string iPhoneOS\" \"${plist}\" 2>/dev/null || true\n    /usr/libexec/PlistBuddy -c \"Set :MinimumOSVersion 16.0\" \"${plist}\" 2>/dev/null || true\n    /usr/libexec/PlistBuddy -c \"Delete :DTSDKName\" \"${plist}\" 2>/dev/null || true\n  fi\ndone\n";
 		};
 		D81521178CFF40E65C178128 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
