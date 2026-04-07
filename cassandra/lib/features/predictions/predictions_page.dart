@@ -116,25 +116,28 @@ class _PredictionsPageState extends State<PredictionsPage>
       _expandedMatchId = null;
       _leaderboardFetched = false;
       _leaderboardEntries = const [];
+      // Reset submitted state — will re-check for the new group below.
+      _submitted = false;
     }
     _lastGroupId = currentGroupId;
-    if (_didLoadRealFixtures) return;
-    _didLoadRealFixtures = true;
 
+    // Restore submitted state from persisted picks history for current group.
     final scope = CassandraScope.of(context);
-    final cached = scope.cachedPredictionMatches;
-    if (cached != null &&
-        cached.isNotEmpty &&
-        scope.cachedPredictionMatchesAreReal) {
-      _usingRealFixtures = true;
-    }
-
-    // Restore submitted state from persisted picks history.
     if (!_submitted) {
       scope.ensureCurrentUserPicksHistoryLoaded();
       if (scope.hasSavedPicksForMatchday(_effectiveMatchdayNumber)) {
         _submitted = true;
       }
+    }
+
+    if (_didLoadRealFixtures) return;
+    _didLoadRealFixtures = true;
+
+    final cached = scope.cachedPredictionMatches;
+    if (cached != null &&
+        cached.isNotEmpty &&
+        scope.cachedPredictionMatchesAreReal) {
+      _usingRealFixtures = true;
     }
 
     if (_didLoadFixtures) return;
