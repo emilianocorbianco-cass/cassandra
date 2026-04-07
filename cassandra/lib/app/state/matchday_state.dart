@@ -16,7 +16,14 @@ class MatchdayState extends ChangeNotifier {
   // ===== SharedPreferences keys =====
   static const _kCassandraMatchdayCursorV1 =
       StorageKeys.cassandraMatchdayCursorV1;
-  static const int _kCassandraDefaultMatchdayCursor = 20;
+  // Approximate current matchday from calendar: Serie A runs Sep–May,
+  // ~38 matchdays over ~40 weeks. Clamp between 1 and 38.
+  static int get _kCassandraDefaultMatchdayCursor {
+    final now = DateTime.now();
+    final seasonStart = DateTime(now.month >= 8 ? now.year : now.year - 1, 8, 18);
+    final weeks = now.difference(seasonStart).inDays ~/ 7;
+    return weeks.clamp(1, 38);
+  }
   static const _kFinalizedMatchdaysV1 = StorageKeys.finalizedMatchdaysV1;
   static const _kCassandraMatchdayLastAutoBumpFromV1 =
       StorageKeys.cassandraMatchdayLastAutoBumpFromV1;
