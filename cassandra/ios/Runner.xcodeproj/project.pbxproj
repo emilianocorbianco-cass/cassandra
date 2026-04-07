@@ -204,7 +204,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				D81521178CFF40E65C178128 /* [CP] Embed Pods Frameworks */,
 				D9937D3A3F66EB7B07BD4E9A /* [CP] Copy Pods Resources */,
-				E0679C7C1E7F3CC1EB59EF59 /* Strip Simulator Architectures */,
+				377E8B9E441A50964DD19313 /* Strip Simulator Architectures */,
 			);
 			buildRules = (
 			);
@@ -277,6 +277,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		377E8B9E441A50964DD19313 /* Strip Simulator Architectures */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Strip Simulator Architectures";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ] && [ \"${CONFIGURATION}\" != \"Profile\" ]; then\n  exit 0\nfi\nfind \"${CODESIGNING_FOLDER_PATH}/Frameworks\" -name \"*.framework\" -type d 2>/dev/null | while read framework; do\n  binary=\"${framework}/$(basename \"${framework}\" .framework)\"\n  if [ ! -f \"${binary}\" ]; then\n    continue\n  fi\n  if vtool -show \"${binary}\" 2>/dev/null | grep -q \"platform IOSSIMULATOR\"; then\n    echo \"Replacing simulator platform with iOS in ${binary}\"\n    MIN_VER=$(vtool -show \"${binary}\" 2>/dev/null | grep -A2 \"platform IOSSIMULATOR\" | grep \"minos\" | awk \"{print \\$2}\" || echo \"16.0\")\n    SDK_VER=$(vtool -show \"${binary}\" 2>/dev/null | grep -A2 \"platform IOSSIMULATOR\" | grep \"sdk\" | awk \"{print \\$2}\" || echo \"26.0\")\n    [ -z \"${MIN_VER}\" ] && MIN_VER=\"16.0\"\n    [ -z \"${SDK_VER}\" ] && SDK_VER=\"26.0\"\n    vtool -set-build-version ios \"${MIN_VER}\" \"${SDK_VER}\" -replace -output \"${binary}_fixed\" \"${binary}\" && mv \"${binary}_fixed\" \"${binary}\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${binary}\" 2>/dev/null || true\n  fi\ndone\n";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -385,24 +403,6 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
-		};
-		E0679C7C1E7F3CC1EB59EF59 /* Strip Simulator Architectures */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Strip Simulator Architectures";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ] && [ \"${CONFIGURATION}\" != \"Profile\" ]; then\n  exit 0\nfi\nfind \"${CODESIGNING_FOLDER_PATH}/Frameworks\" -name \"*.framework\" -type d 2>/dev/null | while read framework; do\n  binary=\"${framework}/$(basename \"${framework}\" .framework)\"\n  if [ ! -f \"${binary}\" ]; then\n    continue\n  fi\n  if vtool -show \"${binary}\" 2>/dev/null | grep -q \"platform IOSSIMULATOR\"; then\n    echo \"Stripping simulator platform from ${binary}\"\n    vtool -remove-build-version 7 -output \"${binary}_fixed\" \"${binary}\" && mv \"${binary}_fixed\" \"${binary}\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${binary}\" 2>/dev/null || true\n  fi\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
