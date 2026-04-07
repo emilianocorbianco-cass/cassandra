@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -85,6 +86,9 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
 
   static const _maxRetries = 3;
 
+  /// Local disk cache directory, resolved once.
+  static Directory? _cacheDir;
+
   String? _cachedSource;
   Future<Uint8List?>? _storageBytesFuture;
   int _retryCount = 0;
@@ -103,14 +107,52 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     }
   }
 
+  /// Deterministic local filename from a storage reference.
+  static String _localFileName(String source) {
+    final hash = source.hashCode.toUnsigned(32).toRadixString(16);
+    return 'profile_$hash.png';
+  }
+
+  /// Try to load from local disk cache (instant, no network).
+  static Future<Uint8List?> _loadFromDisk(String source) async {
+    try {
+      _cacheDir ??= await getApplicationDocumentsDirectory();
+      final file = File('${_cacheDir!.path}/${_localFileName(source)}');
+      if (file.existsSync()) return file.readAsBytes();
+    } catch (_) {}
+    return null;
+  }
+
+  /// Persist bytes to local disk cache.
+  static Future<void> _saveToDisk(String source, Uint8List bytes) async {
+    try {
+      _cacheDir ??= await getApplicationDocumentsDirectory();
+      final file = File('${_cacheDir!.path}/${_localFileName(source)}');
+      await file.writeAsBytes(bytes, flush: true);
+    } catch (_) {}
+  }
+
   Future<Uint8List?> _loadStorageBytesWithRetry(String source) async {
-    final cached = _bytesCache[source];
-    if (cached != null) return cached;
+    // 1. In-memory cache
+    final memCached = _bytesCache[source];
+    if (memCached != null) return memCached;
+
+    // 2. Local disk cache (instant, no network)
+    final diskCached = await _loadFromDisk(source);
+    if (diskCached != null && diskCached.isNotEmpty) {
+      _bytesCache[source] = diskCached;
+      // Refresh from network in background (update local cache silently).
+      _refreshFromNetworkInBackground(source);
+      return diskCached;
+    }
+
+    // 3. Network fetch with retry
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       try {
         final bytes = await StorageService().readBytesByReference(source);
         if (bytes != null && bytes.isNotEmpty) {
           _bytesCache[source] = bytes;
+          unawaited(_saveToDisk(source, bytes));
           return bytes;
         }
       } catch (_) {}
@@ -121,6 +163,16 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
     // Fallback: resolve download URL and fetch via HTTP.
     _downloadUrl ??= await StorageService().getDownloadUrl(source);
     return null;
+  }
+
+  /// Silently refresh from network and update local cache.
+  void _refreshFromNetworkInBackground(String source) {
+    StorageService().readBytesByReference(source).then((bytes) {
+      if (bytes != null && bytes.isNotEmpty) {
+        _bytesCache[source] = bytes;
+        unawaited(_saveToDisk(source, bytes));
+      }
+    }).catchError((_) {});
   }
 
   /// HTTP download URL fallback when direct Storage fetch fails.
