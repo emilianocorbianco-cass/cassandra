@@ -60,9 +60,7 @@ class _HomeShellState extends State<HomeShell> {
 
     if (!_didInitialLiveSync) {
       _didInitialLiveSync = true;
-      // Fast first load: Firestore only (skip slow API-Football call).
-      // The API correction runs on the next periodic sync.
-      unawaited(_syncLiveFromBackend(skipApi: true));
+      unawaited(_syncLiveFromBackend());
       unawaited(_preWarmGroupMemberPhotos());
     }
   }
@@ -80,7 +78,7 @@ class _HomeShellState extends State<HomeShell> {
         });
   }
 
-  Future<void> _syncLiveFromBackend({bool skipApi = false}) async {
+  Future<void> _syncLiveFromBackend() async {
     if (!mounted || _liveSyncInFlight) return;
 
     final app = CassandraScope.of(context);
@@ -98,10 +96,9 @@ class _HomeShellState extends State<HomeShell> {
       // Only accept a FORWARD move if the current matchday is finalized
       // in Firestore (all matches done). This prevents jumping to X+1
       // while X still has live matches.
-      // Skipped on first load for faster startup.
       int? apiResolvedDay;
       final apiKey = Env.apiFootballKey;
-      if (apiKey != null && !skipApi) {
+      if (apiKey != null) {
         try {
           final client = ApiFootballClient(
             apiKey: apiKey,

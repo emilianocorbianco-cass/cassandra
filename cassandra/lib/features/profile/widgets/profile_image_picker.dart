@@ -59,12 +59,27 @@ class ProfileImageDisplay extends StatefulWidget {
   final double radius;
 
   /// Pre-warm the cache for a given source (call during splash).
+  /// Also pre-resolves the cache directory for instant disk reads later.
   static Future<void> preWarmCache(String? source) async {
+    // Pre-resolve cache dir so disk reads are instant later.
+    _ProfileImageDisplayState._cacheDir ??=
+        await getApplicationDocumentsDirectory();
+
     final s = (source ?? '').trim();
     if (s.isEmpty ||
         _ProfileImageDisplayState._bytesCache.containsKey(s)) {
       return;
     }
+
+    // Try disk cache first (instant if file exists).
+    if (StorageService.isStorageReference(s)) {
+      final diskBytes = await _ProfileImageDisplayState._loadFromDisk(s);
+      if (diskBytes != null && diskBytes.isNotEmpty) {
+        _ProfileImageDisplayState._bytesCache[s] = diskBytes;
+        return;
+      }
+    }
+
     if (!StorageService.isStorageReference(s)) {
       return;
     }
@@ -72,6 +87,7 @@ class ProfileImageDisplay extends StatefulWidget {
       final bytes = await StorageService().readBytesByReference(s);
       if (bytes != null && bytes.isNotEmpty) {
         _ProfileImageDisplayState._bytesCache[s] = bytes;
+        unawaited(_ProfileImageDisplayState._saveToDisk(s, bytes));
       }
     } catch (_) {}
   }
@@ -108,9 +124,15 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
   }
 
   /// Deterministic local filename from a storage reference.
+  /// Uses a simple character-based hash that is stable across app sessions
+  /// (unlike Dart's String.hashCode which is randomized per isolate).
   static String _localFileName(String source) {
-    final hash = source.hashCode.toUnsigned(32).toRadixString(16);
-    return 'profile_$hash.png';
+    var h = 0x811c9dc5; // FNV-1a 32-bit offset basis
+    for (var i = 0; i < source.length; i++) {
+      h ^= source.codeUnitAt(i);
+      h = (h * 0x01000193) & 0xFFFFFFFF; // FNV prime, 32-bit mask
+    }
+    return 'profile_${h.toRadixString(16)}.png';
   }
 
   /// Try to load from local disk cache (instant, no network).
@@ -146,7 +168,7 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
       return diskCached;
     }
 
-    // 3. Network fetch with retry
+    // 3. Network fetch with retry (fast: 1s between attempts)
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       try {
         final bytes = await StorageService().readBytesByReference(source);
@@ -157,7 +179,7 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
         }
       } catch (_) {}
       if (attempt < _maxRetries) {
-        await Future<void>.delayed(Duration(seconds: 2 * (attempt + 1)));
+        await Future<void>.delayed(const Duration(seconds: 1));
       }
     }
     // Fallback: resolve download URL and fetch via HTTP.
