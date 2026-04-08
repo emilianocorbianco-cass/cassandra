@@ -54,18 +54,11 @@ class _GroupHubPageState extends State<GroupHubPage> {
     final app = CassandraScope.of(context);
     app.setActiveGroupId(groupId);
 
-    if (widget.onBack != null) {
-      widget.onBack!();
-      return;
-    }
-    final nav = Navigator.of(context);
-    if (nav.canPop()) {
-      nav.pop();
-    } else {
-      nav.pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeShell()),
-      );
-    }
+    // Always navigate to HomeShell at Pronostici tab (index 0).
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const HomeShell()),
+      (route) => false,
+    );
   }
 
   void _openCreateGroup() {
