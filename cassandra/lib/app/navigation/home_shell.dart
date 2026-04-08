@@ -110,13 +110,24 @@ class _HomeShellState extends State<HomeShell> {
           apiResolvedDay = await apiService.getCurrentSerieAMatchday();
           if (apiResolvedDay != null && apiResolvedDay != dayNumber) {
             if (apiResolvedDay < dayNumber) {
+              // Backward correction: always safe.
               debugPrint(
                 '[live-sync] API says current matchday is $apiResolvedDay '
                 '(cursor was $dayNumber), correcting backward',
               );
               dayNumber = apiResolvedDay;
               await app.setCassandraMatchdayCursor(apiResolvedDay);
+            } else if (apiResolvedDay - dayNumber > 1) {
+              // Gap > 1: clearly a stale/default cursor. Accept API directly.
+              debugPrint(
+                '[live-sync] API says current matchday is $apiResolvedDay '
+                '(cursor was $dayNumber, gap > 1), jumping',
+              );
+              dayNumber = apiResolvedDay;
+              await app.setCassandraMatchdayCursor(apiResolvedDay);
             } else {
+              // Gap == 1: normal progression. Only advance if current is finalized
+              // to avoid jumping during live matches.
               final currentDoc = await fs.getMatchdayData(
                 seasonKey: app.currentSeasonKey,
                 dayNumber: dayNumber,
