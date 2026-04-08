@@ -154,6 +154,35 @@ class _HomeShellState extends State<HomeShell> {
         }
       }
 
+      // Firestore fallback: if cursor looks wrong (default=1 or very stale)
+      // and API didn't resolve, probe Firestore for the latest matchday
+      // with data. Probes ~10 matchdays down from 38.
+      if (dayNumber <= 5 && apiResolvedDay == null) {
+        try {
+          for (var probe = 38; probe >= 28; probe--) {
+            final doc = await fs.getMatchdayData(
+              seasonKey: app.currentSeasonKey,
+              dayNumber: probe,
+            );
+            if (doc != null && doc.matches.isNotEmpty) {
+              final resolved = doc.finalized ? probe + 1 : probe;
+              final clamped = resolved.clamp(1, 38);
+              debugPrint(
+                '[live-sync] Firestore fallback: found matchday $probe '
+                '(finalized=${doc.finalized}), setting cursor to $clamped',
+              );
+              dayNumber = clamped;
+              await app.setCassandraMatchdayCursor(clamped);
+              break;
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[live-sync] Firestore fallback failed: $e');
+          }
+        }
+      }
+
       // Serie A has 38 matchdays. If the cursor is at or beyond the last
       // matchday it may be a stale artefact (e.g. intermediate matchdays were
       // deleted and the look-ahead jumped ahead). Reset to a safe value so the

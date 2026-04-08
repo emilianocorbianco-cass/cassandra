@@ -16,16 +16,9 @@ class MatchdayState extends ChangeNotifier {
   // ===== SharedPreferences keys =====
   static const _kCassandraMatchdayCursorV1 =
       StorageKeys.cassandraMatchdayCursorV1;
-  // Conservative estimate: ~38 matchdays over ~290 days (mid-Aug to May).
-  // Uses 8 days/matchday to avoid overshooting. The live sync will correct
-  // this within 30 seconds from Firestore/API.
-  static int get _kCassandraDefaultMatchdayCursor {
-    final now = DateTime.now();
-    final seasonStart = DateTime(now.month >= 8 ? now.year : now.year - 1, 8, 18);
-    final days = now.difference(seasonStart).inDays;
-    // 8.0 days per matchday is conservative — never overshoots.
-    return (days / 8.0).floor().clamp(1, 38);
-  }
+  // Default cursor for fresh installs. The live sync corrects this
+  // within seconds via API-Football or Firestore query.
+  static const int _kCassandraDefaultMatchdayCursor = 1;
   static const _kFinalizedMatchdaysV1 = StorageKeys.finalizedMatchdaysV1;
   static const _kCassandraMatchdayLastAutoBumpFromV1 =
       StorageKeys.cassandraMatchdayLastAutoBumpFromV1;
