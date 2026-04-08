@@ -190,20 +190,22 @@ MatchdayProgress computeMatchdayProgress<T>(
   );
   final finalDone = sorted.every((f) => res(f) != FixtureResolution.pending);
 
-  // Hold: 12h after the last played match ends (~2h after kickoff).
-  // Voided matches don't count — if all are void, no hold.
-  final playedList = sorted
+  // Hold: 12h after the last played match of the PRIMARY cluster ends.
+  // Uses primaryDone (not finalDone) so that postponed matches in later
+  // clusters don't block advancement for weeks (e.g. Giornata 16 2025/26
+  // had 4 matches rescheduled ~24 days later).
+  final primaryPlayed = primaryCluster
       .where((f) => res(f) == FixtureResolution.finalResult)
       .toList();
   final DateTime holdUntil;
-  if (playedList.isNotEmpty) {
-    final lastPlayedKickoff = kickoff(playedList.last);
+  if (primaryPlayed.isNotEmpty) {
+    final lastPrimaryPlayedKickoff = kickoff(primaryPlayed.last);
     // Match end ≈ kickoff + 2h, then hold 12h → kickoff + 14h
-    holdUntil = lastPlayedKickoff.add(const Duration(hours: 14));
+    holdUntil = lastPrimaryPlayedKickoff.add(const Duration(hours: 14));
   } else {
     holdUntil = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   }
-  final readyToAdvance = finalDone && now.isAfter(holdUntil);
+  final readyToAdvance = primaryDone && now.isAfter(holdUntil);
 
   final played = sorted
       .where((f) => res(f) == FixtureResolution.finalResult)
