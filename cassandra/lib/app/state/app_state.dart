@@ -2140,11 +2140,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// Upload picks per questa giornata su Firestore.
+  ///
+  /// When [targetGroupId] is provided it overrides the current [activeGroupId],
+  /// allowing bulk submission to multiple groups without switching active group.
   Future<bool> submitPicksToFirestore({
     required int dayNumber,
     required Map<String, PickOption> picksByMatchId,
     required String visibility,
     DayScoreBreakdown? score,
+    String? targetGroupId,
   }) async {
     final fs = _firestoreService;
     if (fs == null || !isAuthenticated) {
@@ -2152,7 +2156,7 @@ class AppState extends ChangeNotifier {
       return false;
     }
     final payload = Map<String, PickOption>.from(picksByMatchId);
-    final scopedGroupId = (activeGroupId ?? '').trim();
+    final scopedGroupId = (targetGroupId ?? activeGroupId ?? '').trim();
     final groupId = scopedGroupId.isEmpty ? null : scopedGroupId;
 
     debugPrint(

@@ -270,18 +270,83 @@ class _PredictionsPageState extends State<PredictionsPage>
   Future<void> _submitToAllGroups() async {
     final appState = CassandraScope.of(context);
     final groupIds = List<String>.from(appState.firestoreGroupIds);
-    final originalGroupId = appState.activeGroupId;
+
+    // Capture picks and state BEFORE any async work — setActiveGroupId would
+    // clear them, so we avoid switching the active group altogether.
+    appState.ensureCurrentUserPicksLoaded();
+    appState.ensureCurrentUserPicksHistoryLoaded();
+    appState.ensureMatchdayMatchesLoaded();
+    appState.ensureOutcomesHistoryLoaded();
+
+    final dayNumber = _effectiveMatchdayNumber;
+    final currentMatches = List<PredictionMatch>.of(matches);
+    final allPicks = <String, PickOption>{
+      for (final m in currentMatches)
+        if (!_pickFor(m.id).isNone) m.id: _pickFor(m.id),
+    };
+
+    // Save local state once (shared across groups).
+    appState.saveCurrentUserPicksHistory(
+      dayNumber: dayNumber,
+      picksByMatchId: allPicks,
+    );
+    await appState.saveMatchdayMatchesSnapshot(
+      matchdayNumber: dayNumber,
+      matches: currentMatches,
+    );
+    appState.ensureMatchesHistoryLoaded();
+    appState.saveMatchesHistory(
+      matchdayNumber: dayNumber,
+      matches: currentMatches,
+    );
+    final outcomesNow = <String, MatchOutcome>{
+      for (final e in appState.effectivePredictionOutcomesByMatchId.entries)
+        e.key: e.value,
+    };
+    if (outcomesNow.isNotEmpty) {
+      appState.saveOutcomesHistory(
+        dayNumber: dayNumber,
+        outcomesByMatchId: outcomesNow,
+      );
+    }
+    DayScoreBreakdown? scoreCache;
+    if (outcomesNow.isNotEmpty) {
+      scoreCache = CassandraScoringEngine.computeDayScore(
+        matches: currentMatches,
+        picksByMatchId: allPicks,
+        outcomesByMatchId: outcomesNow,
+      );
+    }
+
+    // Submit to each group using targetGroupId — no active-group switch needed.
     var allOk = true;
     for (final groupId in groupIds) {
-      appState.setActiveGroupId(groupId);
-      final ok = await _submit(VisibilityChoice.public);
+      final ok = await appState.submitPicksToFirestore(
+        dayNumber: dayNumber,
+        picksByMatchId: allPicks,
+        visibility: 'public',
+        score: scoreCache,
+        targetGroupId: groupId,
+      );
       if (!ok) allOk = false;
     }
-    // Restore original group
-    if (originalGroupId != null) {
-      appState.setActiveGroupId(originalGroupId);
+    if (!mounted) return;
+    if (allOk) {
+      final l10n = AppLocalizations.of(context)!;
+      setState(() => _submitted = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.predictionsSlipSubmitted(
+            l10n.predictionsVisibilityPublic,
+          )),
+        ),
+      );
+    } else {
+      final l10n = AppLocalizations.of(context)!;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.predictionsSlipSubmitFailed)),
+      );
     }
-    if (mounted && allOk) setState(() => _submitted = true);
   }
 
   Future<bool> _confirmSubmitIfMissing(int missing) async {
