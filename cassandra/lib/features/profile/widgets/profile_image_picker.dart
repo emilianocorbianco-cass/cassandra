@@ -168,22 +168,27 @@ class _ProfileImageDisplayState extends State<ProfileImageDisplay> {
       return diskCached;
     }
 
-    // 3. Network fetch with retry (fast: 1s between attempts)
-    for (var attempt = 0; attempt <= _maxRetries; attempt++) {
-      try {
-        final bytes = await StorageService().readBytesByReference(source);
-        if (bytes != null && bytes.isNotEmpty) {
-          _bytesCache[source] = bytes;
-          unawaited(_saveToDisk(source, bytes));
-          return bytes;
-        }
-      } catch (_) {}
-      if (attempt < _maxRetries) {
-        await Future<void>.delayed(const Duration(seconds: 1));
+    // 3. Single fast attempt + parallel download-URL resolution.
+    //    Start resolving the download URL immediately so it's ready as a
+    //    fallback if the direct Storage fetch fails or is slow.
+    final urlFuture = StorageService().getDownloadUrl(source);
+
+    try {
+      final bytes = await StorageService()
+          .readBytesByReference(source)
+          .timeout(const Duration(seconds: 8));
+      if (bytes != null && bytes.isNotEmpty) {
+        _bytesCache[source] = bytes;
+        unawaited(_saveToDisk(source, bytes));
+        return bytes;
       }
-    }
-    // Fallback: resolve download URL and fetch via HTTP.
-    _downloadUrl ??= await StorageService().getDownloadUrl(source);
+    } catch (_) {}
+
+    // Direct fetch failed — use the download URL resolved in parallel.
+    _downloadUrl ??= await urlFuture.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => null,
+    );
     return null;
   }
 
