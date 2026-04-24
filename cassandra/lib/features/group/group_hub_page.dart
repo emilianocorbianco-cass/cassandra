@@ -25,14 +25,25 @@ class GroupHubPage extends StatefulWidget {
 
 class _GroupHubPageState extends State<GroupHubPage> {
   Future<List<GroupDocument>>? _groupsFuture;
-  bool _didLoad = false;
+  List<String> _loadedGroupIds = const [];
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didLoad) return;
-    _didLoad = true;
-    _loadGroups();
+    final ids = CassandraScope.of(context).firestoreGroupIds;
+    // Reload whenever the set of group IDs changes (e.g. after hydration).
+    if (!_idsMatch(ids, _loadedGroupIds)) {
+      _loadedGroupIds = List<String>.of(ids);
+      _loadGroups();
+    }
+  }
+
+  static bool _idsMatch(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   void _loadGroups() {
