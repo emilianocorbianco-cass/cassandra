@@ -72,6 +72,19 @@ Data transformation between API responses and domain models follows an adapter p
 - `ApiFootballFixtureAdapter` — API fixtures → `PredictionMatch`
 - `ApiFootballOutcomeAdapter` — API results → `MatchOutcome`
 
+## Tournament Extension (branch: claude/add-tournament-formats-fHyuT)
+
+Design completo in `docs/tournament-architecture.md`. Punti chiave:
+
+- **Strategia**: feature flag per torneo (`enable_world_cup_2026`, ecc.) in `lib/core/config/feature_flags.dart` (da creare). Serie A sempre attiva.
+- **Astrazioni**: 6 interfacce ortogonali — `PickStrategy`, `ScoringRules`, `FixtureSource`, `TournamentStandings` (sealed), `MetaPredictionSpec`, `RoundLifecycle` — aggregate in `TournamentMode`.
+- **Struttura cartelle target**: `lib/features/league/`, `lib/features/tournament/`, `lib/features/shared/`, `lib/core/config/`.
+- **`MatchOutcome`**: aggiungere campo `decidedIn: regulation | extraTime | penalties` (opzionale, ignorato da Serie A).
+- **Mondiali**: fase gironi (1/X/2 secco, +3/0) + fase knockout (8 tipi di pick, +3/+6/+10). Meta-pronostici: ordine gironi (max 48 pt) e prime 4 (2/5/10/20 pt).
+- **Lock knockout**: 5 min prima del primo match del blocco; sblocco round successivo 30 min dopo l'ultimo.
+- **Champions**: Swiss-model (girone unico 36 squadre) + KO. Scoring fase league da definire in Sessione 3.
+- **Sessione 2** (refactoring sicuro su main): riorganizzare `/lib`, astrarre `CassandraScoringEngine`, aggiungere `activeTournament` ad `AppState`.
+
 ## Scoring Rules
 
 Per match: single pick (1/X/2) scores +/- the chosen odds. Double chance (1X/X2/12) scores + double-chance odds if correct, or minus both component odds if wrong. Unplayed by user: -max(all three odds). Voided match: 0.
