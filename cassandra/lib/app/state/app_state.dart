@@ -29,6 +29,10 @@ import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
 
+import '../../core/tournament/pick_strategy.dart';
+import '../../core/tournament/ranking_comparator.dart';
+import '../../core/tournament/round_lifecycle.dart';
+import '../../core/tournament/scoring_rules.dart';
 import '../../core/tournament/tournament_mode.dart';
 import '../../core/tournament/tournament_modes.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart';
@@ -46,6 +50,13 @@ class AppState extends ChangeNotifier {
   /// Active tournament format. Defaults to Serie A (no UI to switch yet).
   final TournamentMode _activeTournament = TournamentModes.serieA;
   TournamentMode get activeTournament => _activeTournament;
+
+  /// Convenience getters for the current tournament phase.
+  TournamentPhase get _currentPhase => _activeTournament.phases[0];
+  ScoringRules get scoringRules => _currentPhase.scoringRules;
+  PickStrategy get pickStrategy => _currentPhase.pickStrategy;
+  RoundLifecycle get roundLifecycle => _currentPhase.roundLifecycle;
+  RankingComparator get rankingComparator => _currentPhase.rankingComparator;
 
   /// Activate or deactivate the cold-test clock and rebuild the widget tree.
   void setColdTestClock({Duration? offset}) {

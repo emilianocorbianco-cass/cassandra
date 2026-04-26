@@ -7,7 +7,7 @@ import '../predictions/models/pick_option.dart';
 import '../predictions/models/prediction_match.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/models/match_outcome.dart';
-import '../scoring/scoring_engine.dart';
+import '../../app/state/cassandra_scope.dart';
 
 class PredictionsMatchdayPage extends StatelessWidget {
   final int matchdayNumber;
@@ -72,8 +72,9 @@ class PredictionsMatchdayPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final en = l10n.localeName.startsWith('en');
+    final appState = CassandraScope.of(context);
 
-    final DayScoreBreakdown day = CassandraScoringEngine.computeDayScore(
+    final DayScoreBreakdown day = appState.scoringRules.scoreRound(
       matches: matches,
       picksByMatchId: picksByMatchId,
       outcomesByMatchId: outcomesByMatchId,

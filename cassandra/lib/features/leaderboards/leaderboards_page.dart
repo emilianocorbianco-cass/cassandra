@@ -15,7 +15,6 @@ import '../group/models/group_member.dart';
 import '../predictions/models/formatters.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/ranking_rules.dart';
-import '../scoring/scoring_engine.dart';
 import 'matchday_leaderboard_page.dart';
 import 'member_season_page.dart';
 import 'mock_season_data.dart';
@@ -151,7 +150,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
           final outcomes = app.hasSavedOutcomesForMatchday(pd.dayNumber)
               ? app.outcomesForMatchday(pd.dayNumber)
               : const <String, MatchOutcome>{};
-          final dayScore = CassandraScoringEngine.computeDayScore(
+          final dayScore = app.scoringRules.scoreRound(
             matches: savedMatches,
             picksByMatchId: pd.picksByMatchId,
             outcomesByMatchId: outcomes,

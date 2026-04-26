@@ -6,7 +6,6 @@ import '../../leaderboards/models/matchday_data.dart';
 import '../../leaderboards/models/member_matchday_score.dart';
 import '../../leaderboards/models/season_leaderboard_entry.dart';
 import '../../scoring/models/score_breakdown.dart';
-import '../../scoring/scoring_engine.dart';
 
 class StatsEntriesLoader {
   const StatsEntriesLoader._();
@@ -108,7 +107,7 @@ class StatsEntriesLoader {
               averageOddsPlayed: null,
             );
           } else {
-            day = CassandraScoringEngine.computeDayScore(
+            day = app.scoringRules.scoreRound(
               matches: md.matches,
               picksByMatchId: pd.picksByMatchId,
               outcomesByMatchId: md.outcomesByMatchId,

@@ -19,7 +19,6 @@ import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/ranking_rules.dart';
-import '../scoring/scoring_engine.dart';
 import '../stats/stats_page.dart';
 
 import 'create_group_page.dart';
@@ -1188,7 +1187,7 @@ class _GroupPageState extends State<GroupPage>
         final md = seasonMatchdayByDay[pd.dayNumber];
         if (md != null && md.matches.isNotEmpty) {
           // Always recompute to apply current scoring rules.
-          final dayScore = CassandraScoringEngine.computeDayScore(
+          final dayScore = appState.scoringRules.scoreRound(
             matches: md.matches,
             picksByMatchId: pd.picksByMatchId,
             outcomesByMatchId: md.outcomesByMatchId,
@@ -1213,7 +1212,7 @@ class _GroupPageState extends State<GroupPage>
           overridePicksByMemberId[member.id] ??
           picksByMemberByDay[currentMatchdayNumber]?[member.id] ??
           const <String, PickOption>{};
-      final currentDayScore = CassandraScoringEngine.computeDayScore(
+      final currentDayScore = appState.scoringRules.scoreRound(
         matches: currentMatches,
         picksByMatchId: currentPicks,
         outcomesByMatchId: effectiveOutcomesByMatchId,

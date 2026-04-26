@@ -7,7 +7,6 @@ import '../../leaderboards/models/matchday_data.dart';
 import '../../predictions/models/formatters.dart';
 import '../../predictions/models/pick_option.dart';
 import '../../scoring/models/match_outcome.dart';
-import '../../scoring/scoring_engine.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
 
 class UserPicksView extends StatelessWidget {
@@ -28,7 +27,7 @@ class UserPicksView extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final isEnglish = l10n.localeName.startsWith('en');
     final cachedMatches = app.cachedPredictionMatches;
-    final day = CassandraScoringEngine.computeDayScore(
+    final day = app.scoringRules.scoreRound(
       matches: (cachedMatches ?? matchday.matches),
       picksByMatchId: picksByMatchId,
       outcomesByMatchId: matchday.outcomesByMatchId,

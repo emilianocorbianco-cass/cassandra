@@ -14,7 +14,6 @@ import '../predictions/models/prediction_match.dart';
 import '../scoring/models/match_outcome.dart';
 import '../scoring/models/score_breakdown.dart';
 import '../scoring/ranking_rules.dart';
-import '../scoring/scoring_engine.dart';
 import 'models/group_member.dart';
 
 class GroupMatchdayMemberPage extends StatelessWidget {
@@ -82,7 +81,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
     final outcomes = _effectiveOutcomes(appState);
     final picks = _picksForMember(appState);
 
-    final DayScoreBreakdown day = CassandraScoringEngine.computeDayScore(
+    final DayScoreBreakdown day = appState.scoringRules.scoreRound(
       matches: matches,
       picksByMatchId: picks,
       outcomesByMatchId: outcomes,
@@ -207,7 +206,7 @@ class GroupMatchdayMemberPage extends StatelessWidget {
         }
       }
 
-      final dayScore = CassandraScoringEngine.computeDayScore(
+      final dayScore = appState.scoringRules.scoreRound(
         matches: matches,
         picksByMatchId: memberPicks,
         outcomesByMatchId: outcomes,

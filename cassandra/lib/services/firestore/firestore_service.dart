@@ -15,6 +15,7 @@ import 'firestore_serializers.dart';
 import 'models/chat_message_document.dart';
 import 'models/group_document.dart';
 import 'models/matchday_document.dart';
+import 'models/meta_prediction_document.dart';
 import 'models/picks_document.dart';
 
 class FirestoreService {
@@ -1885,5 +1886,36 @@ class FirestoreService {
 
     return 'Seeding completato: ${mockUsers.map((u) => u.displayName).join(", ")} '
         'aggiunti al gruppo $groupId (${matchIds.length} pick ciascuno)';
+  }
+
+  // ===== META-PREDICTIONS =====
+
+  /// Save meta-predictions for a user + tournament.
+  Future<void> saveMetaPredictions({
+    required String uid,
+    required String tournamentId,
+    required MetaPredictionDocument doc,
+  }) async {
+    final docId = '${uid}_$tournamentId';
+    final data = doc.toMap();
+    data['submittedAt'] = FieldValue.serverTimestamp();
+    await _withTimeout(
+      _db.collection('meta_predictions').doc(docId).set(data),
+      operation: 'saveMetaPredictions',
+    );
+  }
+
+  /// Fetch meta-predictions for a user + tournament.
+  Future<MetaPredictionDocument?> getMetaPredictions({
+    required String uid,
+    required String tournamentId,
+  }) async {
+    final docId = '${uid}_$tournamentId';
+    final snap = await _withTimeout(
+      _db.collection('meta_predictions').doc(docId).get(),
+      operation: 'getMetaPredictions',
+    );
+    if (!snap.exists || snap.data() == null) return null;
+    return MetaPredictionDocument.fromMap(docId, snap.data()!);
   }
 }

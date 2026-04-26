@@ -311,7 +311,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
     DayScoreBreakdown? scoreCache;
     if (outcomesNow.isNotEmpty) {
-      scoreCache = CassandraScoringEngine.computeDayScore(
+      scoreCache = appState.scoringRules.scoreRound(
         matches: currentMatches,
         picksByMatchId: allPicks,
         outcomesByMatchId: outcomesNow,
@@ -433,7 +433,7 @@ class _PredictionsPageState extends State<PredictionsPage>
     }
     DayScoreBreakdown? scoreCache;
     if (outcomesNow.isNotEmpty) {
-      scoreCache = CassandraScoringEngine.computeDayScore(
+      scoreCache = appState.scoringRules.scoreRound(
         matches: matches,
         picksByMatchId: allPicks,
         outcomesByMatchId: outcomesNow,
@@ -832,7 +832,7 @@ class _PredictionsPageState extends State<PredictionsPage>
               } else {
                 final md = seasonMatchdayByDay[pd.dayNumber];
                 if (md != null && md.matches.isNotEmpty) {
-                  final dayScore = CassandraScoringEngine.computeDayScore(
+                  final dayScore = appState.scoringRules.scoreRound(
                     matches: md.matches,
                     picksByMatchId: pd.picksByMatchId,
                     outcomesByMatchId: md.outcomesByMatchId,
@@ -877,7 +877,7 @@ class _PredictionsPageState extends State<PredictionsPage>
                 avgOddsValues.add(currentDoc.score!.averageOddsPlayed!);
               }
             } else if (effectiveOutcomesByMatchId.isNotEmpty) {
-              final currentDayScore = CassandraScoringEngine.computeDayScore(
+              final currentDayScore = appState.scoringRules.scoreRound(
                 matches: currentMatches,
                 picksByMatchId: currentPicks,
                 outcomesByMatchId: effectiveOutcomesByMatchId,
@@ -974,7 +974,7 @@ class _PredictionsPageState extends State<PredictionsPage>
               ? MatchOutcome.away
               : MatchOutcome.draw,
     };
-    final DayScoreBreakdown dayScore = CassandraScoringEngine.computeDayScore(
+    final DayScoreBreakdown dayScore = appState.scoringRules.scoreRound(
       matches: scoringMatches,
       picksByMatchId: {for (final m in scoringMatches) m.id: _pickFor(m.id)},
       outcomesByMatchId: scoreOutcomesByMatchId,
