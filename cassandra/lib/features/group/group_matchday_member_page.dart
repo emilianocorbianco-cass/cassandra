@@ -476,10 +476,18 @@ class _HeroCard extends StatelessWidget {
 bool _isPickCorrect(PickOption pick, MatchOutcome outcome) {
   switch (pick) {
     case PickOption.home:
+    case PickOption.homeReg:
+    case PickOption.homeEt:
+    case PickOption.homePen:
       return outcome == MatchOutcome.home;
     case PickOption.draw:
+    case PickOption.drawReg:
+    case PickOption.drawEt:
       return outcome == MatchOutcome.draw;
     case PickOption.away:
+    case PickOption.awayReg:
+    case PickOption.awayEt:
+    case PickOption.awayPen:
       return outcome == MatchOutcome.away;
     case PickOption.homeDraw:
       return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;
@@ -646,6 +654,14 @@ class _PostLockMatchCard extends StatelessWidget {
         return match.odds.drawAway;
       case PickOption.homeAway:
         return match.odds.homeAway;
+      case PickOption.homeReg:
+      case PickOption.drawReg:
+      case PickOption.awayReg:
+      case PickOption.homeEt:
+      case PickOption.drawEt:
+      case PickOption.awayEt:
+      case PickOption.homePen:
+      case PickOption.awayPen:
       case PickOption.none:
         return 0;
     }
@@ -691,6 +707,14 @@ class _PostLockMatchCard extends StatelessWidget {
         return '1';
       case PickOption.homeAway:
         return 'X';
+      case PickOption.homeReg:
+      case PickOption.drawReg:
+      case PickOption.awayReg:
+      case PickOption.homeEt:
+      case PickOption.drawEt:
+      case PickOption.awayEt:
+      case PickOption.homePen:
+      case PickOption.awayPen:
       case PickOption.none:
         return '-';
     }
@@ -701,10 +725,18 @@ class _PostLockMatchCard extends StatelessWidget {
     final a = match.awayGoals ?? 0;
     switch (pick) {
       case PickOption.home:
+      case PickOption.homeReg:
+      case PickOption.homeEt:
+      case PickOption.homePen:
         return h > a;
       case PickOption.draw:
+      case PickOption.drawReg:
+      case PickOption.drawEt:
         return h == a;
       case PickOption.away:
+      case PickOption.awayReg:
+      case PickOption.awayEt:
+      case PickOption.awayPen:
         return a > h;
       case PickOption.homeDraw:
         return h >= a;

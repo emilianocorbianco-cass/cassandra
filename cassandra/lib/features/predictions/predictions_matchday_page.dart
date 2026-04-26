@@ -39,6 +39,22 @@ class PredictionsMatchdayPage extends StatelessWidget {
         return 'X2';
       case PickOption.homeAway:
         return '12';
+      case PickOption.homeReg:
+        return "1 (90')";
+      case PickOption.drawReg:
+        return "X (90')";
+      case PickOption.awayReg:
+        return "2 (90')";
+      case PickOption.homeEt:
+        return "1 (120')";
+      case PickOption.drawEt:
+        return "X (120')";
+      case PickOption.awayEt:
+        return "2 (120')";
+      case PickOption.homePen:
+        return '1 (rig.)';
+      case PickOption.awayPen:
+        return '2 (rig.)';
       case PickOption.none:
         return '—';
     }
@@ -50,10 +66,18 @@ class PredictionsMatchdayPage extends StatelessWidget {
 
     switch (pick) {
       case PickOption.home:
+      case PickOption.homeReg:
+      case PickOption.homeEt:
+      case PickOption.homePen:
         return outcome == MatchOutcome.home;
       case PickOption.draw:
+      case PickOption.drawReg:
+      case PickOption.drawEt:
         return outcome == MatchOutcome.draw;
       case PickOption.away:
+      case PickOption.awayReg:
+      case PickOption.awayEt:
+      case PickOption.awayPen:
         return outcome == MatchOutcome.away;
       case PickOption.homeDraw:
         return outcome == MatchOutcome.home || outcome == MatchOutcome.draw;

@@ -105,6 +105,16 @@ class CassandraScoringEngine {
         return match.odds.drawAway;
       case PickOption.homeAway:
         return match.odds.homeAway;
+
+      case PickOption.homeReg:
+      case PickOption.drawReg:
+      case PickOption.awayReg:
+      case PickOption.homeEt:
+      case PickOption.drawEt:
+      case PickOption.awayEt:
+      case PickOption.homePen:
+      case PickOption.awayPen:
+        return null;
     }
   }
 
