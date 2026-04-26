@@ -1,6 +1,7 @@
 import 'package:cassandra/app/state/app_settings.dart';
 import 'package:cassandra/app/state/app_state.dart';
 import 'package:cassandra/app/state/cassandra_scope.dart';
+import 'package:cassandra/core/tournament/tournament_modes.dart';
 import 'package:cassandra/features/settings/widgets/account_section.dart';
 import 'package:cassandra/features/settings/widgets/group_settings_section.dart';
 import 'package:cassandra/features/settings/widgets/language_selector.dart';
@@ -96,6 +97,66 @@ class _SettingsPageState extends State<SettingsPage>
                 _app?.updateLanguage(value);
               },
             ),
+            // ── Tournament switcher (testers only) ──
+            if (app.isWorldCupTester) ...[
+              const SizedBox(height: 24),
+              Text(
+                'Torneo',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.blue.shade800,
+                        side: BorderSide(
+                          color: app.activeTournament.id ==
+                                  TournamentModes.serieA.id
+                              ? Colors.blue.shade800
+                              : Colors.grey.shade400,
+                          width: app.activeTournament.id ==
+                                  TournamentModes.serieA.id
+                              ? 2
+                              : 1,
+                        ),
+                      ),
+                      onPressed: () => app.setActiveTournament(
+                        TournamentModes.serieA,
+                      ),
+                      child: const Text('Serie A'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.blue.shade800,
+                        side: BorderSide(
+                          color: app.activeTournament.id ==
+                                  TournamentModes.worldCup2026.id
+                              ? Colors.blue.shade800
+                              : Colors.grey.shade400,
+                          width: app.activeTournament.id ==
+                                  TournamentModes.worldCup2026.id
+                              ? 2
+                              : 1,
+                        ),
+                      ),
+                      onPressed: () => app.setActiveTournament(
+                        TournamentModes.worldCup2026,
+                      ),
+                      child: const Text('Mondiali 2026'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 24),
             // ── Debug ───────────────
             Text(

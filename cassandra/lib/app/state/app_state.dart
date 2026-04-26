@@ -33,6 +33,7 @@ import '../../core/tournament/pick_strategy.dart';
 import '../../core/tournament/ranking_comparator.dart';
 import '../../core/tournament/round_lifecycle.dart';
 import '../../core/tournament/scoring_rules.dart';
+import '../../core/config/feature_flags.dart';
 import '../../core/tournament/tournament_mode.dart';
 import '../../core/tournament/tournament_modes.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart';
@@ -47,9 +48,33 @@ class AppState extends ChangeNotifier {
 
   bool get isColdTestActive => clock.isActive;
 
-  /// Active tournament format. Defaults to Serie A (no UI to switch yet).
-  final TournamentMode _activeTournament = TournamentModes.serieA;
+  /// Active tournament format. Auto-switches by date; testers can override.
+  TournamentMode _activeTournament = TournamentModes.serieA;
   TournamentMode get activeTournament => _activeTournament;
+
+  /// Whether the current user is a World Cup preview tester.
+  bool get isWorldCupTester =>
+      FeatureFlags.isWorldCupTester(_profile.email);
+
+  /// Whether the World Cup is available (by date or tester access).
+  bool get isWorldCupAvailable =>
+      FeatureFlags.isWorldCup2026Active(now()) || isWorldCupTester;
+
+  /// Switch to a specific tournament. Notifies listeners to rebuild UI.
+  void setActiveTournament(TournamentMode tournament) {
+    if (_activeTournament.id == tournament.id) return;
+    _activeTournament = tournament;
+    notifyListeners();
+  }
+
+  /// Auto-select tournament based on current date (called after auth).
+  void autoSelectTournament() {
+    if (FeatureFlags.isWorldCup2026Active(now())) {
+      _activeTournament = TournamentModes.worldCup2026;
+    } else {
+      _activeTournament = TournamentModes.serieA;
+    }
+  }
 
   /// Convenience getters for the current tournament phase.
   TournamentPhase get _currentPhase => _activeTournament.phases[0];
