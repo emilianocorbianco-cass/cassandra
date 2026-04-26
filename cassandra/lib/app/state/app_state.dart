@@ -29,6 +29,8 @@ import '../../features/predictions/models/prediction_match.dart';
 import '../../services/api_football/models/api_football_odds.dart';
 import '../../services/api_football/models/api_football_standing.dart';
 
+import '../../core/tournament/tournament_mode.dart';
+import '../../core/tournament/tournament_modes.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart';
 import '../config/storage_keys.dart';
 
@@ -40,6 +42,10 @@ class AppState extends ChangeNotifier {
   DateTime now() => clock.now();
 
   bool get isColdTestActive => clock.isActive;
+
+  /// Active tournament format. Defaults to Serie A (no UI to switch yet).
+  final TournamentMode _activeTournament = TournamentModes.serieA;
+  TournamentMode get activeTournament => _activeTournament;
 
   /// Activate or deactivate the cold-test clock and rebuild the widget tree.
   void setColdTestClock({Duration? offset}) {

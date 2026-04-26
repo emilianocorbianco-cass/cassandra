@@ -33,3 +33,26 @@ extension MatchOutcomeX on MatchOutcome {
       }[this] ??
       name; // fallback se un domani aggiungi valori all'enum
 }
+
+/// When the match was decided — relevant only for knockout tournament formats.
+/// Serie A ignores this entirely.
+enum DecidedIn {
+  regulation,
+  extraTime,
+  penalties,
+}
+
+/// A [MatchOutcome] optionally paired with [DecidedIn] for knockout scoring.
+///
+/// Serie A code continues to use bare [MatchOutcome]; this wrapper exists
+/// for tournament formats where the *when* matters for scoring.
+class MatchResult {
+  final MatchOutcome outcome;
+  final DecidedIn? decidedIn;
+
+  const MatchResult(this.outcome, [this.decidedIn]);
+
+  bool get isPending => outcome.isPending;
+  bool get isVoided => outcome.isVoided;
+  bool get isGraded => outcome.isGraded;
+}
