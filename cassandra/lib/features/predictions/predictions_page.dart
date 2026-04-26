@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../app/state/cassandra_scope.dart';
 import '../../app/theme/cassandra_colors.dart';
+import '../../core/tournament/tournament_mode.dart';
 import '../../app/widgets/demo_banner.dart';
 import '../../domain/matchday/matchday_recovery_rules.dart'
     show MatchdayProgress, computeMatchdayProgress;
@@ -155,6 +156,17 @@ class _PredictionsPageState extends State<PredictionsPage>
   }
 
   int get _pickedCount => matches.where((m) => !_pickFor(m.id).isNone).length;
+
+  /// Whether the active tournament uses odds-based scoring (Serie A).
+  bool get _isTournamentWithOdds =>
+      CassandraScope.of(context).activeTournament.kind == TournamentKind.league;
+
+  /// Available pick options for a match based on the active tournament.
+  List<PickOption>? _availablePickOptions(PredictionMatch match) {
+    final appState = CassandraScope.of(context);
+    if (appState.activeTournament.kind == TournamentKind.league) return null;
+    return appState.pickStrategy.availableOptions(match);
+  }
   /// Matches that are still playable (not started) but have no pick.
   int get _playableMissingCount =>
       matches.where((m) => _pickFor(m.id).isNone && !_isMatchdayLocked).length;
@@ -1050,6 +1062,8 @@ class _PredictionsPageState extends State<PredictionsPage>
                                     ? () => _onToggleMatchExpand(match.id)
                                     : null,
                                 memberRows: memberRows,
+                                availableOptions: _availablePickOptions(match),
+                                showOdds: _isTournamentWithOdds,
                               ),
                             );
                           }, childCount: matches.length),
@@ -1107,6 +1121,9 @@ class _PredictionsPageState extends State<PredictionsPage>
                         pickedCount: _pickedCount,
                         totalMatches: matches.length,
                         onSubmit: _onHeroSubmit,
+                        tournamentKind: CassandraScope.of(context)
+                            .activeTournament
+                            .kind,
                       ),
                     ),
                   ),
@@ -1209,6 +1226,7 @@ class _HeroScoreCard extends StatefulWidget {
     required this.pickedCount,
     required this.totalMatches,
     this.onSubmit,
+    this.tournamentKind = TournamentKind.league,
   });
 
   final DayScoreBreakdown dayScore;
@@ -1224,6 +1242,7 @@ class _HeroScoreCard extends StatefulWidget {
   final int pickedCount;
   final int totalMatches;
   final VoidCallback? onSubmit;
+  final TournamentKind tournamentKind;
 
   @override
   State<_HeroScoreCard> createState() => _HeroScoreCardState();
@@ -1848,8 +1867,7 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
   }
 
   Widget _buildPreLockBreakdown(AppLocalizations l10n) {
-    final maxScore = _computeMaxScore();
-    final minScore = _computeMinScore();
+    final isTournament = widget.tournamentKind != TournamentKind.league;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1880,58 +1898,60 @@ class _HeroScoreCardState extends State<_HeroScoreCard>
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        // 2. Max Points
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              l10n.predictionsMaxPoints,
-              style: const TextStyle(
-                color: _fg,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-                height: 1.1,
+        if (!isTournament) ...[
+          const SizedBox(height: 10),
+          // 2. Max Points (Serie A only — odds-based)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.predictionsMaxPoints,
+                style: const TextStyle(
+                  color: _fg,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                  height: 1.1,
+                ),
               ),
-            ),
-            Text(
-              formatOdds(maxScore),
-              style: const TextStyle(
-                color: _fg,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                height: 1.2,
+              Text(
+                formatOdds(_computeMaxScore()),
+                style: const TextStyle(
+                  color: _fg,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // 3. Min Points
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              l10n.predictionsMinPoints,
-              style: const TextStyle(
-                color: _fg,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-                height: 1.1,
+            ],
+          ),
+          const SizedBox(height: 10),
+          // 3. Min Points (Serie A only — odds-based)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.predictionsMinPoints,
+                style: const TextStyle(
+                  color: _fg,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                  height: 1.1,
+                ),
               ),
-            ),
-            Text(
-              formatOdds(minScore),
-              style: const TextStyle(
-                color: _fg,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                height: 1.2,
+              Text(
+                formatOdds(_computeMinScore()),
+                style: const TextStyle(
+                  color: _fg,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -2154,6 +2174,8 @@ class _CompactMatchCard extends StatelessWidget {
     this.expanded = false,
     this.onToggleExpand,
     this.memberRows,
+    this.availableOptions,
+    this.showOdds = true,
   });
 
   final PredictionMatch match;
@@ -2166,6 +2188,10 @@ class _CompactMatchCard extends StatelessWidget {
   final bool expanded;
   final VoidCallback? onToggleExpand;
   final List<_MemberPickData>? memberRows;
+  /// Available pick options (null = default Serie A 1/X/2).
+  final List<PickOption>? availableOptions;
+  /// Whether to show odds values on buttons.
+  final bool showOdds;
 
   bool get _isLive {
     final s = match.statusShort;
@@ -2350,37 +2376,115 @@ class _CompactMatchCard extends StatelessWidget {
 
         const SizedBox(height: 8),
 
-        // ── 1 / X / 2 odds buttons ──────────────────────────────────
-        Row(
-          children: [
-            _CompactOddsButton(
-              label: '1',
-              odds: match.odds.home,
-              selected: pick == PickOption.home,
-              locked: locked || submitted,
-              onPressed: () => onPick(PickOption.home),
-            ),
-            _CompactOddsButton(
-              label: 'X',
-              odds: match.odds.draw,
-              selected: pick == PickOption.draw,
-              locked: locked || submitted,
-              onPressed: () => onPick(PickOption.draw),
-            ),
-            _CompactOddsButton(
-              label: '2',
-              odds: match.odds.away,
-              selected: pick == PickOption.away,
-              locked: locked || submitted,
-              onPressed: () => onPick(PickOption.away),
-            ),
-          ],
-        ),
+        // ── Pick buttons ─────────────────────────────────────────────
+        _buildPickButtons(),
       ],
     );
   }
 
-  /// Opposing pick label: single ↔ double chance complement.
+  /// Odds for a specific pick option (Serie A only).
+  double? _oddsFor(PickOption p) {
+    switch (p) {
+      case PickOption.home:
+        return match.odds.home;
+      case PickOption.draw:
+        return match.odds.draw;
+      case PickOption.away:
+        return match.odds.away;
+      case PickOption.homeDraw:
+        return match.odds.homeDraw;
+      case PickOption.drawAway:
+        return match.odds.drawAway;
+      case PickOption.homeAway:
+        return match.odds.homeAway;
+      default:
+        return null;
+    }
+  }
+
+  /// Build pick buttons based on available options.
+  Widget _buildPickButtons() {
+    final options = availableOptions ??
+        const [PickOption.home, PickOption.draw, PickOption.away];
+    final isLocked = locked || submitted;
+
+    // Knockout: split into rows by tier (90' / 120' / penalties).
+    if (options.any((o) => o.isKnockout)) {
+      final reg = options.where(
+        (o) => o == PickOption.homeReg ||
+            o == PickOption.drawReg ||
+            o == PickOption.awayReg,
+      ).toList();
+      final et = options.where(
+        (o) => o == PickOption.homeEt ||
+            o == PickOption.drawEt ||
+            o == PickOption.awayEt,
+      ).toList();
+      final pen = options.where(
+        (o) => o == PickOption.homePen || o == PickOption.awayPen,
+      ).toList();
+
+      return Column(
+        children: [
+          if (reg.isNotEmpty) ...[
+            _pickRow(reg, "90'", isLocked),
+          ],
+          if (et.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _pickRow(et, "120'", isLocked),
+          ],
+          if (pen.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _pickRow(pen, 'Rig.', isLocked),
+          ],
+        ],
+      );
+    }
+
+    // Standard: single row.
+    return Row(
+      children: [
+        for (final option in options)
+          _CompactOddsButton(
+            label: option.label,
+            odds: showOdds ? _oddsFor(option) : null,
+            subtitle: showOdds ? null : '+3',
+            selected: pick == option,
+            locked: isLocked,
+            onPressed: () => onPick(option),
+          ),
+      ],
+    );
+  }
+
+  Widget _pickRow(List<PickOption> options, String tier, bool isLocked) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 32,
+          child: Text(
+            tier,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: CassandraColors.inkBlackV2,
+            ),
+          ),
+        ),
+        for (final option in options)
+          _CompactOddsButton(
+            label: option.label.replaceAll(RegExp(r"\s*\(.*\)"), ''),
+            selected: pick == option,
+            locked: isLocked,
+            onPressed: () => onPick(option),
+          ),
+        // Pad to 3 columns if fewer options (e.g. penalties has only 2).
+        if (options.length < 3)
+          const Expanded(child: SizedBox.shrink()),
+      ],
+    );
+  }
+
   /// Whether the current live score matches the user's pick.
   bool get _isCurrentlyCorrect {
     final h = match.homeGoals ?? 0;
@@ -2540,14 +2644,16 @@ class _CompactMatchCard extends StatelessWidget {
 class _CompactOddsButton extends StatelessWidget {
   const _CompactOddsButton({
     required this.label,
-    required this.odds,
+    this.odds,
+    this.subtitle,
     required this.selected,
     required this.locked,
     required this.onPressed,
   });
 
   final String label;
-  final double odds;
+  final double? odds;
+  final String? subtitle;
   final bool selected;
   final bool locked;
   final VoidCallback onPressed;
@@ -2560,6 +2666,10 @@ class _CompactOddsButton extends StatelessWidget {
     final bg = selected
         ? CassandraColors.inkBlackV2
         : CassandraColors.brightSnow;
+
+    final secondLine = odds != null
+        ? formatOdds(odds!)
+        : subtitle;
 
     return Expanded(
       child: Padding(
@@ -2594,14 +2704,15 @@ class _CompactOddsButton extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              Text(
-                formatOdds(odds),
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+              if (secondLine != null)
+                Text(
+                  secondLine,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
