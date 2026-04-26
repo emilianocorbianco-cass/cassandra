@@ -24,12 +24,26 @@ class TournamentPhase {
   });
 }
 
+/// API-Football configuration for a tournament.
+class TournamentApiConfig {
+  final int leagueId;
+  final int season;
+  final String timezone;
+
+  const TournamentApiConfig({
+    required this.leagueId,
+    required this.season,
+    this.timezone = 'Europe/Rome',
+  });
+}
+
 class TournamentMode {
   final String id;
   final String displayName;
   final TournamentKind kind;
   final List<TournamentPhase> phases;
   final String? featureFlagKey;
+  final TournamentApiConfig? apiConfig;
 
   const TournamentMode({
     required this.id,
@@ -37,5 +51,6 @@ class TournamentMode {
     required this.kind,
     required this.phases,
     this.featureFlagKey,
+    this.apiConfig,
   });
 }

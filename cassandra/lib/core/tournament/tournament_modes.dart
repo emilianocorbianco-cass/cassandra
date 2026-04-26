@@ -19,6 +19,7 @@ class TournamentModes {
     id: 'serie-a-2024-25',
     displayName: 'Serie A',
     kind: TournamentKind.league,
+    apiConfig: const TournamentApiConfig(leagueId: 135, season: 2024),
     phases: [
       TournamentPhase(
         label: 'Campionato',
@@ -35,6 +36,7 @@ class TournamentModes {
     displayName: 'Mondiali 2026',
     kind: TournamentKind.hybrid,
     featureFlagKey: 'enable_world_cup_2026',
+    apiConfig: const TournamentApiConfig(leagueId: 1, season: 2026),
     phases: [
       TournamentPhase(
         label: 'Gironi',

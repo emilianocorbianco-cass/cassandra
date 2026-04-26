@@ -308,4 +308,165 @@ class ApiFootballService {
     }
     return result;
   }
+
+  // =========================================================================
+  // GENERIC METHODS (tournament-agnostic)
+  // =========================================================================
+
+  /// League ID cache by (name, country, season) to avoid re-resolving.
+  final Map<String, int> _leagueIdCache = {};
+
+  /// Resolve league ID for any league/country/season combination.
+  Future<int> resolveLeagueId({
+    required String name,
+    required String country,
+    required int season,
+  }) async {
+    final cacheKey = '${name}_${country}_$season';
+    final cached = _leagueIdCache[cacheKey];
+    if (cached != null) return cached;
+
+    final json = await _client.getJson(
+      'leagues',
+      query: {
+        'name': name,
+        'country': country,
+        'season': '$season',
+        'type': 'league',
+      },
+    );
+
+    final response = json['response'];
+    if (response is! List || response.isEmpty) {
+      throw Exception('No league found for $name ($country) season $season');
+    }
+    final first = response.first;
+    if (first is! Map) {
+      throw Exception('Unexpected league response format');
+    }
+    final league = first['league'];
+    if (league is! Map || league['id'] is! int) {
+      throw Exception('Missing league ID in response');
+    }
+    final id = league['id'] as int;
+    _leagueIdCache[cacheKey] = id;
+    return id;
+  }
+
+  /// Fetch fixtures for any league/season/round combination.
+  Future<List<ApiFootballFixture>> getFixturesForRound({
+    required int leagueId,
+    required int season,
+    required String round,
+    String timezone = 'Europe/Rome',
+  }) async {
+    final json = await _client.getJson(
+      'fixtures',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+        'round': round,
+        'timezone': timezone,
+      },
+    );
+    return _fixturesFromJson(json);
+  }
+
+  /// Fetch next N fixtures for any league.
+  Future<List<ApiFootballFixture>> getNextFixtures({
+    required int leagueId,
+    required int season,
+    int count = 10,
+    String timezone = 'Europe/Rome',
+  }) async {
+    final json = await _client.getJson(
+      'fixtures',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+        'next': '$count',
+        'timezone': timezone,
+      },
+    );
+    return _fixturesFromJson(json);
+  }
+
+  /// Fetch last N completed fixtures for any league.
+  Future<List<ApiFootballFixture>> getLastFixtures({
+    required int leagueId,
+    required int season,
+    int count = 10,
+    String timezone = 'Europe/Rome',
+  }) async {
+    final json = await _client.getJson(
+      'fixtures',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+        'last': '$count',
+        'timezone': timezone,
+      },
+    );
+    return _fixturesFromJson(json);
+  }
+
+  /// Discover the current round label for any league (e.g. "Group A - 1").
+  Future<String?> getCurrentRoundLabel({
+    required int leagueId,
+    required int season,
+    String timezone = 'Europe/Rome',
+  }) async {
+    final json = await _client.getJson(
+      'fixtures',
+      query: {
+        'league': '$leagueId',
+        'season': '$season',
+        'next': '1',
+        'timezone': timezone,
+      },
+    );
+    final resp = json['response'];
+    if (resp is List && resp.isNotEmpty) {
+      final first = resp.first;
+      if (first is Map) {
+        final league = first['league'];
+        if (league is Map) {
+          final round = league['round'];
+          if (round is String && round.trim().isNotEmpty) {
+            return round.trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Fetch standings for any league. Returns all groups (for group-stage
+  /// tournaments, this may be multiple arrays).
+  Future<List<List<ApiFootballStanding>>> getAllStandings({
+    required int leagueId,
+    required int season,
+  }) async {
+    final json = await _client.getJson(
+      'standings',
+      query: {'league': '$leagueId', 'season': '$season'},
+    );
+    final response = json['response'];
+    if (response is! List || response.isEmpty) return const [];
+    final first = response.first;
+    if (first is! Map) return const [];
+    final league = first['league'];
+    if (league is! Map) return const [];
+    final standings = league['standings'];
+    if (standings is! List) return const [];
+
+    return standings.whereType<List>().map((group) {
+      return group
+          .whereType<Map>()
+          .map(
+            (e) => ApiFootballStanding.fromJson(e.cast<String, dynamic>()),
+          )
+          .toList();
+    }).toList();
+  }
 }
